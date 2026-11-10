@@ -14,6 +14,7 @@ export interface ProjectTemplate {
 export type DiscoverProject = ProjectSummary & {
   is_fan: boolean
   is_watcher: boolean
+  is_contact_activated: boolean
   total_fans: number
   total_watchers: number
   tags: string[] | null

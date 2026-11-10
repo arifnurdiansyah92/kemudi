@@ -110,6 +110,21 @@
   }
 }
 
+/* Wiki edit diffs from kemudi-back: show insertions and deletions in theme colours. */
+@layer components {
+  .wiki-diff ins {
+    background: color-mix(in oklch, var(--success) 22%, transparent) !important;
+    text-decoration: none;
+  }
+  .wiki-diff del {
+    background: color-mix(
+      in oklch,
+      var(--destructive) 20%,
+      transparent
+    ) !important;
+  }
+}
+
 /* Server-rendered Markdown (descriptions, comments). */
 @layer components {
   .rich-text {

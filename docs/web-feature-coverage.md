@@ -112,8 +112,8 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 
 - [x] Integrations: GitHub, GitLab, Bitbucket and Gogs commit hooks (project settings)
 - [x] Watchers: see and change who watches an item
-- [ ] Contact the project (contact form to admins)
-- [ ] Wiki page history
+- [x] Contact the project (contact form to admins)
+- [x] Wiki page history
 - [ ] Mentions: @people and #refs suggested while typing comments and descriptions
 - [ ] Saved filters on backlog, kanban and issues
 - [ ] Backlog: drag stories into a sprint; forecast of what fits the next sprint

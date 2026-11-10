@@ -48,6 +48,7 @@ import { AppHeader } from '@/components/layout/app-header'
 import { Main } from '@/components/layout/main'
 import { Attachments } from '@/features/item/attachments'
 import { can, useProject } from '@/features/project/use-project'
+import { WikiHistory } from './history'
 
 export function Wiki({ slug, edit = false }: { slug: string; edit?: boolean }) {
   const project = useProject()
@@ -220,6 +221,7 @@ function PageView({
         <h2 className='mb-3 text-sm font-semibold'>Attachments</h2>
         <Attachments project={project} kind='wiki' item={page} />
       </section>
+      <WikiHistory key={page.version} pageId={page.id} />
 
       <ConfirmDialog
         open={deleting}

@@ -38,6 +38,7 @@ function Details({ project }: { project: Project }) {
   const p = project as Project & {
     is_looking_for_people: boolean
     looking_for_people_note: string
+    is_contact_activated: boolean
     total_milestones: number | null
     total_story_points: number | null
   }
@@ -46,6 +47,7 @@ function Details({ project }: { project: Project }) {
     description: p.description,
     is_private: p.is_private,
     is_looking_for_people: p.is_looking_for_people,
+    is_contact_activated: p.is_contact_activated,
     looking_for_people_note: p.looking_for_people_note ?? '',
     total_milestones: p.total_milestones ?? '',
     total_story_points: p.total_story_points ?? '',
@@ -136,6 +138,19 @@ function Details({ project }: { project: Project }) {
           <Switch
             checked={form.is_looking_for_people}
             onCheckedChange={(v) => set({ is_looking_for_people: v })}
+          />
+        </label>
+        <label className='flex items-center justify-between gap-4 text-sm'>
+          <span>
+            <span className='font-medium'>Can be contacted</span>
+            <span className='block text-muted-foreground'>
+              People outside the project can send the admins a message from
+              Discover.
+            </span>
+          </span>
+          <Switch
+            checked={form.is_contact_activated}
+            onCheckedChange={(v) => set({ is_contact_activated: v })}
           />
         </label>
         {form.is_looking_for_people && (

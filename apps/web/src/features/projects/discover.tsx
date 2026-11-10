@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Eye, Heart, Search } from 'lucide-react'
-import { useDiscover, useProjectToggle } from '@/lib/taiga/projects'
+import {
+  useDiscover,
+  useProjectToggle,
+  type DiscoverProject,
+} from '@/lib/taiga/projects'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AppHeader } from '@/components/layout/app-header'
 import { Main } from '@/components/layout/main'
+import { ContactDialog } from './contact-dialog'
 
 /** Public projects on this Kemudi server. */
 export function Discover() {
@@ -18,6 +23,7 @@ export function Discover() {
     return () => window.clearTimeout(t)
   }, [q])
   const projects = useDiscover(debounced)
+  const [contacting, setContacting] = useState<DiscoverProject | null>(null)
   const like = useProjectToggle('like')
   const watch = useProjectToggle('watch')
 
@@ -71,6 +77,15 @@ export function Discover() {
                     </p>
                   </div>
                   <div className='flex gap-1'>
+                    {p.is_contact_activated && !p.i_am_member && (
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        onClick={() => setContacting(p)}
+                      >
+                        Contact
+                      </Button>
+                    )}
                     <Button
                       variant='ghost'
                       size='sm'
@@ -100,6 +115,13 @@ export function Discover() {
           )}
         </div>
       </Main>
+      {contacting && (
+        <ContactDialog
+          project={contacting}
+          open={!!contacting}
+          onOpenChange={(o) => !o && setContacting(null)}
+        />
+      )}
     </>
   )
 }
