@@ -252,17 +252,22 @@ export function useToggle(
 
 /* ---------- attachments ---------- */
 
-const attachmentsKey = (kind: ItemKind, id: Id) =>
+/** Work items and wiki pages both take attachments. */
+export type AttachableKind = ItemKind | 'wiki'
+const attachmentBase = (kind: AttachableKind) =>
+  kind === 'wiki' ? 'wiki' : KINDS[kind].endpoint
+
+const attachmentsKey = (kind: AttachableKind, id: Id) =>
   ['attachments', kind, id] as const
 
-export function useAttachments(project: Project, kind: ItemKind, id: Id) {
+export function useAttachments(project: Project, kind: AttachableKind, id: Id) {
   // Item ids are global per kind, so the project is implied.
   // eslint-disable-next-line @tanstack/query/exhaustive-deps
   return useQuery({
     queryKey: attachmentsKey(kind, id),
     queryFn: async () =>
       (
-        await api.get<Attachment[]>(`/${KINDS[kind].endpoint}/attachments`, {
+        await api.get<Attachment[]>(`/${attachmentBase(kind)}/attachments`, {
           params: { project: project.id, object_id: id },
           ...ALL,
         })
@@ -270,7 +275,11 @@ export function useAttachments(project: Project, kind: ItemKind, id: Id) {
   })
 }
 
-export function useUploadAttachment(project: Project, kind: ItemKind, id: Id) {
+export function useUploadAttachment(
+  project: Project,
+  kind: AttachableKind,
+  id: Id
+) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (file: File) => {
@@ -280,7 +289,7 @@ export function useUploadAttachment(project: Project, kind: ItemKind, id: Id) {
       form.append('attached_file', file)
       return (
         await api.post<Attachment>(
-          `/${KINDS[kind].endpoint}/attachments`,
+          `/${attachmentBase(kind)}/attachments`,
           form,
           { headers: { 'Content-Type': 'multipart/form-data' } }
         )
@@ -295,11 +304,11 @@ export function useUploadAttachment(project: Project, kind: ItemKind, id: Id) {
   })
 }
 
-export function useDeleteAttachment(kind: ItemKind, id: Id) {
+export function useDeleteAttachment(kind: AttachableKind, id: Id) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (attachment: Attachment) =>
-      api.delete(`/${KINDS[kind].endpoint}/attachments/${attachment.id}`),
+      api.delete(`/${attachmentBase(kind)}/attachments/${attachment.id}`),
     onError: onFail,
     onSettled: () =>
       qc.invalidateQueries({ queryKey: attachmentsKey(kind, id) }),

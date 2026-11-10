@@ -53,8 +53,12 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 
 ## Wiki
 
-- [ ] Pages: view, create, edit, delete
-- [ ] Wiki links (sidebar bookmarks)
+- [x] Pages: view, create, edit, delete
+- [x] Wiki links (sidebar bookmarks)
+
+## Links
+
+- [x] Old taiga-front URLs (emails, #ref mentions, wiki links) open the matching Kemudi screen
 
 ## Team and activity
 

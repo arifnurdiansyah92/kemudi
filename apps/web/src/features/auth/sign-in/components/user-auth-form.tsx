@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 import { apiErrorMessage, signIn } from '@/lib/taiga/client'
-import { cn } from '@/lib/utils'
+import { cn, safeRedirect } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -26,18 +26,6 @@ const formSchema = z.object({
 
 interface UserAuthFormProps extends React.HTMLAttributes<HTMLFormElement> {
   redirectTo?: string
-}
-
-/** Only follow same-origin, path-style redirects. */
-function safeRedirect(target?: string) {
-  if (!target) return '/'
-  try {
-    const url = new URL(target, window.location.origin)
-    if (url.origin !== window.location.origin) return '/'
-    return url.pathname + url.search + url.hash
-  } catch {
-    return '/'
-  }
 }
 
 export function UserAuthForm({

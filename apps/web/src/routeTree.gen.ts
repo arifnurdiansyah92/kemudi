@@ -17,18 +17,23 @@ import { Route as errors404RouteImport } from './routes/(errors)/404'
 import { Route as errors403RouteImport } from './routes/(errors)/403'
 import { Route as errors401RouteImport } from './routes/(errors)/401'
 import { Route as authSignInRouteImport } from './routes/(auth)/sign-in'
+import { Route as authLoginRouteImport } from './routes/(auth)/login'
 import { Route as authForgotPasswordRouteImport } from './routes/(auth)/forgot-password'
 import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
 import { Route as AuthenticatedSettingsAppearanceRouteImport } from './routes/_authenticated/settings/appearance'
 import { Route as authChangePasswordTokenRouteImport } from './routes/(auth)/change-password.$token'
 import { Route as AuthenticatedPSlugRouteRouteImport } from './routes/_authenticated/p/$slug/route'
+import { Route as AuthenticatedProjectSlugIndexRouteImport } from './routes/_authenticated/project/$slug/index'
 import { Route as AuthenticatedPSlugIndexRouteImport } from './routes/_authenticated/p/$slug/index'
+import { Route as AuthenticatedProjectSlugSplatRouteImport } from './routes/_authenticated/project/$slug/$'
 import { Route as AuthenticatedPSlugKanbanRouteImport } from './routes/_authenticated/p/$slug/kanban'
 import { Route as AuthenticatedPSlugIssuesRouteImport } from './routes/_authenticated/p/$slug/issues'
 import { Route as AuthenticatedPSlugEpicsRouteImport } from './routes/_authenticated/p/$slug/epics'
 import { Route as AuthenticatedPSlugBacklogRouteImport } from './routes/_authenticated/p/$slug/backlog'
+import { Route as AuthenticatedPSlugWikiIndexRouteImport } from './routes/_authenticated/p/$slug/wiki/index'
 import { Route as AuthenticatedPSlugTaskboardIndexRouteImport } from './routes/_authenticated/p/$slug/taskboard/index'
+import { Route as AuthenticatedPSlugWikiPageRouteImport } from './routes/_authenticated/p/$slug/wiki/$page'
 import { Route as AuthenticatedPSlugTaskboardSprintRouteImport } from './routes/_authenticated/p/$slug/taskboard/$sprint'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
@@ -70,6 +75,11 @@ const authSignInRoute = authSignInRouteImport.update({
   path: '/sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
+const authLoginRoute = authLoginRouteImport.update({
+  id: '/(auth)/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const authForgotPasswordRoute = authForgotPasswordRouteImport.update({
   id: '/(auth)/forgot-password',
   path: '/forgot-password',
@@ -103,11 +113,23 @@ const AuthenticatedPSlugRouteRoute = AuthenticatedPSlugRouteRouteImport.update({
   path: '/p/$slug',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedProjectSlugIndexRoute =
+  AuthenticatedProjectSlugIndexRouteImport.update({
+    id: '/project/$slug/',
+    path: '/project/$slug/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedPSlugIndexRoute = AuthenticatedPSlugIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthenticatedPSlugRouteRoute,
 } as any)
+const AuthenticatedProjectSlugSplatRoute =
+  AuthenticatedProjectSlugSplatRouteImport.update({
+    id: '/project/$slug/$',
+    path: '/project/$slug/$',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedPSlugKanbanRoute =
   AuthenticatedPSlugKanbanRouteImport.update({
     id: '/kanban',
@@ -131,10 +153,22 @@ const AuthenticatedPSlugBacklogRoute =
     path: '/backlog',
     getParentRoute: () => AuthenticatedPSlugRouteRoute,
   } as any)
+const AuthenticatedPSlugWikiIndexRoute =
+  AuthenticatedPSlugWikiIndexRouteImport.update({
+    id: '/wiki/',
+    path: '/wiki/',
+    getParentRoute: () => AuthenticatedPSlugRouteRoute,
+  } as any)
 const AuthenticatedPSlugTaskboardIndexRoute =
   AuthenticatedPSlugTaskboardIndexRouteImport.update({
     id: '/taskboard/',
     path: '/taskboard/',
+    getParentRoute: () => AuthenticatedPSlugRouteRoute,
+  } as any)
+const AuthenticatedPSlugWikiPageRoute =
+  AuthenticatedPSlugWikiPageRouteImport.update({
+    id: '/wiki/$page',
+    path: '/wiki/$page',
     getParentRoute: () => AuthenticatedPSlugRouteRoute,
   } as any)
 const AuthenticatedPSlugTaskboardSprintRoute =
@@ -148,6 +182,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
+  '/login': typeof authLoginRoute
   '/sign-in': typeof authSignInRoute
   '/401': typeof errors401Route
   '/403': typeof errors403Route
@@ -162,12 +197,17 @@ export interface FileRoutesByFullPath {
   '/p/$slug/epics': typeof AuthenticatedPSlugEpicsRoute
   '/p/$slug/issues': typeof AuthenticatedPSlugIssuesRoute
   '/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
+  '/project/$slug/$': typeof AuthenticatedProjectSlugSplatRoute
   '/p/$slug/': typeof AuthenticatedPSlugIndexRoute
+  '/project/$slug/': typeof AuthenticatedProjectSlugIndexRoute
   '/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
+  '/p/$slug/wiki/$page': typeof AuthenticatedPSlugWikiPageRoute
   '/p/$slug/taskboard/': typeof AuthenticatedPSlugTaskboardIndexRoute
+  '/p/$slug/wiki/': typeof AuthenticatedPSlugWikiIndexRoute
 }
 export interface FileRoutesByTo {
   '/forgot-password': typeof authForgotPasswordRoute
+  '/login': typeof authLoginRoute
   '/sign-in': typeof authSignInRoute
   '/401': typeof errors401Route
   '/403': typeof errors403Route
@@ -182,15 +222,20 @@ export interface FileRoutesByTo {
   '/p/$slug/epics': typeof AuthenticatedPSlugEpicsRoute
   '/p/$slug/issues': typeof AuthenticatedPSlugIssuesRoute
   '/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
+  '/project/$slug/$': typeof AuthenticatedProjectSlugSplatRoute
   '/p/$slug': typeof AuthenticatedPSlugIndexRoute
+  '/project/$slug': typeof AuthenticatedProjectSlugIndexRoute
   '/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
+  '/p/$slug/wiki/$page': typeof AuthenticatedPSlugWikiPageRoute
   '/p/$slug/taskboard': typeof AuthenticatedPSlugTaskboardIndexRoute
+  '/p/$slug/wiki': typeof AuthenticatedPSlugWikiIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/(auth)/forgot-password': typeof authForgotPasswordRoute
+  '/(auth)/login': typeof authLoginRoute
   '/(auth)/sign-in': typeof authSignInRoute
   '/(errors)/401': typeof errors401Route
   '/(errors)/403': typeof errors403Route
@@ -206,9 +251,13 @@ export interface FileRoutesById {
   '/_authenticated/p/$slug/epics': typeof AuthenticatedPSlugEpicsRoute
   '/_authenticated/p/$slug/issues': typeof AuthenticatedPSlugIssuesRoute
   '/_authenticated/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
+  '/_authenticated/project/$slug/$': typeof AuthenticatedProjectSlugSplatRoute
   '/_authenticated/p/$slug/': typeof AuthenticatedPSlugIndexRoute
+  '/_authenticated/project/$slug/': typeof AuthenticatedProjectSlugIndexRoute
   '/_authenticated/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
+  '/_authenticated/p/$slug/wiki/$page': typeof AuthenticatedPSlugWikiPageRoute
   '/_authenticated/p/$slug/taskboard/': typeof AuthenticatedPSlugTaskboardIndexRoute
+  '/_authenticated/p/$slug/wiki/': typeof AuthenticatedPSlugWikiIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -216,6 +265,7 @@ export interface FileRouteTypes {
     | '/'
     | '/settings'
     | '/forgot-password'
+    | '/login'
     | '/sign-in'
     | '/401'
     | '/403'
@@ -230,12 +280,17 @@ export interface FileRouteTypes {
     | '/p/$slug/epics'
     | '/p/$slug/issues'
     | '/p/$slug/kanban'
+    | '/project/$slug/$'
     | '/p/$slug/'
+    | '/project/$slug/'
     | '/p/$slug/taskboard/$sprint'
+    | '/p/$slug/wiki/$page'
     | '/p/$slug/taskboard/'
+    | '/p/$slug/wiki/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/forgot-password'
+    | '/login'
     | '/sign-in'
     | '/401'
     | '/403'
@@ -250,14 +305,19 @@ export interface FileRouteTypes {
     | '/p/$slug/epics'
     | '/p/$slug/issues'
     | '/p/$slug/kanban'
+    | '/project/$slug/$'
     | '/p/$slug'
+    | '/project/$slug'
     | '/p/$slug/taskboard/$sprint'
+    | '/p/$slug/wiki/$page'
     | '/p/$slug/taskboard'
+    | '/p/$slug/wiki'
   id:
     | '__root__'
     | '/_authenticated'
     | '/_authenticated/settings'
     | '/(auth)/forgot-password'
+    | '/(auth)/login'
     | '/(auth)/sign-in'
     | '/(errors)/401'
     | '/(errors)/403'
@@ -273,14 +333,19 @@ export interface FileRouteTypes {
     | '/_authenticated/p/$slug/epics'
     | '/_authenticated/p/$slug/issues'
     | '/_authenticated/p/$slug/kanban'
+    | '/_authenticated/project/$slug/$'
     | '/_authenticated/p/$slug/'
+    | '/_authenticated/project/$slug/'
     | '/_authenticated/p/$slug/taskboard/$sprint'
+    | '/_authenticated/p/$slug/wiki/$page'
     | '/_authenticated/p/$slug/taskboard/'
+    | '/_authenticated/p/$slug/wiki/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   authForgotPasswordRoute: typeof authForgotPasswordRoute
+  authLoginRoute: typeof authLoginRoute
   authSignInRoute: typeof authSignInRoute
   errors401Route: typeof errors401Route
   errors403Route: typeof errors403Route
@@ -348,6 +413,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof authSignInRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/(auth)/login': {
+      id: '/(auth)/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof authLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/(auth)/forgot-password': {
       id: '/(auth)/forgot-password'
       path: '/forgot-password'
@@ -390,12 +462,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPSlugRouteRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/project/$slug/': {
+      id: '/_authenticated/project/$slug/'
+      path: '/project/$slug'
+      fullPath: '/project/$slug/'
+      preLoaderRoute: typeof AuthenticatedProjectSlugIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/p/$slug/': {
       id: '/_authenticated/p/$slug/'
       path: '/'
       fullPath: '/p/$slug/'
       preLoaderRoute: typeof AuthenticatedPSlugIndexRouteImport
       parentRoute: typeof AuthenticatedPSlugRouteRoute
+    }
+    '/_authenticated/project/$slug/$': {
+      id: '/_authenticated/project/$slug/$'
+      path: '/project/$slug/$'
+      fullPath: '/project/$slug/$'
+      preLoaderRoute: typeof AuthenticatedProjectSlugSplatRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/p/$slug/kanban': {
       id: '/_authenticated/p/$slug/kanban'
@@ -425,11 +511,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPSlugBacklogRouteImport
       parentRoute: typeof AuthenticatedPSlugRouteRoute
     }
+    '/_authenticated/p/$slug/wiki/': {
+      id: '/_authenticated/p/$slug/wiki/'
+      path: '/wiki'
+      fullPath: '/p/$slug/wiki/'
+      preLoaderRoute: typeof AuthenticatedPSlugWikiIndexRouteImport
+      parentRoute: typeof AuthenticatedPSlugRouteRoute
+    }
     '/_authenticated/p/$slug/taskboard/': {
       id: '/_authenticated/p/$slug/taskboard/'
       path: '/taskboard'
       fullPath: '/p/$slug/taskboard/'
       preLoaderRoute: typeof AuthenticatedPSlugTaskboardIndexRouteImport
+      parentRoute: typeof AuthenticatedPSlugRouteRoute
+    }
+    '/_authenticated/p/$slug/wiki/$page': {
+      id: '/_authenticated/p/$slug/wiki/$page'
+      path: '/wiki/$page'
+      fullPath: '/p/$slug/wiki/$page'
+      preLoaderRoute: typeof AuthenticatedPSlugWikiPageRouteImport
       parentRoute: typeof AuthenticatedPSlugRouteRoute
     }
     '/_authenticated/p/$slug/taskboard/$sprint': {
@@ -465,7 +565,9 @@ interface AuthenticatedPSlugRouteRouteChildren {
   AuthenticatedPSlugKanbanRoute: typeof AuthenticatedPSlugKanbanRoute
   AuthenticatedPSlugIndexRoute: typeof AuthenticatedPSlugIndexRoute
   AuthenticatedPSlugTaskboardSprintRoute: typeof AuthenticatedPSlugTaskboardSprintRoute
+  AuthenticatedPSlugWikiPageRoute: typeof AuthenticatedPSlugWikiPageRoute
   AuthenticatedPSlugTaskboardIndexRoute: typeof AuthenticatedPSlugTaskboardIndexRoute
+  AuthenticatedPSlugWikiIndexRoute: typeof AuthenticatedPSlugWikiIndexRoute
 }
 
 const AuthenticatedPSlugRouteRouteChildren: AuthenticatedPSlugRouteRouteChildren =
@@ -477,8 +579,10 @@ const AuthenticatedPSlugRouteRouteChildren: AuthenticatedPSlugRouteRouteChildren
     AuthenticatedPSlugIndexRoute: AuthenticatedPSlugIndexRoute,
     AuthenticatedPSlugTaskboardSprintRoute:
       AuthenticatedPSlugTaskboardSprintRoute,
+    AuthenticatedPSlugWikiPageRoute: AuthenticatedPSlugWikiPageRoute,
     AuthenticatedPSlugTaskboardIndexRoute:
       AuthenticatedPSlugTaskboardIndexRoute,
+    AuthenticatedPSlugWikiIndexRoute: AuthenticatedPSlugWikiIndexRoute,
   }
 
 const AuthenticatedPSlugRouteRouteWithChildren =
@@ -490,12 +594,16 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedPSlugRouteRoute: typeof AuthenticatedPSlugRouteRouteWithChildren
+  AuthenticatedProjectSlugSplatRoute: typeof AuthenticatedProjectSlugSplatRoute
+  AuthenticatedProjectSlugIndexRoute: typeof AuthenticatedProjectSlugIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedPSlugRouteRoute: AuthenticatedPSlugRouteRouteWithChildren,
+  AuthenticatedProjectSlugSplatRoute: AuthenticatedProjectSlugSplatRoute,
+  AuthenticatedProjectSlugIndexRoute: AuthenticatedProjectSlugIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
@@ -504,6 +612,7 @@ const AuthenticatedRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   authForgotPasswordRoute: authForgotPasswordRoute,
+  authLoginRoute: authLoginRoute,
   authSignInRoute: authSignInRoute,
   errors401Route: errors401Route,
   errors403Route: errors403Route,

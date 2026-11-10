@@ -2,17 +2,22 @@ import { useRef, useState } from 'react'
 import { FileText, Loader2, Paperclip, Trash2 } from 'lucide-react'
 import {
   KINDS,
+  type AttachableKind,
   useAttachments,
   useDeleteAttachment,
   useUploadAttachment,
 } from '@/lib/taiga/items'
-import type { Item, ItemKind, Project } from '@/lib/taiga/types'
+import type { Project } from '@/lib/taiga/types'
 import { cn, formatBytes } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { can } from '@/features/project/use-project'
 
-type AttachmentsProps = { project: Project; kind: ItemKind; item: Item }
+type AttachmentsProps = {
+  project: Project
+  kind: AttachableKind
+  item: { id: number }
+}
 
 export function Attachments({ project, kind, item }: AttachmentsProps) {
   const list = useAttachments(project, kind, item.id)
@@ -20,7 +25,10 @@ export function Attachments({ project, kind, item }: AttachmentsProps) {
   const remove = useDeleteAttachment(kind, item.id)
   const input = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
-  const editable = can(project, KINDS[kind].perm.modify)
+  const editable = can(
+    project,
+    kind === 'wiki' ? 'modify_wiki_page' : KINDS[kind].perm.modify
+  )
 
   const send = (files: FileList | null) => {
     for (const file of Array.from(files ?? [])) upload.mutate(file)
