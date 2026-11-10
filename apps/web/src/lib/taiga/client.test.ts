@@ -22,7 +22,13 @@ describe('apiErrorMessage', () => {
   it('falls back to the first field error', () => {
     expect(
       apiErrorMessage(errorWith({ subject: ['This field is required.'] }))
-    ).toBe('This field is required.')
+    ).toBe('Subject: This field is required.')
+  })
+
+  it('names short fields in capitals', () => {
+    expect(apiErrorMessage(errorWith({ url: ['Invalid value.'] }))).toBe(
+      'URL: Invalid value.'
+    )
   })
 
   it('uses the fallback for non-axios errors', () => {

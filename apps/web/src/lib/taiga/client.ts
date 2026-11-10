@@ -85,9 +85,19 @@ export function apiErrorMessage(
   const data = error.response?.data as Record<string, unknown> | undefined
   if (!data) return error.message || fallback
   if (typeof data._error_message === 'string') return data._error_message
-  for (const value of Object.values(data)) {
-    if (typeof value === 'string') return value
-    if (Array.isArray(value) && typeof value[0] === 'string') return value[0]
+  for (const [field, value] of Object.entries(data)) {
+    const message =
+      typeof value === 'string'
+        ? value
+        : Array.isArray(value) && typeof value[0] === 'string'
+          ? value[0]
+          : null
+    if (!message) continue
+    // Name the field, so "Invalid value." says which one.
+    if (field === 'non_field_errors' || field === 'detail') return message
+    const label = field.replace(/_/g, ' ')
+    const name = label.length <= 3 ? label.toUpperCase() : label[0].toUpperCase() + label.slice(1)
+    return `${name}: ${message}`
   }
   return fallback
 }

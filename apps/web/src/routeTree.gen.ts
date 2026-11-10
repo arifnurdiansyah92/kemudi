@@ -43,6 +43,7 @@ import { Route as AuthenticatedPSlugTaskboardIndexRouteImport } from './routes/_
 import { Route as AuthenticatedPSlugSettingsIndexRouteImport } from './routes/_authenticated/p/$slug/settings/index'
 import { Route as AuthenticatedPSlugWikiPageRouteImport } from './routes/_authenticated/p/$slug/wiki/$page'
 import { Route as AuthenticatedPSlugTaskboardSprintRouteImport } from './routes/_authenticated/p/$slug/taskboard/$sprint'
+import { Route as AuthenticatedPSlugSettingsWebhooksRouteImport } from './routes/_authenticated/p/$slug/settings/webhooks'
 import { Route as AuthenticatedPSlugSettingsTagsRouteImport } from './routes/_authenticated/p/$slug/settings/tags'
 import { Route as AuthenticatedPSlugSettingsRolesRouteImport } from './routes/_authenticated/p/$slug/settings/roles'
 import { Route as AuthenticatedPSlugSettingsMembersRouteImport } from './routes/_authenticated/p/$slug/settings/members'
@@ -236,6 +237,12 @@ const AuthenticatedPSlugTaskboardSprintRoute =
     path: '/taskboard/$sprint',
     getParentRoute: () => AuthenticatedPSlugRouteRoute,
   } as any)
+const AuthenticatedPSlugSettingsWebhooksRoute =
+  AuthenticatedPSlugSettingsWebhooksRouteImport.update({
+    id: '/webhooks',
+    path: '/webhooks',
+    getParentRoute: () => AuthenticatedPSlugSettingsRouteRoute,
+  } as any)
 const AuthenticatedPSlugSettingsTagsRoute =
   AuthenticatedPSlugSettingsTagsRouteImport.update({
     id: '/tags',
@@ -308,6 +315,7 @@ export interface FileRoutesByFullPath {
   '/p/$slug/settings/members': typeof AuthenticatedPSlugSettingsMembersRoute
   '/p/$slug/settings/roles': typeof AuthenticatedPSlugSettingsRolesRoute
   '/p/$slug/settings/tags': typeof AuthenticatedPSlugSettingsTagsRoute
+  '/p/$slug/settings/webhooks': typeof AuthenticatedPSlugSettingsWebhooksRoute
   '/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
   '/p/$slug/wiki/$page': typeof AuthenticatedPSlugWikiPageRoute
   '/p/$slug/settings/': typeof AuthenticatedPSlugSettingsIndexRoute
@@ -346,6 +354,7 @@ export interface FileRoutesByTo {
   '/p/$slug/settings/members': typeof AuthenticatedPSlugSettingsMembersRoute
   '/p/$slug/settings/roles': typeof AuthenticatedPSlugSettingsRolesRoute
   '/p/$slug/settings/tags': typeof AuthenticatedPSlugSettingsTagsRoute
+  '/p/$slug/settings/webhooks': typeof AuthenticatedPSlugSettingsWebhooksRoute
   '/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
   '/p/$slug/wiki/$page': typeof AuthenticatedPSlugWikiPageRoute
   '/p/$slug/settings': typeof AuthenticatedPSlugSettingsIndexRoute
@@ -389,6 +398,7 @@ export interface FileRoutesById {
   '/_authenticated/p/$slug/settings/members': typeof AuthenticatedPSlugSettingsMembersRoute
   '/_authenticated/p/$slug/settings/roles': typeof AuthenticatedPSlugSettingsRolesRoute
   '/_authenticated/p/$slug/settings/tags': typeof AuthenticatedPSlugSettingsTagsRoute
+  '/_authenticated/p/$slug/settings/webhooks': typeof AuthenticatedPSlugSettingsWebhooksRoute
   '/_authenticated/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
   '/_authenticated/p/$slug/wiki/$page': typeof AuthenticatedPSlugWikiPageRoute
   '/_authenticated/p/$slug/settings/': typeof AuthenticatedPSlugSettingsIndexRoute
@@ -432,6 +442,7 @@ export interface FileRouteTypes {
     | '/p/$slug/settings/members'
     | '/p/$slug/settings/roles'
     | '/p/$slug/settings/tags'
+    | '/p/$slug/settings/webhooks'
     | '/p/$slug/taskboard/$sprint'
     | '/p/$slug/wiki/$page'
     | '/p/$slug/settings/'
@@ -470,6 +481,7 @@ export interface FileRouteTypes {
     | '/p/$slug/settings/members'
     | '/p/$slug/settings/roles'
     | '/p/$slug/settings/tags'
+    | '/p/$slug/settings/webhooks'
     | '/p/$slug/taskboard/$sprint'
     | '/p/$slug/wiki/$page'
     | '/p/$slug/settings'
@@ -512,6 +524,7 @@ export interface FileRouteTypes {
     | '/_authenticated/p/$slug/settings/members'
     | '/_authenticated/p/$slug/settings/roles'
     | '/_authenticated/p/$slug/settings/tags'
+    | '/_authenticated/p/$slug/settings/webhooks'
     | '/_authenticated/p/$slug/taskboard/$sprint'
     | '/_authenticated/p/$slug/wiki/$page'
     | '/_authenticated/p/$slug/settings/'
@@ -772,6 +785,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPSlugTaskboardSprintRouteImport
       parentRoute: typeof AuthenticatedPSlugRouteRoute
     }
+    '/_authenticated/p/$slug/settings/webhooks': {
+      id: '/_authenticated/p/$slug/settings/webhooks'
+      path: '/webhooks'
+      fullPath: '/p/$slug/settings/webhooks'
+      preLoaderRoute: typeof AuthenticatedPSlugSettingsWebhooksRouteImport
+      parentRoute: typeof AuthenticatedPSlugSettingsRouteRoute
+    }
     '/_authenticated/p/$slug/settings/tags': {
       id: '/_authenticated/p/$slug/settings/tags'
       path: '/tags'
@@ -840,6 +860,7 @@ interface AuthenticatedPSlugSettingsRouteRouteChildren {
   AuthenticatedPSlugSettingsMembersRoute: typeof AuthenticatedPSlugSettingsMembersRoute
   AuthenticatedPSlugSettingsRolesRoute: typeof AuthenticatedPSlugSettingsRolesRoute
   AuthenticatedPSlugSettingsTagsRoute: typeof AuthenticatedPSlugSettingsTagsRoute
+  AuthenticatedPSlugSettingsWebhooksRoute: typeof AuthenticatedPSlugSettingsWebhooksRoute
   AuthenticatedPSlugSettingsIndexRoute: typeof AuthenticatedPSlugSettingsIndexRoute
 }
 
@@ -855,6 +876,8 @@ const AuthenticatedPSlugSettingsRouteRouteChildren: AuthenticatedPSlugSettingsRo
       AuthenticatedPSlugSettingsMembersRoute,
     AuthenticatedPSlugSettingsRolesRoute: AuthenticatedPSlugSettingsRolesRoute,
     AuthenticatedPSlugSettingsTagsRoute: AuthenticatedPSlugSettingsTagsRoute,
+    AuthenticatedPSlugSettingsWebhooksRoute:
+      AuthenticatedPSlugSettingsWebhooksRoute,
     AuthenticatedPSlugSettingsIndexRoute: AuthenticatedPSlugSettingsIndexRoute,
   }
 

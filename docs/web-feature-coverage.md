@@ -85,7 +85,7 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 - [x] Attributes: statuses, points, priorities, severities, types, swimlanes, due dates
 - [x] Custom fields (per item kind, all field types, dropdown choices)
 - [x] Tags: colour, rename, merge, delete
-- [ ] Webhooks
+- [x] Webhooks (create, edit, test, delivery log, resend)
 - [ ] Export, import, CSV links
 - [x] Transfer ownership (offer), delete project, duplicate
 
