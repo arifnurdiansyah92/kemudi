@@ -4,7 +4,7 @@ import { Ban } from 'lucide-react'
 import type { Project, UserStory } from '@/lib/taiga/types'
 import { cn } from '@/lib/utils'
 import { UserAvatar } from '@/components/user-avatar'
-import { useStoryParam } from '@/features/project/use-project'
+import { useRefParam } from '@/features/project/use-project'
 import { Points, TagList } from '@/features/story/parts'
 
 type StoryCardProps = {
@@ -14,7 +14,7 @@ type StoryCardProps = {
 }
 
 export function StoryCard({ project, story, draggable }: StoryCardProps) {
-  const { open } = useStoryParam()
+  const { open } = useRefParam()
   const {
     attributes,
     listeners,

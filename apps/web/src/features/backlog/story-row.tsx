@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { can, useStoryParam } from '@/features/project/use-project'
+import { can, useRefParam } from '@/features/project/use-project'
 import {
   AssigneeMenu,
   Points,
@@ -37,7 +37,7 @@ export function StoryRow({
   sortable = false,
   compact = false,
 }: StoryRowProps) {
-  const { open } = useStoryParam()
+  const { open } = useRefParam()
   const move = useMoveToSprint(project)
   const editable = can(project, 'modify_us')
   const {

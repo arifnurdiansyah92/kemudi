@@ -13,23 +13,26 @@ export function can(project: Project, permission: string) {
   return project.my_permissions.includes(permission)
 }
 
-/** Opens and closes the story side sheet through the `?story=` search param. */
-export function useStoryParam() {
-  const { story } = useSearch({ from: '/_authenticated/p/$slug' })
+/**
+ * Opens and closes the item sheet through the `?ref=` search param. Refs are
+ * unique per project across stories, tasks, issues and epics.
+ */
+export function useRefParam() {
+  const { ref } = useSearch({ from: '/_authenticated/p/$slug' })
   const navigate = useNavigate()
   return {
-    openRef: story,
+    openRef: ref,
     open: (ref: number) =>
       navigate({
         to: '.',
-        search: (prev: Record<string, unknown>) => ({ ...prev, story: ref }),
+        search: (prev: Record<string, unknown>) => ({ ...prev, ref }),
       }),
     close: () =>
       navigate({
         to: '.',
         search: (prev: Record<string, unknown>) => ({
           ...prev,
-          story: undefined,
+          ref: undefined,
         }),
       }),
   }

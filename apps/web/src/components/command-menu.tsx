@@ -80,7 +80,7 @@ export function CommandMenu() {
                         to: '.',
                         search: (prev: Record<string, unknown>) => ({
                           ...prev,
-                          story: story.ref,
+                          ref: story.ref,
                         }),
                       })
                     )

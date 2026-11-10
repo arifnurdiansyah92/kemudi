@@ -8,8 +8,9 @@ import {
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { api, apiErrorMessage } from './client'
+import type { LoadedItem } from './items'
 import type {
-  HistoryEntry,
+  Item,
   Id,
   Milestone,
   Project,
@@ -25,10 +26,8 @@ export const keys = {
   projects: (userId: Id) => ['projects', userId] as const,
   project: (slug: string) => ['project', slug] as const,
   stories: (projectId: Id) => ['stories', projectId] as const,
-  story: (projectId: Id, ref: number) => ['story', projectId, ref] as const,
   milestones: (projectId: Id) => ['milestones', projectId] as const,
   tasks: (storyId: Id) => ['tasks', storyId] as const,
-  comments: (storyId: Id) => ['comments', storyId] as const,
 }
 
 /* ---------- queries ---------- */
@@ -87,19 +86,6 @@ export function useMilestones(projectId: Id) {
   })
 }
 
-export function useStory(projectId: Id, ref: number | undefined) {
-  return useQuery({
-    queryKey: keys.story(projectId, ref ?? 0),
-    enabled: ref !== undefined,
-    queryFn: async () =>
-      (
-        await api.get<UserStoryDetail>('/userstories/by_ref', {
-          params: { project: projectId, ref },
-        })
-      ).data,
-  })
-}
-
 export function useTasks(storyId: Id | undefined) {
   return useQuery({
     queryKey: keys.tasks(storyId ?? 0),
@@ -114,19 +100,6 @@ export function useTasks(storyId: Id | undefined) {
   })
 }
 
-export function useComments(storyId: Id | undefined) {
-  return useQuery({
-    queryKey: keys.comments(storyId ?? 0),
-    enabled: !!storyId,
-    queryFn: async () =>
-      (
-        await api.get<HistoryEntry[]>(`/history/userstory/${storyId}`, {
-          params: { type: 'comment' },
-        })
-      ).data.filter((entry) => entry.comment && !entry.delete_comment_date),
-  })
-}
-
 /* ---------- cache helpers ---------- */
 
 function patchStoryInCache(
@@ -138,8 +111,11 @@ function patchStoryInCache(
   qc.setQueryData<UserStory[]>(keys.stories(projectId), (list) =>
     list?.map((s) => (s.id === storyId ? { ...s, ...patch } : s))
   )
-  qc.setQueriesData<UserStoryDetail>({ queryKey: ['story', projectId] }, (s) =>
-    s && s.id === storyId ? { ...s, ...patch } : s
+  // Keep the item sheet's copy (and its version) in step with the list.
+  qc.setQueriesData<LoadedItem>({ queryKey: ['item', projectId] }, (d) =>
+    d && d.kind === 'userstory' && d.item.id === storyId
+      ? { ...d, item: { ...d.item, ...patch } as Item }
+      : d
   )
 }
 
@@ -148,9 +124,9 @@ function currentVersion(qc: QueryClient, projectId: Id, storyId: Id) {
     .getQueryData<UserStory[]>(keys.stories(projectId))
     ?.find((s) => s.id === storyId)?.version
   const fromDetail = qc
-    .getQueriesData<UserStoryDetail>({ queryKey: ['story', projectId] })
-    .map(([, s]) => s)
-    .find((s) => s?.id === storyId)?.version
+    .getQueriesData<LoadedItem>({ queryKey: ['item', projectId] })
+    .map(([, d]) => d)
+    .find((d) => d?.kind === 'userstory' && d.item.id === storyId)?.item.version
   return Math.max(fromList ?? 0, fromDetail ?? 0)
 }
 
@@ -212,7 +188,6 @@ export function useUpdateStory(project: Project) {
     },
     onSuccess: (story) => {
       patchStoryInCache(qc, project.id, story.id, story)
-      qc.setQueryData(keys.story(project.id, story.ref), story)
     },
     onError: onFail,
     onSettled: () => {
@@ -378,7 +353,10 @@ export function useCreateMilestone(project: Project) {
 export function useCreateTask(project: Project) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (input: { story: UserStory; subject: string }) =>
+    mutationFn: async (input: {
+      story: { id: Id; milestone?: Id | null }
+      subject: string
+    }) =>
       (
         await api.post<Task>('/tasks', {
           project: project.id,
@@ -434,18 +412,5 @@ export function useUpdateTask(project: Project) {
     onError: onFail,
     onSettled: (_d, _e, { task }) =>
       qc.invalidateQueries({ queryKey: keys.tasks(task.user_story ?? 0) }),
-  })
-}
-
-export function useAddComment(project: Project) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ story, comment }: { story: UserStory; comment: string }) =>
-      patchStory(qc, project.id, story.id, { comment }),
-    onSuccess: (story) => {
-      patchStoryInCache(qc, project.id, story.id, story)
-      qc.invalidateQueries({ queryKey: keys.comments(story.id) })
-    },
-    onError: onFail,
   })
 }

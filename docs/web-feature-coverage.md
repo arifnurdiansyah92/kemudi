@@ -1,0 +1,103 @@
+# apps/web: Taiga feature coverage
+
+What taiga-front does, and whether `apps/web` does it yet. Each item lands as
+its own small commit. Source of truth for the API: `services/kemudi-back/taiga/routers.py`.
+
+## Work items (stories, tasks, issues, epics)
+
+- [x] Story detail: subject, status, assignee, description, tasks, comments
+- [x] One detail sheet for all item types, opened by `?ref=` (resolver)
+- [x] Tags: add, remove
+- [x] Blocked flag with reason
+- [x] Due date
+- [x] Watch / unwatch, watchers list; vote (issues, epics)
+- [x] Attachments: upload, list, delete
+- [x] Custom attributes (per item type)
+- [x] Activity history
+- [x] Story points per role
+- [x] Multiple assignees (stories)
+- [x] Delete item
+- [x] Client / team requirement flags (stories)
+- [x] Edit and delete own comments
+
+## Scrum
+
+- [x] Backlog list, reorder, quick add, move to sprint
+- [x] Open sprints panel, new sprint
+- [ ] Bulk create stories (one per line)
+- [ ] Backlog search and filters (status, assignee, tags, epic)
+- [ ] Edit, close and delete sprints; closed sprints
+- [ ] Sprint taskboard (stories by task status, drag tasks)
+- [ ] Sprint burndown and stats
+- [ ] Project burndown / stats in backlog
+
+## Kanban
+
+- [x] Columns by status, drag within and across, WIP count, quick add
+- [ ] Swimlanes
+- [ ] Fold columns, archived status
+- [ ] Search and filters
+
+## Issues
+
+- [ ] Issues list with sort, search, filters
+- [ ] Create issue, bulk create
+- [ ] Type, severity, priority
+- [ ] Promote issue to story
+
+## Epics
+
+- [ ] Epics list with progress
+- [ ] Create epic, colour
+- [ ] Related stories (link, unlink, create)
+
+## Wiki
+
+- [ ] Pages: view, create, edit, delete
+- [ ] Wiki links (sidebar bookmarks)
+
+## Team and activity
+
+- [ ] Team page with members and roles
+- [ ] Project timeline (activity)
+- [ ] Home: working on, watching
+- [ ] Notifications (web notifications)
+- [ ] Global search
+- [ ] Live updates (taiga-events websocket)
+
+## Projects
+
+- [x] Projects list
+- [ ] Create project (template), duplicate
+- [ ] Discover public projects, like and watch projects
+- [ ] Leave project
+
+## Project admin
+
+- [ ] Details: name, description, logo, privacy, tags
+- [ ] Modules on/off, videoconference
+- [ ] Members: invite, change role, remove
+- [ ] Roles and permissions
+- [ ] Attributes: statuses, points, priorities, severities, types, swimlanes, due dates
+- [ ] Custom fields
+- [ ] Tags colours
+- [ ] Webhooks
+- [ ] Export, import, CSV links
+- [ ] Transfer ownership, delete project
+
+## Account
+
+- [x] Sign in, forgot and change password
+- [ ] Sign up, accept invitation
+- [ ] Profile: name, bio, photo, language, timezone
+- [ ] Change password, email, delete account
+- [ ] Notification settings per project
+- [ ] Application tokens
+
+## Importers
+
+- [ ] Jira, Trello, GitHub, Asana
+
+## Aegis additions
+
+- [ ] Sprint access per role (`sprint_access` backend)

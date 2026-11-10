@@ -65,3 +65,9 @@ export function timeAgo(date: string | Date) {
   if (Date.now() - d.getTime() < 45_000) return 'just now'
   return formatDistanceToNowStrict(d, { addSuffix: true })
 }
+
+export function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / 1024 ** 2).toFixed(1)} MB`
+}

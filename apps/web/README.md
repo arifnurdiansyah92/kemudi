@@ -14,7 +14,7 @@ REST API (`/api/v1`).
 | Projects                                   | `/`                                                        | Projects you are a member of.                                                                                  |
 | Backlog                                    | `/p/<slug>/backlog`                                        | Drag to reorder, quick add, status and assignee menus, move to sprint, open sprints with progress, new sprint. |
 | Kanban                                     | `/p/<slug>/kanban`                                         | Drag across and within columns, WIP counts, quick add per column.                                              |
-| Story sheet                                | `?story=<ref>` on either view                              | Subject, status, assignee, description (Markdown), tasks, comments.                                            |
+| Item sheet                                 | `?ref=<n>` on any project page                             | Stories, tasks, issues, epics: fields, tags, points, due date, blocked, watch/vote, attachments, custom fields, comments, activity, delete. |
 | Appearance                                 | `/settings/appearance`                                     | Font and theme.                                                                                                |
 
 Not built yet, still on the stock UI at <http://localhost:9101>: sprint
@@ -52,7 +52,8 @@ src/
 │   ├── project/      useProject(), permissions, story sheet URL state
 │   ├── backlog/      backlog list, sprint panels, new-sprint dialog
 │   ├── kanban/       board and cards
-│   ├── story/        story sheet and shared parts (status, assignee, tags)
+│   ├── item/         item sheet for stories, tasks, issues and epics
+│   ├── story/        list-row parts (status, assignee, tags)
 │   └── settings/     appearance
 ├── components/       layout shell, sidebar, command menu (Ctrl/Cmd+K), ui/
 └── routes/           file routes (TanStack Router)
