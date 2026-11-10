@@ -78,8 +78,8 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 
 ## Project admin
 
-- [ ] Details: name, description, logo, privacy, tags
-- [ ] Modules on/off, videoconference
+- [x] Details: name, description, logo, privacy, planned sprints and points, looking for people
+- [x] Modules on/off, videoconference
 - [ ] Members: invite, change role, remove
 - [ ] Roles and permissions
 - [ ] Attributes: statuses, points, priorities, severities, types, swimlanes, due dates
@@ -87,7 +87,7 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 - [ ] Tags colours
 - [ ] Webhooks
 - [ ] Export, import, CSV links
-- [ ] Transfer ownership, delete project
+- [x] Transfer ownership (offer), delete project, duplicate
 
 ## Account
 

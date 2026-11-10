@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
 import {
   Compass,
+  Settings,
   House,
   BookOpen,
   Users,
@@ -78,6 +79,12 @@ export function useNavGroups(): NavGroup[] {
       url: `/p/${project.slug}/team`,
       icon: Users,
     })
+    if (project.i_am_admin)
+      items.push({
+        title: 'Settings',
+        url: `/p/${project.slug}/settings`,
+        icon: Settings,
+      })
     if (items.length) groups.push({ title: project.name, items })
   }
 
