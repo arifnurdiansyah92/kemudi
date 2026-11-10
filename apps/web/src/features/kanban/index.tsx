@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   closestCorners,
   DndContext,
@@ -10,7 +11,6 @@ import {
   useSensors,
   type DragEndEvent,
   type DragOverEvent,
-  type DragStartEvent,
   type UniqueIdentifier,
 } from '@dnd-kit/core'
 import {
@@ -19,120 +19,194 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
+import { ChevronsLeftRight, ChevronsRightLeft } from 'lucide-react'
+import { api } from '@/lib/taiga/client'
 import { useKanbanMove, useStories } from '@/lib/taiga/queries'
-import type { Id, Project, Status, UserStory } from '@/lib/taiga/types'
+import type {
+  Id,
+  Project,
+  Status,
+  Swimlane,
+  UserStory,
+} from '@/lib/taiga/types'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { AppHeader } from '@/components/layout/app-header'
 import { Main } from '@/components/layout/main'
+import { applyFilters, emptyFilters } from '@/features/filters/apply'
+import { assigneeFacet, epicFacet, tagFacet } from '@/features/filters/facets'
+import { FilterBar } from '@/features/filters/filter-bar'
 import { can, useProject } from '@/features/project/use-project'
 import { StatusDot } from '@/features/story/parts'
 import { QuickAdd } from '@/features/story/quick-add'
 import { between, sumPoints } from '@/features/story/utils'
 import { CardFace, StoryCard } from './story-card'
+import { useFolded } from './use-folded'
 
-type Columns = Record<string, Id[]>
-const colId = (statusId: Id) => `col-${statusId}`
+/** Cells keyed `${swimlane or 0}:${status}`. */
+type Cells = Record<string, Id[]>
+const cellKey = (lane: Id | null, status: Id) => `${lane ?? 0}:${status}`
+
+function useSwimlanes(projectId: Id) {
+  return useQuery({
+    queryKey: ['swimlanes', projectId],
+    queryFn: async () =>
+      (
+        await api.get<Swimlane[]>('/swimlanes', {
+          params: { project: projectId },
+        })
+      ).data.sort((a, b) => a.order - b.order),
+  })
+}
+
+function useArchivedStories(projectId: Id, enabled: boolean) {
+  return useQuery({
+    queryKey: ['stories', projectId, 'archived'],
+    enabled,
+    queryFn: async () =>
+      (
+        await api.get<UserStory[]>('/userstories', {
+          params: { project: projectId, status__is_archived: true },
+          headers: { 'x-disable-pagination': '1' },
+        })
+      ).data,
+  })
+}
 
 export function Kanban() {
   const project = useProject()
   const stories = useStories(project.id)
+  const lanes = useSwimlanes(project.id)
+  const [showArchived, setShowArchived] = useState(false)
+  const archived = useArchivedStories(project.id, showArchived)
   const move = useKanbanMove(project)
   const editable = can(project, 'modify_us')
+  const { folded, toggle } = useFolded(project.id)
+  const [filters, setFilters] = useState(emptyFilters)
 
   const statuses = useMemo(
     () =>
       project.us_statuses
-        .filter((s) => !s.is_archived)
+        .filter((s) => showArchived || !s.is_archived)
         .sort((a, b) => a.order - b.order),
-    [project.us_statuses]
-  )
-  const byId = useMemo(
-    () => new Map((stories.data ?? []).map((s) => [s.id, s])),
-    [stories.data]
+    [project.us_statuses, showArchived]
   )
 
-  const columns = useMemo(() => {
-    const cols: Columns = {}
-    for (const status of statuses) cols[status.id] = []
-    const sorted = [...(stories.data ?? [])].sort(
-      (a, b) => a.kanban_order - b.kanban_order
+  const all = useMemo(
+    () => [
+      ...(stories.data ?? []),
+      ...(showArchived ? (archived.data ?? []) : []),
+    ],
+    [stories.data, archived.data, showArchived]
+  )
+  const facets = useMemo(
+    () => [
+      assigneeFacet<UserStory>(project),
+      tagFacet(project, all),
+      epicFacet(all),
+    ],
+    [project, all]
+  )
+  const visible = useMemo(
+    () => applyFilters(all, facets, filters),
+    [all, facets, filters]
+  )
+  const byId = useMemo(() => new Map(all.map((s) => [s.id, s])), [all])
+
+  // Lanes: each swimlane, plus "no swimlane" when stories have none.
+  const laneList = useMemo(() => {
+    const list: { id: Id | null; name: string }[] = (lanes.data ?? []).map(
+      (l) => ({
+        id: l.id,
+        name: l.name,
+      })
     )
-    for (const s of sorted) cols[s.status]?.push(s.id)
-    return cols
-  }, [stories.data, statuses])
+    if (list.length === 0 || all.some((s) => s.swimlane === null))
+      list.push({ id: null, name: list.length ? 'No swimlane' : '' })
+    return list
+  }, [lanes.data, all])
 
-  // While dragging, cards move between columns locally; the server is only
-  // told on drop.
-  const [dragCols, setDragCols] = useState<Columns | null>(null)
+  const cells = useMemo(() => {
+    const c: Cells = {}
+    for (const lane of laneList)
+      for (const status of statuses) c[cellKey(lane.id, status.id)] = []
+    const sorted = [...visible].sort((a, b) => a.kanban_order - b.kanban_order)
+    for (const s of sorted) {
+      const lane = laneList.some((l) => l.id === s.swimlane) ? s.swimlane : null
+      c[cellKey(lane, s.status)]?.push(s.id)
+    }
+    return c
+  }, [visible, laneList, statuses])
+
+  const [dragCells, setDragCells] = useState<Cells | null>(null)
   const [activeId, setActiveId] = useState<Id | null>(null)
-  const view = dragCols ?? columns
+  const view = dragCells ?? cells
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  function columnOf(cols: Columns, id: UniqueIdentifier) {
-    if (typeof id === 'string' && id.startsWith('col-')) return id.slice(4)
-    return Object.keys(cols).find((key) => cols[key].includes(Number(id)))
-  }
-
-  function onDragStart({ active }: DragStartEvent) {
-    setActiveId(Number(active.id))
-    setDragCols(columns)
+  const cellOf = (c: Cells, id: UniqueIdentifier) => {
+    if (typeof id === 'string' && id.startsWith('cell:')) return id.slice(5)
+    return Object.keys(c).find((k) => c[k].includes(Number(id)))
   }
 
   function onDragOver({ active, over }: DragOverEvent) {
-    if (!over || !dragCols) return
-    const from = columnOf(dragCols, active.id)
-    const to = columnOf(dragCols, over.id)
+    if (!over || !dragCells) return
+    const from = cellOf(dragCells, active.id)
+    const to = cellOf(dragCells, over.id)
     if (!from || !to || from === to) return
-    setDragCols((cols) => {
-      if (!cols) return cols
-      const source = cols[from].filter((id) => id !== Number(active.id))
-      const target = [...cols[to]]
-      const overIndex = target.indexOf(Number(over.id))
-      target.splice(
-        overIndex >= 0 ? overIndex : target.length,
-        0,
-        Number(active.id)
-      )
-      return { ...cols, [from]: source, [to]: target }
+    setDragCells((c) => {
+      if (!c) return c
+      const target = [...c[to]]
+      const at = target.indexOf(Number(over.id))
+      target.splice(at >= 0 ? at : target.length, 0, Number(active.id))
+      return {
+        ...c,
+        [from]: c[from].filter((id) => id !== Number(active.id)),
+        [to]: target,
+      }
     })
   }
 
   function onDragEnd({ active, over }: DragEndEvent) {
-    const cols = dragCols
+    const c = dragCells
     setActiveId(null)
-    setDragCols(null)
-    if (!over || !cols) return
-
-    const storyId = Number(active.id)
-    const story = byId.get(storyId)
-    const to = columnOf(cols, over.id)
+    setDragCells(null)
+    if (!over || !c) return
+    const story = byId.get(Number(active.id))
+    const to = cellOf(c, over.id)
     if (!story || !to) return
 
-    let list = cols[to]
-    const oldIndex = list.indexOf(storyId)
-    const overIndex = list.indexOf(Number(over.id))
-    if (overIndex >= 0 && oldIndex !== overIndex)
-      list = arrayMove(list, oldIndex, overIndex)
-    const index = list.indexOf(storyId)
-
+    let list = c[to]
+    const from = list.indexOf(story.id)
+    const at = list.indexOf(Number(over.id))
+    if (at >= 0 && at !== from) list = arrayMove(list, from, at)
+    const index = list.indexOf(story.id)
     const prev = byId.get(list[index - 1])
     const next = byId.get(list[index + 1])
-    const statusId = Number(to)
+
+    const [lane, statusId] = to.split(':').map(Number)
+    const swimlaneId = lane === 0 ? null : lane
+    // Stories in a swimlane that no longer exists sit in the "none" lane.
+    const currentLane = laneList.some((l) => l.id === story.swimlane)
+      ? story.swimlane
+      : null
+    const original = cells[to]
     const unchanged =
       story.status === statusId &&
-      columns[to][columns[to].indexOf(storyId) - 1] === prev?.id
+      currentLane === swimlaneId &&
+      original[original.indexOf(story.id) - 1] === prev?.id
     if (unchanged) return
 
     move.mutate({
       story,
       statusId,
+      // Without swimlanes, leave the story's swimlane alone.
+      swimlaneId: currentLane === swimlaneId ? story.swimlane : swimlaneId,
       afterId: prev?.id,
       beforeId: prev ? undefined : next?.id,
       optimisticOrder: between(prev?.kanban_order, next?.kanban_order),
@@ -140,6 +214,7 @@ export function Kanban() {
   }
 
   const active = activeId ? byId.get(activeId) : undefined
+  const loading = stories.isPending || lanes.isPending
 
   return (
     <>
@@ -155,6 +230,25 @@ export function Kanban() {
       />
       <Main fixed fluid className='pb-0'>
         <h1 className='sr-only'>Kanban</h1>
+        <div className='mb-3 flex flex-wrap items-start justify-between gap-3'>
+          <FilterBar
+            items={all}
+            facets={facets}
+            value={filters}
+            onChange={setFilters}
+            className='min-w-0 flex-1'
+          />
+          {project.us_statuses.some((s) => s.is_archived) && (
+            <label className='flex h-8 items-center gap-2 text-sm text-muted-foreground'>
+              <Switch
+                checked={showArchived}
+                onCheckedChange={setShowArchived}
+              />
+              Show archived
+            </label>
+          )}
+        </div>
+
         {stories.isError ? (
           <p className='text-sm'>
             Stories could not be loaded.{' '}
@@ -174,29 +268,60 @@ export function Kanban() {
             // so a short drag there scrolled the next column under the
             // pointer and dropped the card in it. Scroll only at the very edge.
             autoScroll={{ threshold: { x: 0.05, y: 0.1 }, acceleration: 6 }}
-            onDragStart={onDragStart}
+            onDragStart={({ active }) => {
+              setActiveId(Number(active.id))
+              setDragCells(cells)
+            }}
             onDragOver={onDragOver}
             onDragEnd={onDragEnd}
             onDragCancel={() => {
               setActiveId(null)
-              setDragCols(null)
+              setDragCells(null)
             }}
           >
-            <div className='-mx-4 flex flex-1 gap-3 overflow-x-auto px-4 pb-4'>
-              {statuses.map((status) => (
-                <Column
-                  key={status.id}
-                  project={project}
-                  status={status}
-                  stories={
-                    stories.isPending
-                      ? undefined
-                      : view[status.id]
-                          .map((id) => byId.get(id))
-                          .filter((s): s is UserStory => !!s)
-                  }
-                  editable={editable}
-                />
+            <div className='-mx-4 flex flex-1 flex-col gap-4 overflow-auto px-4 pb-4'>
+              {laneList.map((lane) => (
+                <section
+                  key={lane.id ?? 'none'}
+                  aria-label={lane.name || undefined}
+                  className={cn(
+                    'flex min-h-0 flex-col',
+                    laneList.length === 1 && 'flex-1'
+                  )}
+                >
+                  {lane.name && (
+                    <h2 className='sticky start-0 mb-2 text-sm font-semibold'>
+                      {lane.name}
+                    </h2>
+                  )}
+                  <div
+                    className={cn(
+                      'flex gap-3',
+                      laneList.length === 1 && 'flex-1'
+                    )}
+                  >
+                    {statuses.map((status) => (
+                      <Column
+                        key={status.id}
+                        project={project}
+                        status={status}
+                        lane={lane.id}
+                        laneName={lane.name}
+                        stories={
+                          loading
+                            ? undefined
+                            : (view[cellKey(lane.id, status.id)] ?? [])
+                                .map((id) => byId.get(id))
+                                .filter((s): s is UserStory => !!s)
+                        }
+                        editable={editable}
+                        folded={folded.has(status.id)}
+                        onToggleFold={() => toggle(status.id)}
+                        fill={laneList.length === 1}
+                      />
+                    ))}
+                  </div>
+                </section>
               ))}
             </div>
             <DragOverlay>
@@ -212,26 +337,71 @@ export function Kanban() {
 function Column({
   project,
   status,
+  lane,
+  laneName,
   stories,
   editable,
+  folded,
+  onToggleFold,
+  fill,
 }: {
   project: Project
   status: Status
+  lane: Id | null
+  laneName: string
   stories: UserStory[] | undefined
   editable: boolean
+  folded: boolean
+  onToggleFold: () => void
+  fill: boolean
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: colId(status.id) })
+  const { setNodeRef, isOver } = useDroppable({
+    id: `cell:${cellKey(lane, status.id)}`,
+  })
   const count = stories?.length ?? 0
   const overWip = !!status.wip_limit && count > status.wip_limit
+  const label = laneName ? `${status.name} in ${laneName}` : status.name
+
+  if (folded)
+    return (
+      <section
+        ref={setNodeRef}
+        aria-label={`${label} (folded)`}
+        className={cn(
+          'flex w-10 shrink-0 flex-col items-center gap-2 rounded-lg bg-muted/70 py-3',
+          isOver && 'bg-accent'
+        )}
+      >
+        <Button
+          variant='ghost'
+          size='icon'
+          className='size-7'
+          aria-label={`Unfold ${status.name}`}
+          onClick={onToggleFold}
+        >
+          <ChevronsLeftRight />
+        </Button>
+        <StatusDot color={status.color} />
+        <span className='text-xs text-muted-foreground tabular-nums'>
+          {count}
+        </span>
+        <span className='text-sm font-semibold [writing-mode:vertical-rl]'>
+          {status.name}
+        </span>
+      </section>
+    )
 
   return (
     <section
-      aria-label={status.name}
-      className='flex w-72 shrink-0 flex-col rounded-lg bg-muted/70'
+      aria-label={label}
+      className={cn(
+        'flex w-72 shrink-0 flex-col rounded-lg bg-muted/70',
+        status.is_archived && 'opacity-80'
+      )}
     >
       <header className='flex items-center gap-2 px-3 pt-3 pb-2'>
         <StatusDot color={status.color} />
-        <h2 className='truncate text-sm font-semibold'>{status.name}</h2>
+        <h3 className='truncate text-sm font-semibold'>{status.name}</h3>
         <span
           className={cn(
             'text-xs text-muted-foreground tabular-nums',
@@ -243,16 +413,26 @@ function Column({
           {status.wip_limit ? ` / ${status.wip_limit}` : ''}
         </span>
         {stories && sumPoints(stories) > 0 && (
-          <span className='ms-auto text-xs text-muted-foreground tabular-nums'>
+          <span className='text-xs text-muted-foreground tabular-nums'>
             {sumPoints(stories)} pts
           </span>
         )}
+        <Button
+          variant='ghost'
+          size='icon'
+          className='ms-auto size-6 text-muted-foreground'
+          aria-label={`Fold ${status.name}`}
+          onClick={onToggleFold}
+        >
+          <ChevronsRightLeft />
+        </Button>
       </header>
 
       <div
         ref={setNodeRef}
         className={cn(
-          'min-h-24 flex-1 overflow-y-auto px-2 pb-2',
+          'min-h-24 overflow-y-auto px-2 pb-2',
+          fill && 'flex-1',
           isOver && 'rounded-md bg-accent/60'
         )}
       >
@@ -280,10 +460,11 @@ function Column({
         )}
       </div>
 
-      {can(project, 'add_us') && (
+      {can(project, 'add_us') && !status.is_archived && (
         <QuickAdd
           project={project}
           status={status.id}
+          swimlane={lane}
           placeholder={`Add to ${status.name}`}
           className='mx-2 mb-2'
         />

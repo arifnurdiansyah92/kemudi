@@ -204,6 +204,7 @@ export function useCreateStory(project: Project) {
       subject: string
       status?: Id
       milestone?: Id | null
+      swimlane?: Id | null
     }) =>
       (
         await api.post<UserStory>('/userstories', {
@@ -235,18 +236,23 @@ export function useKanbanMove(project: Project) {
     mutationFn: async (input: {
       story: UserStory
       statusId: Id
+      /** Target swimlane; null is "no swimlane". */
+      swimlaneId: Id | null
       afterId?: Id
       beforeId?: Id
       /** Where the card sits locally until the server answers. */
       optimisticOrder: number
     }) => {
-      if (input.story.status !== input.statusId)
-        await patchStory(qc, project.id, input.story.id, {
-          status: input.statusId,
-        })
+      const patch: Record<string, unknown> = {}
+      if (input.story.status !== input.statusId) patch.status = input.statusId
+      if ((input.story.swimlane ?? null) !== input.swimlaneId)
+        patch.swimlane = input.swimlaneId
+      if (Object.keys(patch).length)
+        await patchStory(qc, project.id, input.story.id, patch)
       await api.post('/userstories/bulk_update_kanban_order', {
         project_id: project.id,
         status_id: input.statusId,
+        swimlane_id: input.swimlaneId ?? undefined,
         after_userstory_id: input.afterId,
         before_userstory_id: input.beforeId,
         bulk_userstories: [input.story.id],
@@ -257,6 +263,7 @@ export function useKanbanMove(project: Project) {
       const status = project.us_statuses.find((s) => s.id === input.statusId)
       patchStoryInCache(qc, project.id, input.story.id, {
         status: input.statusId,
+        swimlane: input.swimlaneId,
         kanban_order: input.optimisticOrder,
         ...(status && {
           status_extra_info: {

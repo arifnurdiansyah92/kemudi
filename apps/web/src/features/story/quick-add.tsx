@@ -8,6 +8,7 @@ type QuickAddProps = {
   project: Project
   status?: Id
   milestone?: Id | null
+  swimlane?: Id | null
   placeholder?: string
   className?: string
   inputRef?: React.Ref<HTMLInputElement>
@@ -18,6 +19,7 @@ export function QuickAdd({
   project,
   status,
   milestone,
+  swimlane,
   placeholder = 'Add a story',
   className,
   inputRef,
@@ -35,7 +37,12 @@ export function QuickAdd({
         e.preventDefault()
         const value = subject.trim()
         if (!value) return
-        create.mutate({ subject: value, status, milestone })
+        create.mutate({
+          subject: value,
+          status,
+          milestone,
+          ...(swimlane ? { swimlane } : {}),
+        })
         setSubject('')
       }}
     >

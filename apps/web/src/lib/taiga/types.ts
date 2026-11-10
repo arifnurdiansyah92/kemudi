@@ -169,6 +169,15 @@ export interface UserStory {
   modified_date: string
   tasks?: { id: Id; ref: number; subject: string; is_closed: boolean }[]
   epics?: { id: Id; ref: number; subject: string; color: string }[] | null
+  swimlane: Id | null
+}
+
+export interface Swimlane {
+  id: Id
+  name: string
+  order: number
+  /** The project's story statuses, with this lane's WIP limit. */
+  statuses: { id: Id; name: string; wip_limit?: number | null }[]
 }
 
 export interface UserStoryDetail extends UserStory {

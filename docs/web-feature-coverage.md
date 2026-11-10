@@ -34,9 +34,9 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 ## Kanban
 
 - [x] Columns by status, drag within and across, WIP count, quick add
-- [ ] Swimlanes
-- [ ] Fold columns, archived status
-- [ ] Search and filters
+- [x] Swimlanes
+- [x] Fold columns, archived status
+- [x] Search and filters
 
 ## Issues
 
