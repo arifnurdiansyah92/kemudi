@@ -168,6 +168,7 @@ export interface UserStory {
   created_date: string
   modified_date: string
   tasks?: { id: Id; ref: number; subject: string; is_closed: boolean }[]
+  epics?: { id: Id; ref: number; subject: string; color: string }[] | null
 }
 
 export interface UserStoryDetail extends UserStory {

@@ -24,12 +24,12 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 
 - [x] Backlog list, reorder, quick add, move to sprint
 - [x] Open sprints panel, new sprint
-- [ ] Bulk create stories (one per line)
-- [ ] Backlog search and filters (status, assignee, tags, epic)
+- [x] Bulk create stories (one per line)
+- [x] Backlog search and filters (status, assignee, tags, epic)
 - [x] Edit, close and delete sprints; closed sprints
 - [x] Sprint taskboard (stories by task status, drag tasks)
 - [x] Sprint burndown and stats
-- [ ] Project burndown / stats in backlog
+- [x] Project burndown / stats in backlog
 
 ## Kanban
 

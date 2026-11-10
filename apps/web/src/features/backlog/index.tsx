@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   closestCenter,
   DndContext,
@@ -21,14 +21,30 @@ import {
   useMilestones,
   useStories,
 } from '@/lib/taiga/queries'
+import { useClosedSprints } from '@/lib/taiga/sprints'
+import type { UserStory } from '@/lib/taiga/types'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AppHeader } from '@/components/layout/app-header'
 import { Main } from '@/components/layout/main'
+import {
+  applyFilters,
+  emptyFilters,
+  isFiltering,
+} from '@/features/filters/apply'
+import {
+  assigneeFacet,
+  epicFacet,
+  statusFacet,
+  tagFacet,
+} from '@/features/filters/facets'
+import { FilterBar } from '@/features/filters/filter-bar'
 import { can, useProject } from '@/features/project/use-project'
 import { QuickAdd } from '@/features/story/quick-add'
 import { between, sumPoints } from '@/features/story/utils'
+import { BulkAddDialog } from './bulk-add-dialog'
 import { NewSprintDialog } from './new-sprint-dialog'
+import { ProjectStats } from './project-stats'
 import { SprintPanel } from './sprint-panel'
 import { StoryRow } from './story-row'
 
@@ -38,6 +54,9 @@ export function Backlog() {
   const milestones = useMilestones(project.id)
   const reorder = useBacklogReorder(project)
   const addRef = useRef<HTMLInputElement>(null)
+  const [filters, setFilters] = useState(emptyFilters)
+  const [showClosed, setShowClosed] = useState(false)
+  const closedSprints = useClosedSprints(project.id, showClosed)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -74,6 +93,21 @@ export function Backlog() {
       list.sort((a, b) => a.sprint_order - b.sprint_order)
     return map
   }, [stories.data])
+
+  const facets = useMemo(
+    () => [
+      statusFacet<UserStory>(project.us_statuses),
+      assigneeFacet<UserStory>(project),
+      tagFacet(project, backlog),
+      epicFacet(backlog),
+    ],
+    [project, backlog]
+  )
+  const filtering = isFiltering(filters)
+  const shown = useMemo(
+    () => applyFilters(backlog, facets, filters),
+    [backlog, facets, filters]
+  )
 
   function onDragEnd({ active, over }: DragEndEvent) {
     if (!over || active.id === over.id) return
@@ -118,11 +152,17 @@ export function Backlog() {
             )}
           </div>
           {canAdd && (
-            <Button size='sm' onClick={() => addRef.current?.focus()}>
-              <Plus />
-              New story
-            </Button>
+            <div className='flex gap-2'>
+              <BulkAddDialog project={project} />
+              <Button size='sm' onClick={() => addRef.current?.focus()}>
+                <Plus />
+                New story
+              </Button>
+            </div>
           )}
+        </div>
+        <div className='mt-5'>
+          <ProjectStats project={project} />
         </div>
 
         {stories.isError ? (
@@ -141,6 +181,13 @@ export function Backlog() {
               <h2 id='backlog-heading' className='sr-only'>
                 Stories not in a sprint
               </h2>
+              <FilterBar
+                items={backlog}
+                facets={facets}
+                value={filters}
+                onChange={setFilters}
+                className='mb-3'
+              />
               <div className='overflow-hidden rounded-lg border bg-card'>
                 {canAdd && (
                   <QuickAdd
@@ -160,6 +207,10 @@ export function Backlog() {
                     The backlog is empty.{' '}
                     {canAdd && 'Add the first story above.'}
                   </p>
+                ) : shown.length === 0 ? (
+                  <p className='px-4 py-10 text-center text-sm text-muted-foreground'>
+                    No stories match these filters.
+                  </p>
                 ) : (
                   <DndContext
                     sensors={sensors}
@@ -168,17 +219,19 @@ export function Backlog() {
                     onDragEnd={onDragEnd}
                   >
                     <SortableContext
-                      items={backlog.map((s) => s.id)}
+                      items={shown.map((s) => s.id)}
                       strategy={verticalListSortingStrategy}
                     >
                       <ul className='divide-y'>
-                        {backlog.map((story) => (
+                        {shown.map((story) => (
                           <StoryRow
                             key={story.id}
                             project={project}
                             story={story}
                             sprints={sprints}
-                            sortable
+                            // Reordering a filtered list would place stories
+                            // relative to ones you cannot see.
+                            sortable={!filtering}
                           />
                         ))}
                       </ul>
@@ -217,6 +270,38 @@ export function Backlog() {
                     defaultOpen={i === 0}
                   />
                 ))
+              )}
+              {showClosed ? (
+                <div className='space-y-3 pt-3'>
+                  <h2 className='font-semibold'>Closed sprints</h2>
+                  {closedSprints.isPending ? (
+                    <Skeleton className='h-16 w-full' />
+                  ) : (closedSprints.data ?? []).length === 0 ? (
+                    <p className='text-sm text-muted-foreground'>
+                      No sprint has been closed yet.
+                    </p>
+                  ) : (
+                    closedSprints.data!.map((sprint) => (
+                      <SprintPanel
+                        key={sprint.id}
+                        project={project}
+                        sprint={sprint}
+                        sprints={sprints}
+                        stories={bySprint.get(sprint.id) ?? []}
+                        defaultOpen={false}
+                      />
+                    ))
+                  )}
+                </div>
+              ) : (
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-muted-foreground'
+                  onClick={() => setShowClosed(true)}
+                >
+                  Show closed sprints
+                </Button>
               )}
             </section>
           </div>
