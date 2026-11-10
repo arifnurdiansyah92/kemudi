@@ -45,6 +45,7 @@ import { Route as AuthenticatedPSlugWikiPageRouteImport } from './routes/_authen
 import { Route as AuthenticatedPSlugTaskboardSprintRouteImport } from './routes/_authenticated/p/$slug/taskboard/$sprint'
 import { Route as AuthenticatedPSlugSettingsWebhooksRouteImport } from './routes/_authenticated/p/$slug/settings/webhooks'
 import { Route as AuthenticatedPSlugSettingsTagsRouteImport } from './routes/_authenticated/p/$slug/settings/tags'
+import { Route as AuthenticatedPSlugSettingsSprintAccessRouteImport } from './routes/_authenticated/p/$slug/settings/sprint-access'
 import { Route as AuthenticatedPSlugSettingsRolesRouteImport } from './routes/_authenticated/p/$slug/settings/roles'
 import { Route as AuthenticatedPSlugSettingsMembersRouteImport } from './routes/_authenticated/p/$slug/settings/members'
 import { Route as AuthenticatedPSlugSettingsGeneralRouteImport } from './routes/_authenticated/p/$slug/settings/general'
@@ -250,6 +251,12 @@ const AuthenticatedPSlugSettingsTagsRoute =
     path: '/tags',
     getParentRoute: () => AuthenticatedPSlugSettingsRouteRoute,
   } as any)
+const AuthenticatedPSlugSettingsSprintAccessRoute =
+  AuthenticatedPSlugSettingsSprintAccessRouteImport.update({
+    id: '/sprint-access',
+    path: '/sprint-access',
+    getParentRoute: () => AuthenticatedPSlugSettingsRouteRoute,
+  } as any)
 const AuthenticatedPSlugSettingsRolesRoute =
   AuthenticatedPSlugSettingsRolesRouteImport.update({
     id: '/roles',
@@ -322,6 +329,7 @@ export interface FileRoutesByFullPath {
   '/p/$slug/settings/general': typeof AuthenticatedPSlugSettingsGeneralRoute
   '/p/$slug/settings/members': typeof AuthenticatedPSlugSettingsMembersRoute
   '/p/$slug/settings/roles': typeof AuthenticatedPSlugSettingsRolesRoute
+  '/p/$slug/settings/sprint-access': typeof AuthenticatedPSlugSettingsSprintAccessRoute
   '/p/$slug/settings/tags': typeof AuthenticatedPSlugSettingsTagsRoute
   '/p/$slug/settings/webhooks': typeof AuthenticatedPSlugSettingsWebhooksRoute
   '/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
@@ -362,6 +370,7 @@ export interface FileRoutesByTo {
   '/p/$slug/settings/general': typeof AuthenticatedPSlugSettingsGeneralRoute
   '/p/$slug/settings/members': typeof AuthenticatedPSlugSettingsMembersRoute
   '/p/$slug/settings/roles': typeof AuthenticatedPSlugSettingsRolesRoute
+  '/p/$slug/settings/sprint-access': typeof AuthenticatedPSlugSettingsSprintAccessRoute
   '/p/$slug/settings/tags': typeof AuthenticatedPSlugSettingsTagsRoute
   '/p/$slug/settings/webhooks': typeof AuthenticatedPSlugSettingsWebhooksRoute
   '/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
@@ -407,6 +416,7 @@ export interface FileRoutesById {
   '/_authenticated/p/$slug/settings/general': typeof AuthenticatedPSlugSettingsGeneralRoute
   '/_authenticated/p/$slug/settings/members': typeof AuthenticatedPSlugSettingsMembersRoute
   '/_authenticated/p/$slug/settings/roles': typeof AuthenticatedPSlugSettingsRolesRoute
+  '/_authenticated/p/$slug/settings/sprint-access': typeof AuthenticatedPSlugSettingsSprintAccessRoute
   '/_authenticated/p/$slug/settings/tags': typeof AuthenticatedPSlugSettingsTagsRoute
   '/_authenticated/p/$slug/settings/webhooks': typeof AuthenticatedPSlugSettingsWebhooksRoute
   '/_authenticated/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
@@ -452,6 +462,7 @@ export interface FileRouteTypes {
     | '/p/$slug/settings/general'
     | '/p/$slug/settings/members'
     | '/p/$slug/settings/roles'
+    | '/p/$slug/settings/sprint-access'
     | '/p/$slug/settings/tags'
     | '/p/$slug/settings/webhooks'
     | '/p/$slug/taskboard/$sprint'
@@ -492,6 +503,7 @@ export interface FileRouteTypes {
     | '/p/$slug/settings/general'
     | '/p/$slug/settings/members'
     | '/p/$slug/settings/roles'
+    | '/p/$slug/settings/sprint-access'
     | '/p/$slug/settings/tags'
     | '/p/$slug/settings/webhooks'
     | '/p/$slug/taskboard/$sprint'
@@ -536,6 +548,7 @@ export interface FileRouteTypes {
     | '/_authenticated/p/$slug/settings/general'
     | '/_authenticated/p/$slug/settings/members'
     | '/_authenticated/p/$slug/settings/roles'
+    | '/_authenticated/p/$slug/settings/sprint-access'
     | '/_authenticated/p/$slug/settings/tags'
     | '/_authenticated/p/$slug/settings/webhooks'
     | '/_authenticated/p/$slug/taskboard/$sprint'
@@ -812,6 +825,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPSlugSettingsTagsRouteImport
       parentRoute: typeof AuthenticatedPSlugSettingsRouteRoute
     }
+    '/_authenticated/p/$slug/settings/sprint-access': {
+      id: '/_authenticated/p/$slug/settings/sprint-access'
+      path: '/sprint-access'
+      fullPath: '/p/$slug/settings/sprint-access'
+      preLoaderRoute: typeof AuthenticatedPSlugSettingsSprintAccessRouteImport
+      parentRoute: typeof AuthenticatedPSlugSettingsRouteRoute
+    }
     '/_authenticated/p/$slug/settings/roles': {
       id: '/_authenticated/p/$slug/settings/roles'
       path: '/roles'
@@ -880,6 +900,7 @@ interface AuthenticatedPSlugSettingsRouteRouteChildren {
   AuthenticatedPSlugSettingsGeneralRoute: typeof AuthenticatedPSlugSettingsGeneralRoute
   AuthenticatedPSlugSettingsMembersRoute: typeof AuthenticatedPSlugSettingsMembersRoute
   AuthenticatedPSlugSettingsRolesRoute: typeof AuthenticatedPSlugSettingsRolesRoute
+  AuthenticatedPSlugSettingsSprintAccessRoute: typeof AuthenticatedPSlugSettingsSprintAccessRoute
   AuthenticatedPSlugSettingsTagsRoute: typeof AuthenticatedPSlugSettingsTagsRoute
   AuthenticatedPSlugSettingsWebhooksRoute: typeof AuthenticatedPSlugSettingsWebhooksRoute
   AuthenticatedPSlugSettingsIndexRoute: typeof AuthenticatedPSlugSettingsIndexRoute
@@ -897,6 +918,8 @@ const AuthenticatedPSlugSettingsRouteRouteChildren: AuthenticatedPSlugSettingsRo
     AuthenticatedPSlugSettingsMembersRoute:
       AuthenticatedPSlugSettingsMembersRoute,
     AuthenticatedPSlugSettingsRolesRoute: AuthenticatedPSlugSettingsRolesRoute,
+    AuthenticatedPSlugSettingsSprintAccessRoute:
+      AuthenticatedPSlugSettingsSprintAccessRoute,
     AuthenticatedPSlugSettingsTagsRoute: AuthenticatedPSlugSettingsTagsRoute,
     AuthenticatedPSlugSettingsWebhooksRoute:
       AuthenticatedPSlugSettingsWebhooksRoute,

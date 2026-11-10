@@ -104,4 +104,4 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 
 ## Aegis additions
 
-- [ ] Sprint access per role (`sprint_access` backend)
+- [x] Sprint access per role (`sprint_access` backend), in project settings
