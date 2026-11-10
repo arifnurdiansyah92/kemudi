@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { AppHeader } from '@/components/layout/app-header'
 import { Main } from '@/components/layout/main'
+import { ImporterLinks } from '@/features/importers'
 import { ImportDump } from './import-dump'
 
 const TEMPLATE_COPY: Record<
@@ -166,6 +167,7 @@ export function NewProject() {
           </div>
         </form>
         <ImportDump />
+        <ImporterLinks />
       </Main>
     </>
   )

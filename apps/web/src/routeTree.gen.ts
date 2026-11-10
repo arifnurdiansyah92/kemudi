@@ -32,7 +32,6 @@ import { Route as AuthenticatedSettingsAppsRouteImport } from './routes/_authent
 import { Route as AuthenticatedSettingsAppearanceRouteImport } from './routes/_authenticated/settings/appearance'
 import { Route as AuthenticatedSettingsAccountRouteImport } from './routes/_authenticated/settings/account'
 import { Route as AuthenticatedProjectsNewRouteImport } from './routes/_authenticated/projects/new'
-import { Route as AuthenticatedProjectNewRouteImport } from './routes/_authenticated/project/new'
 import { Route as AuthenticatedProfileUsernameRouteImport } from './routes/_authenticated/profile/$username'
 import { Route as authVerifyEmailTokenRouteImport } from './routes/(auth)/verify-email.$token'
 import { Route as authInvitationTokenRouteImport } from './routes/(auth)/invitation.$token'
@@ -40,8 +39,10 @@ import { Route as authChangePasswordTokenRouteImport } from './routes/(auth)/cha
 import { Route as authChangeEmailTokenRouteImport } from './routes/(auth)/change-email.$token'
 import { Route as authCancelAccountTokenRouteImport } from './routes/(auth)/cancel-account.$token'
 import { Route as AuthenticatedPSlugRouteRouteImport } from './routes/_authenticated/p/$slug/route'
+import { Route as AuthenticatedProjectNewIndexRouteImport } from './routes/_authenticated/project/new/index'
 import { Route as AuthenticatedProjectSlugIndexRouteImport } from './routes/_authenticated/project/$slug/index'
 import { Route as AuthenticatedPSlugIndexRouteImport } from './routes/_authenticated/p/$slug/index'
+import { Route as AuthenticatedProjectsImportServiceRouteImport } from './routes/_authenticated/projects/import.$service'
 import { Route as AuthenticatedProjectSlugSplatRouteImport } from './routes/_authenticated/project/$slug/$'
 import { Route as AuthenticatedPSlugTimelineRouteImport } from './routes/_authenticated/p/$slug/timeline'
 import { Route as AuthenticatedPSlugTeamRouteImport } from './routes/_authenticated/p/$slug/team'
@@ -53,6 +54,7 @@ import { Route as AuthenticatedPSlugSettingsRouteRouteImport } from './routes/_a
 import { Route as AuthenticatedPSlugWikiIndexRouteImport } from './routes/_authenticated/p/$slug/wiki/index'
 import { Route as AuthenticatedPSlugTaskboardIndexRouteImport } from './routes/_authenticated/p/$slug/taskboard/index'
 import { Route as AuthenticatedPSlugSettingsIndexRouteImport } from './routes/_authenticated/p/$slug/settings/index'
+import { Route as AuthenticatedProjectNewImportServiceRouteImport } from './routes/_authenticated/project/new/import/$service'
 import { Route as AuthenticatedPSlugWikiPageRouteImport } from './routes/_authenticated/p/$slug/wiki/$page'
 import { Route as AuthenticatedPSlugTransferTokenRouteImport } from './routes/_authenticated/p/$slug/transfer.$token'
 import { Route as AuthenticatedPSlugTaskboardSprintRouteImport } from './routes/_authenticated/p/$slug/taskboard/$sprint'
@@ -190,11 +192,6 @@ const AuthenticatedProjectsNewRoute =
     path: '/projects/new',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedProjectNewRoute = AuthenticatedProjectNewRouteImport.update({
-  id: '/project/new',
-  path: '/project/new',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
 const AuthenticatedProfileUsernameRoute =
   AuthenticatedProfileUsernameRouteImport.update({
     id: '/profile/$username',
@@ -231,6 +228,12 @@ const AuthenticatedPSlugRouteRoute = AuthenticatedPSlugRouteRouteImport.update({
   path: '/p/$slug',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedProjectNewIndexRoute =
+  AuthenticatedProjectNewIndexRouteImport.update({
+    id: '/project/new/',
+    path: '/project/new/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedProjectSlugIndexRoute =
   AuthenticatedProjectSlugIndexRouteImport.update({
     id: '/project/$slug/',
@@ -242,6 +245,12 @@ const AuthenticatedPSlugIndexRoute = AuthenticatedPSlugIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedPSlugRouteRoute,
 } as any)
+const AuthenticatedProjectsImportServiceRoute =
+  AuthenticatedProjectsImportServiceRouteImport.update({
+    id: '/projects/import/$service',
+    path: '/projects/import/$service',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedProjectSlugSplatRoute =
   AuthenticatedProjectSlugSplatRouteImport.update({
     id: '/project/$slug/$',
@@ -305,6 +314,12 @@ const AuthenticatedPSlugSettingsIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => AuthenticatedPSlugSettingsRouteRoute,
+  } as any)
+const AuthenticatedProjectNewImportServiceRoute =
+  AuthenticatedProjectNewImportServiceRouteImport.update({
+    id: '/project/new/import/$service',
+    path: '/project/new/import/$service',
+    getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedPSlugWikiPageRoute =
   AuthenticatedPSlugWikiPageRouteImport.update({
@@ -400,7 +415,6 @@ export interface FileRoutesByFullPath {
   '/invitation/$token': typeof authInvitationTokenRoute
   '/verify-email/$token': typeof authVerifyEmailTokenRoute
   '/profile/$username': typeof AuthenticatedProfileUsernameRoute
-  '/project/new': typeof AuthenticatedProjectNewRoute
   '/projects/new': typeof AuthenticatedProjectsNewRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
@@ -418,8 +432,10 @@ export interface FileRoutesByFullPath {
   '/p/$slug/team': typeof AuthenticatedPSlugTeamRoute
   '/p/$slug/timeline': typeof AuthenticatedPSlugTimelineRoute
   '/project/$slug/$': typeof AuthenticatedProjectSlugSplatRoute
+  '/projects/import/$service': typeof AuthenticatedProjectsImportServiceRoute
   '/p/$slug/': typeof AuthenticatedPSlugIndexRoute
   '/project/$slug/': typeof AuthenticatedProjectSlugIndexRoute
+  '/project/new/': typeof AuthenticatedProjectNewIndexRoute
   '/p/$slug/settings/attributes': typeof AuthenticatedPSlugSettingsAttributesRoute
   '/p/$slug/settings/custom-fields': typeof AuthenticatedPSlugSettingsCustomFieldsRoute
   '/p/$slug/settings/data': typeof AuthenticatedPSlugSettingsDataRoute
@@ -432,6 +448,7 @@ export interface FileRoutesByFullPath {
   '/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
   '/p/$slug/transfer/$token': typeof AuthenticatedPSlugTransferTokenRoute
   '/p/$slug/wiki/$page': typeof AuthenticatedPSlugWikiPageRoute
+  '/project/new/import/$service': typeof AuthenticatedProjectNewImportServiceRoute
   '/p/$slug/settings/': typeof AuthenticatedPSlugSettingsIndexRoute
   '/p/$slug/taskboard/': typeof AuthenticatedPSlugTaskboardIndexRoute
   '/p/$slug/wiki/': typeof AuthenticatedPSlugWikiIndexRoute
@@ -455,7 +472,6 @@ export interface FileRoutesByTo {
   '/invitation/$token': typeof authInvitationTokenRoute
   '/verify-email/$token': typeof authVerifyEmailTokenRoute
   '/profile/$username': typeof AuthenticatedProfileUsernameRoute
-  '/project/new': typeof AuthenticatedProjectNewRoute
   '/projects/new': typeof AuthenticatedProjectsNewRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
@@ -472,8 +488,10 @@ export interface FileRoutesByTo {
   '/p/$slug/team': typeof AuthenticatedPSlugTeamRoute
   '/p/$slug/timeline': typeof AuthenticatedPSlugTimelineRoute
   '/project/$slug/$': typeof AuthenticatedProjectSlugSplatRoute
+  '/projects/import/$service': typeof AuthenticatedProjectsImportServiceRoute
   '/p/$slug': typeof AuthenticatedPSlugIndexRoute
   '/project/$slug': typeof AuthenticatedProjectSlugIndexRoute
+  '/project/new': typeof AuthenticatedProjectNewIndexRoute
   '/p/$slug/settings/attributes': typeof AuthenticatedPSlugSettingsAttributesRoute
   '/p/$slug/settings/custom-fields': typeof AuthenticatedPSlugSettingsCustomFieldsRoute
   '/p/$slug/settings/data': typeof AuthenticatedPSlugSettingsDataRoute
@@ -486,6 +504,7 @@ export interface FileRoutesByTo {
   '/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
   '/p/$slug/transfer/$token': typeof AuthenticatedPSlugTransferTokenRoute
   '/p/$slug/wiki/$page': typeof AuthenticatedPSlugWikiPageRoute
+  '/project/new/import/$service': typeof AuthenticatedProjectNewImportServiceRoute
   '/p/$slug/settings': typeof AuthenticatedPSlugSettingsIndexRoute
   '/p/$slug/taskboard': typeof AuthenticatedPSlugTaskboardIndexRoute
   '/p/$slug/wiki': typeof AuthenticatedPSlugWikiIndexRoute
@@ -513,7 +532,6 @@ export interface FileRoutesById {
   '/(auth)/invitation/$token': typeof authInvitationTokenRoute
   '/(auth)/verify-email/$token': typeof authVerifyEmailTokenRoute
   '/_authenticated/profile/$username': typeof AuthenticatedProfileUsernameRoute
-  '/_authenticated/project/new': typeof AuthenticatedProjectNewRoute
   '/_authenticated/projects/new': typeof AuthenticatedProjectsNewRoute
   '/_authenticated/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
@@ -531,8 +549,10 @@ export interface FileRoutesById {
   '/_authenticated/p/$slug/team': typeof AuthenticatedPSlugTeamRoute
   '/_authenticated/p/$slug/timeline': typeof AuthenticatedPSlugTimelineRoute
   '/_authenticated/project/$slug/$': typeof AuthenticatedProjectSlugSplatRoute
+  '/_authenticated/projects/import/$service': typeof AuthenticatedProjectsImportServiceRoute
   '/_authenticated/p/$slug/': typeof AuthenticatedPSlugIndexRoute
   '/_authenticated/project/$slug/': typeof AuthenticatedProjectSlugIndexRoute
+  '/_authenticated/project/new/': typeof AuthenticatedProjectNewIndexRoute
   '/_authenticated/p/$slug/settings/attributes': typeof AuthenticatedPSlugSettingsAttributesRoute
   '/_authenticated/p/$slug/settings/custom-fields': typeof AuthenticatedPSlugSettingsCustomFieldsRoute
   '/_authenticated/p/$slug/settings/data': typeof AuthenticatedPSlugSettingsDataRoute
@@ -545,6 +565,7 @@ export interface FileRoutesById {
   '/_authenticated/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
   '/_authenticated/p/$slug/transfer/$token': typeof AuthenticatedPSlugTransferTokenRoute
   '/_authenticated/p/$slug/wiki/$page': typeof AuthenticatedPSlugWikiPageRoute
+  '/_authenticated/project/new/import/$service': typeof AuthenticatedProjectNewImportServiceRoute
   '/_authenticated/p/$slug/settings/': typeof AuthenticatedPSlugSettingsIndexRoute
   '/_authenticated/p/$slug/taskboard/': typeof AuthenticatedPSlugTaskboardIndexRoute
   '/_authenticated/p/$slug/wiki/': typeof AuthenticatedPSlugWikiIndexRoute
@@ -572,7 +593,6 @@ export interface FileRouteTypes {
     | '/invitation/$token'
     | '/verify-email/$token'
     | '/profile/$username'
-    | '/project/new'
     | '/projects/new'
     | '/settings/account'
     | '/settings/appearance'
@@ -590,8 +610,10 @@ export interface FileRouteTypes {
     | '/p/$slug/team'
     | '/p/$slug/timeline'
     | '/project/$slug/$'
+    | '/projects/import/$service'
     | '/p/$slug/'
     | '/project/$slug/'
+    | '/project/new/'
     | '/p/$slug/settings/attributes'
     | '/p/$slug/settings/custom-fields'
     | '/p/$slug/settings/data'
@@ -604,6 +626,7 @@ export interface FileRouteTypes {
     | '/p/$slug/taskboard/$sprint'
     | '/p/$slug/transfer/$token'
     | '/p/$slug/wiki/$page'
+    | '/project/new/import/$service'
     | '/p/$slug/settings/'
     | '/p/$slug/taskboard/'
     | '/p/$slug/wiki/'
@@ -627,7 +650,6 @@ export interface FileRouteTypes {
     | '/invitation/$token'
     | '/verify-email/$token'
     | '/profile/$username'
-    | '/project/new'
     | '/projects/new'
     | '/settings/account'
     | '/settings/appearance'
@@ -644,8 +666,10 @@ export interface FileRouteTypes {
     | '/p/$slug/team'
     | '/p/$slug/timeline'
     | '/project/$slug/$'
+    | '/projects/import/$service'
     | '/p/$slug'
     | '/project/$slug'
+    | '/project/new'
     | '/p/$slug/settings/attributes'
     | '/p/$slug/settings/custom-fields'
     | '/p/$slug/settings/data'
@@ -658,6 +682,7 @@ export interface FileRouteTypes {
     | '/p/$slug/taskboard/$sprint'
     | '/p/$slug/transfer/$token'
     | '/p/$slug/wiki/$page'
+    | '/project/new/import/$service'
     | '/p/$slug/settings'
     | '/p/$slug/taskboard'
     | '/p/$slug/wiki'
@@ -684,7 +709,6 @@ export interface FileRouteTypes {
     | '/(auth)/invitation/$token'
     | '/(auth)/verify-email/$token'
     | '/_authenticated/profile/$username'
-    | '/_authenticated/project/new'
     | '/_authenticated/projects/new'
     | '/_authenticated/settings/account'
     | '/_authenticated/settings/appearance'
@@ -702,8 +726,10 @@ export interface FileRouteTypes {
     | '/_authenticated/p/$slug/team'
     | '/_authenticated/p/$slug/timeline'
     | '/_authenticated/project/$slug/$'
+    | '/_authenticated/projects/import/$service'
     | '/_authenticated/p/$slug/'
     | '/_authenticated/project/$slug/'
+    | '/_authenticated/project/new/'
     | '/_authenticated/p/$slug/settings/attributes'
     | '/_authenticated/p/$slug/settings/custom-fields'
     | '/_authenticated/p/$slug/settings/data'
@@ -716,6 +742,7 @@ export interface FileRouteTypes {
     | '/_authenticated/p/$slug/taskboard/$sprint'
     | '/_authenticated/p/$slug/transfer/$token'
     | '/_authenticated/p/$slug/wiki/$page'
+    | '/_authenticated/project/new/import/$service'
     | '/_authenticated/p/$slug/settings/'
     | '/_authenticated/p/$slug/taskboard/'
     | '/_authenticated/p/$slug/wiki/'
@@ -903,13 +930,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectsNewRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/project/new': {
-      id: '/_authenticated/project/new'
-      path: '/project/new'
-      fullPath: '/project/new'
-      preLoaderRoute: typeof AuthenticatedProjectNewRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/profile/$username': {
       id: '/_authenticated/profile/$username'
       path: '/profile/$username'
@@ -959,6 +979,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPSlugRouteRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/project/new/': {
+      id: '/_authenticated/project/new/'
+      path: '/project/new'
+      fullPath: '/project/new/'
+      preLoaderRoute: typeof AuthenticatedProjectNewIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/project/$slug/': {
       id: '/_authenticated/project/$slug/'
       path: '/project/$slug'
@@ -972,6 +999,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/p/$slug/'
       preLoaderRoute: typeof AuthenticatedPSlugIndexRouteImport
       parentRoute: typeof AuthenticatedPSlugRouteRoute
+    }
+    '/_authenticated/projects/import/$service': {
+      id: '/_authenticated/projects/import/$service'
+      path: '/projects/import/$service'
+      fullPath: '/projects/import/$service'
+      preLoaderRoute: typeof AuthenticatedProjectsImportServiceRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/project/$slug/$': {
       id: '/_authenticated/project/$slug/$'
@@ -1049,6 +1083,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/p/$slug/settings/'
       preLoaderRoute: typeof AuthenticatedPSlugSettingsIndexRouteImport
       parentRoute: typeof AuthenticatedPSlugSettingsRouteRoute
+    }
+    '/_authenticated/project/new/import/$service': {
+      id: '/_authenticated/project/new/import/$service'
+      path: '/project/new/import/$service'
+      fullPath: '/project/new/import/$service'
+      preLoaderRoute: typeof AuthenticatedProjectNewImportServiceRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/p/$slug/wiki/$page': {
       id: '/_authenticated/p/$slug/wiki/$page'
@@ -1247,12 +1288,14 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedPSlugRouteRoute: typeof AuthenticatedPSlugRouteRouteWithChildren
   AuthenticatedProfileUsernameRoute: typeof AuthenticatedProfileUsernameRoute
-  AuthenticatedProjectNewRoute: typeof AuthenticatedProjectNewRoute
   AuthenticatedProjectsNewRoute: typeof AuthenticatedProjectsNewRoute
   AuthenticatedUserSettingsSplatRoute: typeof AuthenticatedUserSettingsSplatRoute
   AuthenticatedProjectsIndexRoute: typeof AuthenticatedProjectsIndexRoute
   AuthenticatedProjectSlugSplatRoute: typeof AuthenticatedProjectSlugSplatRoute
+  AuthenticatedProjectsImportServiceRoute: typeof AuthenticatedProjectsImportServiceRoute
   AuthenticatedProjectSlugIndexRoute: typeof AuthenticatedProjectSlugIndexRoute
+  AuthenticatedProjectNewIndexRoute: typeof AuthenticatedProjectNewIndexRoute
+  AuthenticatedProjectNewImportServiceRoute: typeof AuthenticatedProjectNewImportServiceRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -1261,12 +1304,16 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedPSlugRouteRoute: AuthenticatedPSlugRouteRouteWithChildren,
   AuthenticatedProfileUsernameRoute: AuthenticatedProfileUsernameRoute,
-  AuthenticatedProjectNewRoute: AuthenticatedProjectNewRoute,
   AuthenticatedProjectsNewRoute: AuthenticatedProjectsNewRoute,
   AuthenticatedUserSettingsSplatRoute: AuthenticatedUserSettingsSplatRoute,
   AuthenticatedProjectsIndexRoute: AuthenticatedProjectsIndexRoute,
   AuthenticatedProjectSlugSplatRoute: AuthenticatedProjectSlugSplatRoute,
+  AuthenticatedProjectsImportServiceRoute:
+    AuthenticatedProjectsImportServiceRoute,
   AuthenticatedProjectSlugIndexRoute: AuthenticatedProjectSlugIndexRoute,
+  AuthenticatedProjectNewIndexRoute: AuthenticatedProjectNewIndexRoute,
+  AuthenticatedProjectNewImportServiceRoute:
+    AuthenticatedProjectNewImportServiceRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

@@ -102,7 +102,7 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 
 ## Importers
 
-- [ ] Jira, Trello, GitHub, Asana
+- [x] Jira, Trello, GitHub, Asana: connect, pick a project, match people, import. Not exercised end to end here: each needs the server's API credentials (`ENABLE_*_IMPORTER`), and without them the page says so.
 
 ## Aegis additions
 
