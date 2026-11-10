@@ -17,7 +17,9 @@ import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors404RouteImport } from './routes/(errors)/404'
 import { Route as errors403RouteImport } from './routes/(errors)/403'
 import { Route as errors401RouteImport } from './routes/(errors)/401'
+import { Route as authSignUpRouteImport } from './routes/(auth)/sign-up'
 import { Route as authSignInRouteImport } from './routes/(auth)/sign-in'
+import { Route as authRegisterRouteImport } from './routes/(auth)/register'
 import { Route as authLoginRouteImport } from './routes/(auth)/login'
 import { Route as authForgotPasswordRouteImport } from './routes/(auth)/forgot-password'
 import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
@@ -33,6 +35,7 @@ import { Route as AuthenticatedProjectsNewRouteImport } from './routes/_authenti
 import { Route as AuthenticatedProjectNewRouteImport } from './routes/_authenticated/project/new'
 import { Route as AuthenticatedProfileUsernameRouteImport } from './routes/_authenticated/profile/$username'
 import { Route as authVerifyEmailTokenRouteImport } from './routes/(auth)/verify-email.$token'
+import { Route as authInvitationTokenRouteImport } from './routes/(auth)/invitation.$token'
 import { Route as authChangePasswordTokenRouteImport } from './routes/(auth)/change-password.$token'
 import { Route as authChangeEmailTokenRouteImport } from './routes/(auth)/change-email.$token'
 import { Route as authCancelAccountTokenRouteImport } from './routes/(auth)/cancel-account.$token'
@@ -51,6 +54,7 @@ import { Route as AuthenticatedPSlugWikiIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedPSlugTaskboardIndexRouteImport } from './routes/_authenticated/p/$slug/taskboard/index'
 import { Route as AuthenticatedPSlugSettingsIndexRouteImport } from './routes/_authenticated/p/$slug/settings/index'
 import { Route as AuthenticatedPSlugWikiPageRouteImport } from './routes/_authenticated/p/$slug/wiki/$page'
+import { Route as AuthenticatedPSlugTransferTokenRouteImport } from './routes/_authenticated/p/$slug/transfer.$token'
 import { Route as AuthenticatedPSlugTaskboardSprintRouteImport } from './routes/_authenticated/p/$slug/taskboard/$sprint'
 import { Route as AuthenticatedPSlugSettingsWebhooksRouteImport } from './routes/_authenticated/p/$slug/settings/webhooks'
 import { Route as AuthenticatedPSlugSettingsTagsRouteImport } from './routes/_authenticated/p/$slug/settings/tags'
@@ -101,9 +105,19 @@ const errors401Route = errors401RouteImport.update({
   path: '/401',
   getParentRoute: () => rootRouteImport,
 } as any)
+const authSignUpRoute = authSignUpRouteImport.update({
+  id: '/(auth)/sign-up',
+  path: '/sign-up',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const authSignInRoute = authSignInRouteImport.update({
   id: '/(auth)/sign-in',
   path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const authRegisterRoute = authRegisterRouteImport.update({
+  id: '/(auth)/register',
+  path: '/register',
   getParentRoute: () => rootRouteImport,
 } as any)
 const authLoginRoute = authLoginRouteImport.update({
@@ -190,6 +204,11 @@ const AuthenticatedProfileUsernameRoute =
 const authVerifyEmailTokenRoute = authVerifyEmailTokenRouteImport.update({
   id: '/(auth)/verify-email/$token',
   path: '/verify-email/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const authInvitationTokenRoute = authInvitationTokenRouteImport.update({
+  id: '/(auth)/invitation/$token',
+  path: '/invitation/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const authChangePasswordTokenRoute = authChangePasswordTokenRouteImport.update({
@@ -293,6 +312,12 @@ const AuthenticatedPSlugWikiPageRoute =
     path: '/wiki/$page',
     getParentRoute: () => AuthenticatedPSlugRouteRoute,
   } as any)
+const AuthenticatedPSlugTransferTokenRoute =
+  AuthenticatedPSlugTransferTokenRouteImport.update({
+    id: '/transfer/$token',
+    path: '/transfer/$token',
+    getParentRoute: () => AuthenticatedPSlugRouteRoute,
+  } as any)
 const AuthenticatedPSlugTaskboardSprintRoute =
   AuthenticatedPSlugTaskboardSprintRouteImport.update({
     id: '/taskboard/$sprint',
@@ -359,7 +384,9 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
   '/login': typeof authLoginRoute
+  '/register': typeof authRegisterRoute
   '/sign-in': typeof authSignInRoute
+  '/sign-up': typeof authSignUpRoute
   '/401': typeof errors401Route
   '/403': typeof errors403Route
   '/404': typeof errors404Route
@@ -370,6 +397,7 @@ export interface FileRoutesByFullPath {
   '/cancel-account/$token': typeof authCancelAccountTokenRoute
   '/change-email/$token': typeof authChangeEmailTokenRoute
   '/change-password/$token': typeof authChangePasswordTokenRoute
+  '/invitation/$token': typeof authInvitationTokenRoute
   '/verify-email/$token': typeof authVerifyEmailTokenRoute
   '/profile/$username': typeof AuthenticatedProfileUsernameRoute
   '/project/new': typeof AuthenticatedProjectNewRoute
@@ -402,6 +430,7 @@ export interface FileRoutesByFullPath {
   '/p/$slug/settings/tags': typeof AuthenticatedPSlugSettingsTagsRoute
   '/p/$slug/settings/webhooks': typeof AuthenticatedPSlugSettingsWebhooksRoute
   '/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
+  '/p/$slug/transfer/$token': typeof AuthenticatedPSlugTransferTokenRoute
   '/p/$slug/wiki/$page': typeof AuthenticatedPSlugWikiPageRoute
   '/p/$slug/settings/': typeof AuthenticatedPSlugSettingsIndexRoute
   '/p/$slug/taskboard/': typeof AuthenticatedPSlugTaskboardIndexRoute
@@ -410,7 +439,9 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/forgot-password': typeof authForgotPasswordRoute
   '/login': typeof authLoginRoute
+  '/register': typeof authRegisterRoute
   '/sign-in': typeof authSignInRoute
+  '/sign-up': typeof authSignUpRoute
   '/401': typeof errors401Route
   '/403': typeof errors403Route
   '/404': typeof errors404Route
@@ -421,6 +452,7 @@ export interface FileRoutesByTo {
   '/cancel-account/$token': typeof authCancelAccountTokenRoute
   '/change-email/$token': typeof authChangeEmailTokenRoute
   '/change-password/$token': typeof authChangePasswordTokenRoute
+  '/invitation/$token': typeof authInvitationTokenRoute
   '/verify-email/$token': typeof authVerifyEmailTokenRoute
   '/profile/$username': typeof AuthenticatedProfileUsernameRoute
   '/project/new': typeof AuthenticatedProjectNewRoute
@@ -452,6 +484,7 @@ export interface FileRoutesByTo {
   '/p/$slug/settings/tags': typeof AuthenticatedPSlugSettingsTagsRoute
   '/p/$slug/settings/webhooks': typeof AuthenticatedPSlugSettingsWebhooksRoute
   '/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
+  '/p/$slug/transfer/$token': typeof AuthenticatedPSlugTransferTokenRoute
   '/p/$slug/wiki/$page': typeof AuthenticatedPSlugWikiPageRoute
   '/p/$slug/settings': typeof AuthenticatedPSlugSettingsIndexRoute
   '/p/$slug/taskboard': typeof AuthenticatedPSlugTaskboardIndexRoute
@@ -463,7 +496,9 @@ export interface FileRoutesById {
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/(auth)/forgot-password': typeof authForgotPasswordRoute
   '/(auth)/login': typeof authLoginRoute
+  '/(auth)/register': typeof authRegisterRoute
   '/(auth)/sign-in': typeof authSignInRoute
+  '/(auth)/sign-up': typeof authSignUpRoute
   '/(errors)/401': typeof errors401Route
   '/(errors)/403': typeof errors403Route
   '/(errors)/404': typeof errors404Route
@@ -475,6 +510,7 @@ export interface FileRoutesById {
   '/(auth)/cancel-account/$token': typeof authCancelAccountTokenRoute
   '/(auth)/change-email/$token': typeof authChangeEmailTokenRoute
   '/(auth)/change-password/$token': typeof authChangePasswordTokenRoute
+  '/(auth)/invitation/$token': typeof authInvitationTokenRoute
   '/(auth)/verify-email/$token': typeof authVerifyEmailTokenRoute
   '/_authenticated/profile/$username': typeof AuthenticatedProfileUsernameRoute
   '/_authenticated/project/new': typeof AuthenticatedProjectNewRoute
@@ -507,6 +543,7 @@ export interface FileRoutesById {
   '/_authenticated/p/$slug/settings/tags': typeof AuthenticatedPSlugSettingsTagsRoute
   '/_authenticated/p/$slug/settings/webhooks': typeof AuthenticatedPSlugSettingsWebhooksRoute
   '/_authenticated/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
+  '/_authenticated/p/$slug/transfer/$token': typeof AuthenticatedPSlugTransferTokenRoute
   '/_authenticated/p/$slug/wiki/$page': typeof AuthenticatedPSlugWikiPageRoute
   '/_authenticated/p/$slug/settings/': typeof AuthenticatedPSlugSettingsIndexRoute
   '/_authenticated/p/$slug/taskboard/': typeof AuthenticatedPSlugTaskboardIndexRoute
@@ -519,7 +556,9 @@ export interface FileRouteTypes {
     | '/settings'
     | '/forgot-password'
     | '/login'
+    | '/register'
     | '/sign-in'
+    | '/sign-up'
     | '/401'
     | '/403'
     | '/404'
@@ -530,6 +569,7 @@ export interface FileRouteTypes {
     | '/cancel-account/$token'
     | '/change-email/$token'
     | '/change-password/$token'
+    | '/invitation/$token'
     | '/verify-email/$token'
     | '/profile/$username'
     | '/project/new'
@@ -562,6 +602,7 @@ export interface FileRouteTypes {
     | '/p/$slug/settings/tags'
     | '/p/$slug/settings/webhooks'
     | '/p/$slug/taskboard/$sprint'
+    | '/p/$slug/transfer/$token'
     | '/p/$slug/wiki/$page'
     | '/p/$slug/settings/'
     | '/p/$slug/taskboard/'
@@ -570,7 +611,9 @@ export interface FileRouteTypes {
   to:
     | '/forgot-password'
     | '/login'
+    | '/register'
     | '/sign-in'
+    | '/sign-up'
     | '/401'
     | '/403'
     | '/404'
@@ -581,6 +624,7 @@ export interface FileRouteTypes {
     | '/cancel-account/$token'
     | '/change-email/$token'
     | '/change-password/$token'
+    | '/invitation/$token'
     | '/verify-email/$token'
     | '/profile/$username'
     | '/project/new'
@@ -612,6 +656,7 @@ export interface FileRouteTypes {
     | '/p/$slug/settings/tags'
     | '/p/$slug/settings/webhooks'
     | '/p/$slug/taskboard/$sprint'
+    | '/p/$slug/transfer/$token'
     | '/p/$slug/wiki/$page'
     | '/p/$slug/settings'
     | '/p/$slug/taskboard'
@@ -622,7 +667,9 @@ export interface FileRouteTypes {
     | '/_authenticated/settings'
     | '/(auth)/forgot-password'
     | '/(auth)/login'
+    | '/(auth)/register'
     | '/(auth)/sign-in'
+    | '/(auth)/sign-up'
     | '/(errors)/401'
     | '/(errors)/403'
     | '/(errors)/404'
@@ -634,6 +681,7 @@ export interface FileRouteTypes {
     | '/(auth)/cancel-account/$token'
     | '/(auth)/change-email/$token'
     | '/(auth)/change-password/$token'
+    | '/(auth)/invitation/$token'
     | '/(auth)/verify-email/$token'
     | '/_authenticated/profile/$username'
     | '/_authenticated/project/new'
@@ -666,6 +714,7 @@ export interface FileRouteTypes {
     | '/_authenticated/p/$slug/settings/tags'
     | '/_authenticated/p/$slug/settings/webhooks'
     | '/_authenticated/p/$slug/taskboard/$sprint'
+    | '/_authenticated/p/$slug/transfer/$token'
     | '/_authenticated/p/$slug/wiki/$page'
     | '/_authenticated/p/$slug/settings/'
     | '/_authenticated/p/$slug/taskboard/'
@@ -676,7 +725,9 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   authForgotPasswordRoute: typeof authForgotPasswordRoute
   authLoginRoute: typeof authLoginRoute
+  authRegisterRoute: typeof authRegisterRoute
   authSignInRoute: typeof authSignInRoute
+  authSignUpRoute: typeof authSignUpRoute
   errors401Route: typeof errors401Route
   errors403Route: typeof errors403Route
   errors404Route: typeof errors404Route
@@ -685,6 +736,7 @@ export interface RootRouteChildren {
   authCancelAccountTokenRoute: typeof authCancelAccountTokenRoute
   authChangeEmailTokenRoute: typeof authChangeEmailTokenRoute
   authChangePasswordTokenRoute: typeof authChangePasswordTokenRoute
+  authInvitationTokenRoute: typeof authInvitationTokenRoute
   authVerifyEmailTokenRoute: typeof authVerifyEmailTokenRoute
 }
 
@@ -746,11 +798,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof errors401RouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/(auth)/sign-up': {
+      id: '/(auth)/sign-up'
+      path: '/sign-up'
+      fullPath: '/sign-up'
+      preLoaderRoute: typeof authSignUpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/(auth)/sign-in': {
       id: '/(auth)/sign-in'
       path: '/sign-in'
       fullPath: '/sign-in'
       preLoaderRoute: typeof authSignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/(auth)/register': {
+      id: '/(auth)/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof authRegisterRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/(auth)/login': {
@@ -856,6 +922,13 @@ declare module '@tanstack/react-router' {
       path: '/verify-email/$token'
       fullPath: '/verify-email/$token'
       preLoaderRoute: typeof authVerifyEmailTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/(auth)/invitation/$token': {
+      id: '/(auth)/invitation/$token'
+      path: '/invitation/$token'
+      fullPath: '/invitation/$token'
+      preLoaderRoute: typeof authInvitationTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/(auth)/change-password/$token': {
@@ -982,6 +1055,13 @@ declare module '@tanstack/react-router' {
       path: '/wiki/$page'
       fullPath: '/p/$slug/wiki/$page'
       preLoaderRoute: typeof AuthenticatedPSlugWikiPageRouteImport
+      parentRoute: typeof AuthenticatedPSlugRouteRoute
+    }
+    '/_authenticated/p/$slug/transfer/$token': {
+      id: '/_authenticated/p/$slug/transfer/$token'
+      path: '/transfer/$token'
+      fullPath: '/p/$slug/transfer/$token'
+      preLoaderRoute: typeof AuthenticatedPSlugTransferTokenRouteImport
       parentRoute: typeof AuthenticatedPSlugRouteRoute
     }
     '/_authenticated/p/$slug/taskboard/$sprint': {
@@ -1130,6 +1210,7 @@ interface AuthenticatedPSlugRouteRouteChildren {
   AuthenticatedPSlugTimelineRoute: typeof AuthenticatedPSlugTimelineRoute
   AuthenticatedPSlugIndexRoute: typeof AuthenticatedPSlugIndexRoute
   AuthenticatedPSlugTaskboardSprintRoute: typeof AuthenticatedPSlugTaskboardSprintRoute
+  AuthenticatedPSlugTransferTokenRoute: typeof AuthenticatedPSlugTransferTokenRoute
   AuthenticatedPSlugWikiPageRoute: typeof AuthenticatedPSlugWikiPageRoute
   AuthenticatedPSlugTaskboardIndexRoute: typeof AuthenticatedPSlugTaskboardIndexRoute
   AuthenticatedPSlugWikiIndexRoute: typeof AuthenticatedPSlugWikiIndexRoute
@@ -1148,6 +1229,7 @@ const AuthenticatedPSlugRouteRouteChildren: AuthenticatedPSlugRouteRouteChildren
     AuthenticatedPSlugIndexRoute: AuthenticatedPSlugIndexRoute,
     AuthenticatedPSlugTaskboardSprintRoute:
       AuthenticatedPSlugTaskboardSprintRoute,
+    AuthenticatedPSlugTransferTokenRoute: AuthenticatedPSlugTransferTokenRoute,
     AuthenticatedPSlugWikiPageRoute: AuthenticatedPSlugWikiPageRoute,
     AuthenticatedPSlugTaskboardIndexRoute:
       AuthenticatedPSlugTaskboardIndexRoute,
@@ -1194,7 +1276,9 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   authForgotPasswordRoute: authForgotPasswordRoute,
   authLoginRoute: authLoginRoute,
+  authRegisterRoute: authRegisterRoute,
   authSignInRoute: authSignInRoute,
+  authSignUpRoute: authSignUpRoute,
   errors401Route: errors401Route,
   errors403Route: errors403Route,
   errors404Route: errors404Route,
@@ -1203,6 +1287,7 @@ const rootRouteChildren: RootRouteChildren = {
   authCancelAccountTokenRoute: authCancelAccountTokenRoute,
   authChangeEmailTokenRoute: authChangeEmailTokenRoute,
   authChangePasswordTokenRoute: authChangePasswordTokenRoute,
+  authInvitationTokenRoute: authInvitationTokenRoute,
   authVerifyEmailTokenRoute: authVerifyEmailTokenRoute,
 }
 export const routeTree = rootRouteImport

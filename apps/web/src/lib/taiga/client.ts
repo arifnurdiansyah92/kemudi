@@ -61,15 +61,69 @@ api.interceptors.response.use(undefined, async (error: AxiosError) => {
   return Promise.reject(error)
 })
 
-export async function signIn(username: string, password: string) {
+/** Signs in; with an invitation token, also joins that project. */
+export async function signIn(
+  username: string,
+  password: string,
+  invitationToken?: string
+) {
   const { data } = await api.post<AuthResponse>('/auth', {
     type: 'normal',
     username,
     password,
+    ...(invitationToken ? { invitation_token: invitationToken } : {}),
   })
+  return startSession(data)
+}
+
+function startSession(data: AuthResponse) {
   const { auth_token, refresh, ...user } = data
   useAuthStore.getState().setSession({ token: auth_token, refresh, user })
   return user
+}
+
+export type NewAccount = {
+  username: string
+  full_name: string
+  email: string
+  password: string
+}
+
+/** Open sign-up (only when the server allows it). */
+export async function registerPublic(account: NewAccount) {
+  const { data } = await api.post<AuthResponse>('/auth/register', {
+    type: 'public',
+    accepted_terms: true,
+    ...account,
+  })
+  return startSession(data)
+}
+
+/** Sign-up through an invitation; joins the inviting project. */
+export async function registerFromInvitation(
+  token: string,
+  account: NewAccount
+) {
+  const { data } = await api.post<AuthResponse>('/auth/register', {
+    type: 'private',
+    accepted_terms: true,
+    token,
+    ...account,
+  })
+  return startSession(data)
+}
+
+/**
+ * Whether this server allows open sign-up. kemudi-back answers an empty
+ * public registration with "disabled" before validating anything else.
+ */
+export async function registrationOpen() {
+  try {
+    await api.post('/auth/register', { type: 'public', accepted_terms: true })
+    return true
+  } catch (error) {
+    return !/disabled/i.test(apiErrorMessage(error, ''))
+  }
 }
 
 export async function requestPasswordReset(username: string) {

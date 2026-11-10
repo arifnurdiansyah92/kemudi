@@ -60,6 +60,10 @@ export async function resolveLegacyProjectPath(
       }
       return { to: '/p/$slug/taskboard', params }
     }
+    case 'transfer':
+      return arg
+        ? { to: '/p/$slug/transfer/$token', params: { slug, token: arg } }
+        : { to: '/p/$slug', params }
     case 'admin':
       return { to: '/p/$slug/settings', params }
     default:

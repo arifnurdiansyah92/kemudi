@@ -92,7 +92,7 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 ## Account
 
 - [x] Sign in, forgot and change password
-- [ ] Sign up, accept invitation
+- [x] Sign up (when the server allows it), accept invitation (new or existing account), accept or decline project ownership
 - [x] Profile: name, username, bio, photo, language, timezone
 - [x] Change password, email (with confirm link), delete account (also from the emailed link)
 - [x] Notification settings per project (email level, bell)
