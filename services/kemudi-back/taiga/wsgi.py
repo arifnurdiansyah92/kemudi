@@ -38,3 +38,11 @@ application = get_wsgi_application()
 # Apply WSGI middleware here.
 # from helloworld.wsgi import HelloWorldApplication
 # application = HelloWorldApplication(application)
+
+# --- local overlay (back-patch/wsgi.py): per-role sprint access, see /taiga-back/sprint_access ---
+try:
+    import sprint_access
+    sprint_access.install()
+except Exception:  # never take the API down because of the overlay
+    import logging
+    logging.getLogger("sprint_access").exception("sprint_access: install failed")

@@ -2,6 +2,10 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
+# AEGIS PATCH (2026-09-12): bind-mounted over taiga-back 6.9.0 (taigaio/taiga-back:latest)
+# via docker-compose.yml (x-volumes). Only change: get_queryset() ignores a
+# non-numeric ?epic= (e.g. "null") for epic ordering. Re-diff against the image
+# after every taiga-back upgrade: docker cp <back>:/taiga-back/taiga/projects/userstories/api.py
 #
 # Copyright (c) 2021-present Kaleidos INC
 
@@ -132,6 +136,13 @@ class UserStoryViewSet(AssignedUsersSignalMixin, OCCResourceMixin,
         # only the first
         if epic_id is not None:
             epic_id = epic_id.split(",")[0]
+            # AEGIS PATCH: the backlog "no epic" filter sends ``epic=null``
+            # (EpicFilter understands it); attach_epic_order() does
+            # int(epic_id) and blew up with a 500 on /userstories and
+            # /userstories/by_ref, leaving the backlog and the detail page
+            # blank. Only a real id can carry an epic order.
+            if not epic_id.isdigit():
+                epic_id = None
 
         qs = attach_extra_info(qs, user=self.request.user,
                                include_attachments=include_attachments,

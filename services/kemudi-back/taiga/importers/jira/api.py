@@ -55,7 +55,7 @@ class JiraImporterViewSet(viewsets.ViewSet):
 
         importer = JiraNormalImporter(request.user, url, token)
         try:
-            users = importer.list_users()
+            users = importer.list_users(project_id)
         except Exception as e:
             # common error due to modern Jira versions which are unsupported by Taiga
             raise exc.BadRequest(_("""

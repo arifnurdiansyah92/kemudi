@@ -5,18 +5,15 @@
 #
 # Copyright (c) 2021-present Kaleidos INC
 
-import datetime
 from collections import OrderedDict
 
 from django.template.defaultfilters import slugify
-from django.utils import timezone
 
 from taiga.importers import services as import_service
 from taiga.projects.references.models import recalc_reference_counter
 from taiga.projects.models import Project, ProjectTemplate, Points
 from taiga.projects.userstories.models import UserStory, RolePoints
 from taiga.projects.tasks.models import Task
-from taiga.projects.milestones.models import Milestone
 from taiga.projects.epics.models import Epic, RelatedUserStory
 from taiga.projects.history.services import take_snapshot
 from taiga.timeline.rebuilder import rebuild_timeline
@@ -44,6 +41,8 @@ class JiraAgileImporter(JiraImporterCommon):
         self._import_epics_data(project_id, project, options)
         self._import_user_stories_data(project_id, project, options)
         self._cleanup(project, options)
+        self._activate_sprints_module(project)
+        self._ensure_assignee_memberships(project)
         Timeline.objects.filter(project=project).delete()
         rebuild_timeline(None, None, project.id)
         recalc_reference_counter(project)
@@ -141,29 +140,11 @@ class JiraAgileImporter(JiraImporterCommon):
         self._create_custom_fields(project)
         import_service.create_memberships(options.get('users_bindings', {}), project, self._user, "main")
 
-        if project_template.slug == "scrum":
-            for sprint in self._client.get_agile("/board/{}/sprint".format(project_id))['values']:
-                start_datetime = sprint.get('startDate', None)
-                end_datetime = sprint.get('startDate', None)
-                start_date = datetime.date.today()
-                if start_datetime:
-                    start_date = start_datetime[:10]
-                end_date = datetime.date.today()
-                if end_datetime:
-                    end_date = end_datetime[:10]
-
-                milestone = Milestone.objects.create(
-                    name=sprint['name'],
-                    slug=slugify(sprint['name']),
-                    owner=self._user,
-                    project=project,
-                    estimated_start=start_date,
-                    estimated_finish=end_date,
-                )
-                Milestone.objects.filter(id=milestone.id).update(
-                    created_date=start_datetime or timezone.now(),
-                    modified_date=start_datetime or timezone.now(),
-                )
+        # Import the board's sprints whatever template was chosen: if Jira has
+        # sprints they must survive the migration, and _activate_sprints_module
+        # switches the backlog on afterwards so they are visible under Scrum. A
+        # board with no sprints simply creates none.
+        self._import_board_sprints(project, project_id)
         return project
 
     def _import_user_stories_data(self, project_id, project, options):
@@ -183,17 +164,14 @@ class JiraAgileImporter(JiraImporterCommon):
 
             for issue in issues['issues']:
                 issue['fields']['issuelinks'] += self._client.get("/issue/{}/remotelink".format(issue['key']))
-                assigned_to = users_bindings.get(issue['fields']['assignee']['key'] if issue['fields']['assignee'] else None, None)
-                owner = users_bindings.get(issue['fields']['creator']['key'] if issue['fields']['creator'] else None, self._user)
+                assigned_to = self._resolve_user(issue['fields']['assignee'], users_bindings)
+                owner = self._resolve_user(issue['fields']['creator'], users_bindings, self._user)
 
                 external_reference = None
                 if options.get('keep_external_reference', False):
                     external_reference = ["jira", self._client.get_issue_url(issue['key'])]
 
-                try:
-                    milestone = project.milestones.get(name=(issue['fields'].get('sprint', {}) or {}).get('name', ''))
-                except Milestone.DoesNotExist:
-                    milestone = None
+                milestone = self._resolve_milestone(project, issue)
 
                 us = UserStory.objects.create(
                     project=project,
@@ -271,8 +249,8 @@ class JiraAgileImporter(JiraImporterCommon):
 
             for issue in issues['issues']:
                 issue['fields']['issuelinks'] += self._client.get("/issue/{}/remotelink".format(issue['key']))
-                assigned_to = users_bindings.get(issue['fields']['assignee']['key'] if issue['fields']['assignee'] else None, None)
-                owner = users_bindings.get(issue['fields']['creator']['key'] if issue['fields']['creator'] else None, self._user)
+                assigned_to = self._resolve_user(issue['fields']['assignee'], users_bindings)
+                owner = self._resolve_user(issue['fields']['creator'], users_bindings, self._user)
 
                 external_reference = None
                 if options.get('keep_external_reference', False):
@@ -323,8 +301,8 @@ class JiraAgileImporter(JiraImporterCommon):
             for epic in issues['values']:
                 issue = self._client.get_agile("/issue/{}".format(epic['key']))
                 issue['fields']['issuelinks'] += self._client.get("/issue/{}/remotelink".format(issue['key']))
-                assigned_to = users_bindings.get(issue['fields']['assignee']['key'] if issue['fields']['assignee'] else None, None)
-                owner = users_bindings.get(issue['fields']['creator']['key'] if issue['fields']['creator'] else None, self._user)
+                assigned_to = self._resolve_user(issue['fields']['assignee'], users_bindings)
+                owner = self._resolve_user(issue['fields']['creator'], users_bindings, self._user)
 
                 external_reference = None
                 if options.get('keep_external_reference', False):

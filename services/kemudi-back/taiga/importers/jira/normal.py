@@ -41,6 +41,8 @@ class JiraNormalImporter(JiraImporterCommon):
         self._link_epics_with_user_stories(project_id, project, options)
         self._import_issues_data(project_id, project, options)
         self._cleanup(project, options)
+        self._activate_sprints_module(project)
+        self._ensure_assignee_memberships(project)
         Timeline.objects.filter(project=project).delete()
         rebuild_timeline(None, None, project.id)
         recalc_reference_counter(project)
@@ -168,6 +170,7 @@ class JiraNormalImporter(JiraImporterCommon):
 
         self._create_custom_fields(project)
         import_service.create_memberships(options.get('users_bindings', {}), project, self._user, "main")
+        self._import_project_sprints(project, project_id)
 
         return project
 
@@ -189,13 +192,15 @@ class JiraNormalImporter(JiraImporterCommon):
 
                 for issue in issues['issues']:
                     issue['fields']['issuelinks'] += self._client.get("/issue/{}/remotelink".format(issue['key']))
-                    assigned_to = users_bindings.get(issue['fields']['assignee']['key'] if issue['fields']['assignee'] else None, None)
-                    owner = users_bindings.get(issue['fields']['creator']['key'] if issue['fields']['creator'] else None, self._user)
+                    assigned_to = self._resolve_user(issue['fields']['assignee'], users_bindings)
+                    owner = self._resolve_user(issue['fields']['creator'], users_bindings, self._user)
 
                     external_reference = None
                     if options.get('keep_external_reference', False) and 'url' in issue['fields']:
                         external_reference = ["jira", issue['fields']['url']]
 
+
+                    milestone = self._resolve_milestone(project, issue)
 
                     us = UserStory.objects.create(
                         project=project,
@@ -209,6 +214,7 @@ class JiraNormalImporter(JiraImporterCommon):
                         description=issue['fields']['description'] or '',
                         tags=issue['fields']['labels'],
                         external_reference=external_reference,
+                        milestone=milestone,
                     )
 
                     points_value = issue['fields'].get(self.greenhopper_fields.get('points', None), None)
@@ -263,8 +269,8 @@ class JiraNormalImporter(JiraImporterCommon):
 
             for issue in issues['issues']:
                 issue['fields']['issuelinks'] += self._client.get("/issue/{}/remotelink".format(issue['key']))
-                assigned_to = users_bindings.get(issue['fields']['assignee']['key'] if issue['fields']['assignee'] else None, None)
-                owner = users_bindings.get(issue['fields']['creator']['key'] if issue['fields']['creator'] else None, self._user)
+                assigned_to = self._resolve_user(issue['fields']['assignee'], users_bindings)
+                owner = self._resolve_user(issue['fields']['creator'], users_bindings, self._user)
 
                 external_reference = None
                 if options.get('keep_external_reference', False) and 'url' in issue['fields']:
@@ -280,6 +286,7 @@ class JiraNormalImporter(JiraImporterCommon):
                     description=issue['fields']['description'] or '',
                     tags=issue['fields']['labels'],
                     external_reference=external_reference,
+                    milestone=us.milestone,
                 )
 
                 self._import_to_custom_fields(task, issue, options)
@@ -318,12 +325,17 @@ class JiraNormalImporter(JiraImporterCommon):
 
                 for issue in issues['issues']:
                     issue['fields']['issuelinks'] += self._client.get("/issue/{}/remotelink".format(issue['key']))
-                    assigned_to = users_bindings.get(issue['fields']['assignee']['key'] if issue['fields']['assignee'] else None, None)
-                    owner = users_bindings.get(issue['fields']['creator']['key'] if issue['fields']['creator'] else None, self._user)
+                    assigned_to = self._resolve_user(issue['fields']['assignee'], users_bindings)
+                    owner = self._resolve_user(issue['fields']['creator'], users_bindings, self._user)
 
                     external_reference = None
                     if options.get('keep_external_reference', False) and 'url' in issue['fields']:
                         external_reference = ["jira", issue['fields']['url']]
+
+                    # Issues carry the same greenhopper sprint field as stories
+                    # (the JQL search asks for fields=*all), so an imported issue
+                    # keeps its sprint instead of always landing in the backlog.
+                    milestone = self._resolve_milestone(project, issue)
 
                     taiga_issue = Issue.objects.create(
                         project=project,
@@ -334,6 +346,7 @@ class JiraNormalImporter(JiraImporterCommon):
                         description=issue['fields']['description'] or '',
                         tags=issue['fields']['labels'],
                         external_reference=external_reference,
+                        milestone=milestone,
                     )
 
                     self._import_to_custom_fields(taiga_issue, issue, options)
@@ -373,8 +386,8 @@ class JiraNormalImporter(JiraImporterCommon):
 
                 for issue in issues['issues']:
                     issue['fields']['issuelinks'] += self._client.get("/issue/{}/remotelink".format(issue['key']))
-                    assigned_to = users_bindings.get(issue['fields']['assignee']['key'] if issue['fields']['assignee'] else None, None)
-                    owner = users_bindings.get(issue['fields']['creator']['key'] if issue['fields']['creator'] else None, self._user)
+                    assigned_to = self._resolve_user(issue['fields']['assignee'], users_bindings)
+                    owner = self._resolve_user(issue['fields']['creator'], users_bindings, self._user)
 
                     external_reference = None
                     if options.get('keep_external_reference', False) and 'url' in issue['fields']:
@@ -415,6 +428,11 @@ class JiraNormalImporter(JiraImporterCommon):
                     break
 
     def _link_epics_with_user_stories(self, project_id, project, options):
+        # The legacy Jira "Epic Link" greenhopper custom field is absent on
+        # modern Jira Cloud; the epic/story relationship is expressed via the
+        # native "parent" field instead. Use whichever this instance provides,
+        # and skip linking entirely if neither is available.
+        epic_link_field = self.greenhopper_fields.get('link')
         types = options.get('types_bindings', {}).get("us", [])
         for issue_type in types:
             offset = 0
@@ -426,15 +444,27 @@ class JiraNormalImporter(JiraImporterCommon):
                 offset += issues['maxResults']
 
                 for issue in issues['issues']:
-                    epic_key = issue['fields'][self.greenhopper_fields['link']]
-                    if epic_key:
+                    fields = issue.get('fields', {})
+                    epic_key = fields.get(epic_link_field) if epic_link_field else None
+                    if not epic_key:
+                        # Jira Cloud native epic link via the parent field.
+                        parent = fields.get('parent')
+                        if parent:
+                            epic_key = parent.get('key')
+                    if not epic_key:
+                        continue
+                    try:
                         epic = project.epics.get(ref=int(epic_key.split("-")[1]))
                         us = project.user_stories.get(ref=int(issue['key'].split("-")[1]))
-                        RelatedUserStory.objects.create(
-                            user_story=us,
-                            epic=epic,
-                            order=1
-                        )
+                    except (Epic.DoesNotExist, UserStory.DoesNotExist, ValueError, IndexError):
+                        # Parent isn't an imported epic (e.g. another story) or
+                        # the story wasn't imported -- nothing to link.
+                        continue
+                    RelatedUserStory.objects.create(
+                        user_story=us,
+                        epic=epic,
+                        order=1
+                    )
 
                 if len(issues['issues']) < issues['maxResults']:
                     break
