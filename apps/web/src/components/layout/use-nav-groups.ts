@@ -1,6 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
-import { Columns3, FolderKanban, ListOrdered, Palette } from 'lucide-react'
+import {
+  Columns3,
+  FolderKanban,
+  LayoutGrid,
+  ListOrdered,
+  Palette,
+} from 'lucide-react'
 import { projectQuery } from '@/lib/taiga/queries'
 import { type NavGroup } from './types'
 
@@ -26,6 +32,12 @@ export function useNavGroups(): NavGroup[] {
         title: 'Backlog',
         url: `/p/${project.slug}/backlog`,
         icon: ListOrdered,
+      })
+    if (project.is_backlog_activated)
+      items.push({
+        title: 'Taskboard',
+        url: `/p/${project.slug}/taskboard`,
+        icon: LayoutGrid,
       })
     if (project.is_kanban_activated)
       items.push({

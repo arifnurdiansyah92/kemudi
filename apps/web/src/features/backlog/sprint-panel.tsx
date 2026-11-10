@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { format, parseISO } from 'date-fns'
-import { ChevronRight } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { ChevronRight, LayoutGrid } from 'lucide-react'
 import type { Milestone, Project, UserStory } from '@/lib/taiga/types'
 import { cn } from '@/lib/utils'
 import {
@@ -11,6 +12,7 @@ import {
 import { can } from '@/features/project/use-project'
 import { QuickAdd } from '@/features/story/quick-add'
 import { sumPoints } from '@/features/story/utils'
+import { SprintMenu } from '@/features/taskboard/sprint-menu'
 import { StoryRow } from './story-row'
 
 function dateRange(sprint: Milestone) {
@@ -45,29 +47,41 @@ export function SprintPanel({
       onOpenChange={setOpen}
       className='overflow-hidden rounded-lg border bg-card'
     >
-      <CollapsibleTrigger className='flex w-full items-center gap-3 px-4 py-3 text-start outline-none hover:bg-accent/50 focus-visible:bg-accent'>
-        <ChevronRight
-          aria-hidden='true'
-          className={cn(
-            'size-4 shrink-0 text-muted-foreground transition-transform',
-            open && 'rotate-90'
-          )}
-        />
-        <span className='min-w-0 flex-1'>
-          <span className='block truncate font-medium'>{sprint.name}</span>
-          <span className='block text-xs text-muted-foreground tabular-nums'>
-            {dateRange(sprint)}
+      <div className='flex items-center pe-2'>
+        <CollapsibleTrigger className='flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-start outline-none hover:bg-accent/50 focus-visible:bg-accent'>
+          <ChevronRight
+            aria-hidden='true'
+            className={cn(
+              'size-4 shrink-0 text-muted-foreground transition-transform',
+              open && 'rotate-90'
+            )}
+          />
+          <span className='min-w-0 flex-1'>
+            <span className='block truncate font-medium'>{sprint.name}</span>
+            <span className='block text-xs text-muted-foreground tabular-nums'>
+              {dateRange(sprint)}
+            </span>
           </span>
-        </span>
-        <span className='shrink-0 text-end text-xs tabular-nums'>
-          <span className='font-medium'>
-            {done} of {total} pts
+          <span className='shrink-0 text-end text-xs tabular-nums'>
+            <span className='font-medium'>
+              {done} of {total} pts
+            </span>
+            <span className='block text-muted-foreground'>
+              {stories.length} {stories.length === 1 ? 'story' : 'stories'}
+            </span>
           </span>
-          <span className='block text-muted-foreground'>
-            {stories.length} {stories.length === 1 ? 'story' : 'stories'}
-          </span>
-        </span>
-      </CollapsibleTrigger>
+        </CollapsibleTrigger>
+        <Link
+          to='/p/$slug/taskboard/$sprint'
+          params={{ slug: project.slug, sprint: String(sprint.id) }}
+          aria-label={`Open the ${sprint.name} taskboard`}
+          title='Taskboard'
+          className='flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground'
+        >
+          <LayoutGrid className='size-4' />
+        </Link>
+        <SprintMenu project={project} sprint={sprint} />
+      </div>
       <div
         className='h-1 bg-muted'
         role='progressbar'

@@ -26,6 +26,8 @@ import { Route as AuthenticatedPSlugRouteRouteImport } from './routes/_authentic
 import { Route as AuthenticatedPSlugIndexRouteImport } from './routes/_authenticated/p/$slug/index'
 import { Route as AuthenticatedPSlugKanbanRouteImport } from './routes/_authenticated/p/$slug/kanban'
 import { Route as AuthenticatedPSlugBacklogRouteImport } from './routes/_authenticated/p/$slug/backlog'
+import { Route as AuthenticatedPSlugTaskboardIndexRouteImport } from './routes/_authenticated/p/$slug/taskboard/index'
+import { Route as AuthenticatedPSlugTaskboardSprintRouteImport } from './routes/_authenticated/p/$slug/taskboard/$sprint'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
@@ -116,6 +118,18 @@ const AuthenticatedPSlugBacklogRoute =
     path: '/backlog',
     getParentRoute: () => AuthenticatedPSlugRouteRoute,
   } as any)
+const AuthenticatedPSlugTaskboardIndexRoute =
+  AuthenticatedPSlugTaskboardIndexRouteImport.update({
+    id: '/taskboard/',
+    path: '/taskboard/',
+    getParentRoute: () => AuthenticatedPSlugRouteRoute,
+  } as any)
+const AuthenticatedPSlugTaskboardSprintRoute =
+  AuthenticatedPSlugTaskboardSprintRouteImport.update({
+    id: '/taskboard/$sprint',
+    path: '/taskboard/$sprint',
+    getParentRoute: () => AuthenticatedPSlugRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -134,6 +148,8 @@ export interface FileRoutesByFullPath {
   '/p/$slug/backlog': typeof AuthenticatedPSlugBacklogRoute
   '/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
   '/p/$slug/': typeof AuthenticatedPSlugIndexRoute
+  '/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
+  '/p/$slug/taskboard/': typeof AuthenticatedPSlugTaskboardIndexRoute
 }
 export interface FileRoutesByTo {
   '/forgot-password': typeof authForgotPasswordRoute
@@ -150,6 +166,8 @@ export interface FileRoutesByTo {
   '/p/$slug/backlog': typeof AuthenticatedPSlugBacklogRoute
   '/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
   '/p/$slug': typeof AuthenticatedPSlugIndexRoute
+  '/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
+  '/p/$slug/taskboard': typeof AuthenticatedPSlugTaskboardIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -170,6 +188,8 @@ export interface FileRoutesById {
   '/_authenticated/p/$slug/backlog': typeof AuthenticatedPSlugBacklogRoute
   '/_authenticated/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
   '/_authenticated/p/$slug/': typeof AuthenticatedPSlugIndexRoute
+  '/_authenticated/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
+  '/_authenticated/p/$slug/taskboard/': typeof AuthenticatedPSlugTaskboardIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -190,6 +210,8 @@ export interface FileRouteTypes {
     | '/p/$slug/backlog'
     | '/p/$slug/kanban'
     | '/p/$slug/'
+    | '/p/$slug/taskboard/$sprint'
+    | '/p/$slug/taskboard/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/forgot-password'
@@ -206,6 +228,8 @@ export interface FileRouteTypes {
     | '/p/$slug/backlog'
     | '/p/$slug/kanban'
     | '/p/$slug'
+    | '/p/$slug/taskboard/$sprint'
+    | '/p/$slug/taskboard'
   id:
     | '__root__'
     | '/_authenticated'
@@ -225,6 +249,8 @@ export interface FileRouteTypes {
     | '/_authenticated/p/$slug/backlog'
     | '/_authenticated/p/$slug/kanban'
     | '/_authenticated/p/$slug/'
+    | '/_authenticated/p/$slug/taskboard/$sprint'
+    | '/_authenticated/p/$slug/taskboard/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -360,6 +386,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPSlugBacklogRouteImport
       parentRoute: typeof AuthenticatedPSlugRouteRoute
     }
+    '/_authenticated/p/$slug/taskboard/': {
+      id: '/_authenticated/p/$slug/taskboard/'
+      path: '/taskboard'
+      fullPath: '/p/$slug/taskboard/'
+      preLoaderRoute: typeof AuthenticatedPSlugTaskboardIndexRouteImport
+      parentRoute: typeof AuthenticatedPSlugRouteRoute
+    }
+    '/_authenticated/p/$slug/taskboard/$sprint': {
+      id: '/_authenticated/p/$slug/taskboard/$sprint'
+      path: '/taskboard/$sprint'
+      fullPath: '/p/$slug/taskboard/$sprint'
+      preLoaderRoute: typeof AuthenticatedPSlugTaskboardSprintRouteImport
+      parentRoute: typeof AuthenticatedPSlugRouteRoute
+    }
   }
 }
 
@@ -383,6 +423,8 @@ interface AuthenticatedPSlugRouteRouteChildren {
   AuthenticatedPSlugBacklogRoute: typeof AuthenticatedPSlugBacklogRoute
   AuthenticatedPSlugKanbanRoute: typeof AuthenticatedPSlugKanbanRoute
   AuthenticatedPSlugIndexRoute: typeof AuthenticatedPSlugIndexRoute
+  AuthenticatedPSlugTaskboardSprintRoute: typeof AuthenticatedPSlugTaskboardSprintRoute
+  AuthenticatedPSlugTaskboardIndexRoute: typeof AuthenticatedPSlugTaskboardIndexRoute
 }
 
 const AuthenticatedPSlugRouteRouteChildren: AuthenticatedPSlugRouteRouteChildren =
@@ -390,6 +432,10 @@ const AuthenticatedPSlugRouteRouteChildren: AuthenticatedPSlugRouteRouteChildren
     AuthenticatedPSlugBacklogRoute: AuthenticatedPSlugBacklogRoute,
     AuthenticatedPSlugKanbanRoute: AuthenticatedPSlugKanbanRoute,
     AuthenticatedPSlugIndexRoute: AuthenticatedPSlugIndexRoute,
+    AuthenticatedPSlugTaskboardSprintRoute:
+      AuthenticatedPSlugTaskboardSprintRoute,
+    AuthenticatedPSlugTaskboardIndexRoute:
+      AuthenticatedPSlugTaskboardIndexRoute,
   }
 
 const AuthenticatedPSlugRouteRouteWithChildren =

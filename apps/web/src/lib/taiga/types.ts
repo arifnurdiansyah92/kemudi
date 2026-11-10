@@ -205,6 +205,10 @@ export interface Task {
   assigned_to_extra_info: UserExtraInfo | null
   us_order: number
   taskboard_order: number
+  is_blocked: boolean
+  blocked_note: string
+  is_iocaine: boolean
+  tags: Tag[]
 }
 
 export interface HistoryEntry {

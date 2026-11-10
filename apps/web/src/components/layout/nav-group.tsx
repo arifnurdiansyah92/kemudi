@@ -177,6 +177,8 @@ function checkIsActive(href: string, item: NavItem, mainNav = false) {
   return (
     href === item.url || // /endpint?search=param
     href.split('?')[0] === item.url || // endpoint
+    // a page below a nav entry, e.g. /p/x/taskboard/3 under /p/x/taskboard
+    (!!item.url && item.url !== '/' && href.startsWith(`${item.url}/`)) ||
     !!item?.items?.filter((i) => i.url === href).length || // if child nav is active
     (mainNav &&
       href.split('/')[1] !== '' &&
