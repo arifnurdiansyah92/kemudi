@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { useAuthStore } from '@/stores/auth-store'
 import { api } from '@/lib/taiga/client'
 import { onFail } from '@/lib/taiga/items'
@@ -104,7 +104,13 @@ function Members({ project }: { project: Project }) {
                   <UserAvatar user={m} className='size-9' />
                   <div className='min-w-0 flex-1'>
                     <p className='font-medium'>
-                      {m.full_name_display}
+                      <Link
+                        to='/profile/$username'
+                        params={{ username: m.username }}
+                        className='underline-offset-4 hover:underline'
+                      >
+                        {m.full_name_display}
+                      </Link>
                       {m.id === me && (
                         <span className='ms-2 text-xs font-normal text-muted-foreground'>
                           you

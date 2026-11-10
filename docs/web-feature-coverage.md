@@ -98,6 +98,8 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 - [x] Notification settings per project (email level, bell)
 - [x] Connected apps (application tokens): list and revoke
 
+- [x] Public profile: activity, watching, liked projects, votes, contacts
+
 ## Importers
 
 - [ ] Jira, Trello, GitHub, Asana

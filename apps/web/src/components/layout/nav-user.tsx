@@ -1,5 +1,11 @@
 import { Link } from '@tanstack/react-router'
-import { ChevronsUpDown, LogOut, Palette, UserCog } from 'lucide-react'
+import {
+  ChevronsUpDown,
+  LogOut,
+  Palette,
+  UserCog,
+  UserRound,
+} from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import useDialogState from '@/hooks/use-dialog-state'
 import {
@@ -60,6 +66,15 @@ export function NavUser() {
                 </span>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link
+                  to='/profile/$username'
+                  params={{ username: user.username }}
+                >
+                  <UserRound />
+                  Your profile
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link to='/settings/profile'>
                   <UserCog />

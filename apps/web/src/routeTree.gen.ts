@@ -31,6 +31,7 @@ import { Route as AuthenticatedSettingsAppearanceRouteImport } from './routes/_a
 import { Route as AuthenticatedSettingsAccountRouteImport } from './routes/_authenticated/settings/account'
 import { Route as AuthenticatedProjectsNewRouteImport } from './routes/_authenticated/projects/new'
 import { Route as AuthenticatedProjectNewRouteImport } from './routes/_authenticated/project/new'
+import { Route as AuthenticatedProfileUsernameRouteImport } from './routes/_authenticated/profile/$username'
 import { Route as authVerifyEmailTokenRouteImport } from './routes/(auth)/verify-email.$token'
 import { Route as authChangePasswordTokenRouteImport } from './routes/(auth)/change-password.$token'
 import { Route as authChangeEmailTokenRouteImport } from './routes/(auth)/change-email.$token'
@@ -180,6 +181,12 @@ const AuthenticatedProjectNewRoute = AuthenticatedProjectNewRouteImport.update({
   path: '/project/new',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedProfileUsernameRoute =
+  AuthenticatedProfileUsernameRouteImport.update({
+    id: '/profile/$username',
+    path: '/profile/$username',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const authVerifyEmailTokenRoute = authVerifyEmailTokenRouteImport.update({
   id: '/(auth)/verify-email/$token',
   path: '/verify-email/$token',
@@ -364,6 +371,7 @@ export interface FileRoutesByFullPath {
   '/change-email/$token': typeof authChangeEmailTokenRoute
   '/change-password/$token': typeof authChangePasswordTokenRoute
   '/verify-email/$token': typeof authVerifyEmailTokenRoute
+  '/profile/$username': typeof AuthenticatedProfileUsernameRoute
   '/project/new': typeof AuthenticatedProjectNewRoute
   '/projects/new': typeof AuthenticatedProjectsNewRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
@@ -414,6 +422,7 @@ export interface FileRoutesByTo {
   '/change-email/$token': typeof authChangeEmailTokenRoute
   '/change-password/$token': typeof authChangePasswordTokenRoute
   '/verify-email/$token': typeof authVerifyEmailTokenRoute
+  '/profile/$username': typeof AuthenticatedProfileUsernameRoute
   '/project/new': typeof AuthenticatedProjectNewRoute
   '/projects/new': typeof AuthenticatedProjectsNewRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
@@ -467,6 +476,7 @@ export interface FileRoutesById {
   '/(auth)/change-email/$token': typeof authChangeEmailTokenRoute
   '/(auth)/change-password/$token': typeof authChangePasswordTokenRoute
   '/(auth)/verify-email/$token': typeof authVerifyEmailTokenRoute
+  '/_authenticated/profile/$username': typeof AuthenticatedProfileUsernameRoute
   '/_authenticated/project/new': typeof AuthenticatedProjectNewRoute
   '/_authenticated/projects/new': typeof AuthenticatedProjectsNewRoute
   '/_authenticated/settings/account': typeof AuthenticatedSettingsAccountRoute
@@ -521,6 +531,7 @@ export interface FileRouteTypes {
     | '/change-email/$token'
     | '/change-password/$token'
     | '/verify-email/$token'
+    | '/profile/$username'
     | '/project/new'
     | '/projects/new'
     | '/settings/account'
@@ -571,6 +582,7 @@ export interface FileRouteTypes {
     | '/change-email/$token'
     | '/change-password/$token'
     | '/verify-email/$token'
+    | '/profile/$username'
     | '/project/new'
     | '/projects/new'
     | '/settings/account'
@@ -623,6 +635,7 @@ export interface FileRouteTypes {
     | '/(auth)/change-email/$token'
     | '/(auth)/change-password/$token'
     | '/(auth)/verify-email/$token'
+    | '/_authenticated/profile/$username'
     | '/_authenticated/project/new'
     | '/_authenticated/projects/new'
     | '/_authenticated/settings/account'
@@ -829,6 +842,13 @@ declare module '@tanstack/react-router' {
       path: '/project/new'
       fullPath: '/project/new'
       preLoaderRoute: typeof AuthenticatedProjectNewRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/profile/$username': {
+      id: '/_authenticated/profile/$username'
+      path: '/profile/$username'
+      fullPath: '/profile/$username'
+      preLoaderRoute: typeof AuthenticatedProfileUsernameRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/(auth)/verify-email/$token': {
@@ -1144,6 +1164,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDiscoverRoute: typeof AuthenticatedDiscoverRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedPSlugRouteRoute: typeof AuthenticatedPSlugRouteRouteWithChildren
+  AuthenticatedProfileUsernameRoute: typeof AuthenticatedProfileUsernameRoute
   AuthenticatedProjectNewRoute: typeof AuthenticatedProjectNewRoute
   AuthenticatedProjectsNewRoute: typeof AuthenticatedProjectsNewRoute
   AuthenticatedUserSettingsSplatRoute: typeof AuthenticatedUserSettingsSplatRoute
@@ -1157,6 +1178,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDiscoverRoute: AuthenticatedDiscoverRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedPSlugRouteRoute: AuthenticatedPSlugRouteRouteWithChildren,
+  AuthenticatedProfileUsernameRoute: AuthenticatedProfileUsernameRoute,
   AuthenticatedProjectNewRoute: AuthenticatedProjectNewRoute,
   AuthenticatedProjectsNewRoute: AuthenticatedProjectsNewRoute,
   AuthenticatedUserSettingsSplatRoute: AuthenticatedUserSettingsSplatRoute,
