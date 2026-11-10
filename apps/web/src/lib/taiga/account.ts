@@ -131,7 +131,7 @@ export function useUpdateNotifyPolicy() {
   })
 }
 
-export interface Locale {
+interface Locale {
   code: string
   name: string
   bidi: boolean
@@ -145,7 +145,7 @@ export function useLocales() {
   })
 }
 
-export interface ApplicationToken {
+interface ApplicationToken {
   id: Id
   application: {
     id: string

@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { StatusDot } from '@/features/story/parts'
 
-export type Option = { id: number; name: string; color?: string }
+type Option = { id: number; name: string; color?: string }
 
 type OptionMenuProps = {
   label: string

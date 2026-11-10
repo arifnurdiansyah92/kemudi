@@ -4,9 +4,9 @@ Kemudi is an open-source project management platform built on the
 [Taiga](https://taiga.io) backend, with a new web UI and an AI agent ("Awak")
 that works alongside the team.
 
-> Status: early. The backend runs, and the new web UI covers sign-in,
-> projects, backlog, kanban and story detail. The AI service is not written
-> yet. See [Roadmap](#roadmap).
+> Status: early. The backend runs, and the new web UI covers what
+> taiga-front does (see [docs/web-feature-coverage.md](docs/web-feature-coverage.md)).
+> The AI service is not written yet. See [Roadmap](#roadmap).
 
 ## Repository layout
 
@@ -40,9 +40,9 @@ docker compose -f infra/docker-compose.dev.yml --env-file infra/.env exec kemudi
     python manage.py createsuperuser
 ```
 
-Open <http://localhost:9100> for the Kemudi UI. Screens it does not have yet
-are on the stock `taigaio/taiga-front` at <http://localhost:9101>, which uses
-the same backend and accounts.
+Open <http://localhost:9100> for the Kemudi UI. The stock `taigaio/taiga-front`
+still runs at <http://localhost:9101> against the same backend and accounts,
+for comparison while it is retired.
 
 To work on the UI with hot reload, run `pnpm dev` in `apps/web` (Node 22.12+)
 and open <http://localhost:5173>. See [apps/web/README.md](apps/web/README.md).
@@ -72,8 +72,8 @@ submodule here.
 
 1. **Monorepo and forks**: done.
 2. **`apps/web`**: new UI based on [shadcn-admin](https://github.com/satnaing/shadcn-admin).
-   In progress: sign-in, projects, backlog, kanban and story detail are done.
-   Next: sprint taskboard, issues, then the taiga-v2 patches.
+   Covers taiga-front's features plus sprint access; the remaining taiga-v2
+   patches (link items, clone, board fields, move task) come next.
 3. **Kemudi AI**: `apps/orchestrator`, Awak and `infra/sandbox`.
 
 ## License

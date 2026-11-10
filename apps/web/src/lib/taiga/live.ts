@@ -10,7 +10,7 @@ import { useParams } from '@tanstack/react-router'
 import { useAuthStore } from '@/stores/auth-store'
 import { api } from './client'
 
-export const sessionId =
+const sessionId =
   globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
 
 api.interceptors.request.use((config) => {

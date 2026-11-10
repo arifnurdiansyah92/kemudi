@@ -4,7 +4,7 @@ import { api } from './client'
 import { onFail } from './items'
 import type { Id, Project, ProjectSummary } from './types'
 
-export interface ProjectTemplate {
+interface ProjectTemplate {
   id: Id
   name: string
   slug: string

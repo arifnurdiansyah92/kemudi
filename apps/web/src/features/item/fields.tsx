@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input'
 import { UserAvatar } from '@/components/user-avatar'
 import { OptionMenu } from './option-menu'
 
-export type FieldProps = {
+type FieldProps = {
   project: Project
   kind: ItemKind
   item: Item

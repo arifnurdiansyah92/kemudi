@@ -98,7 +98,7 @@ const ALL = { headers: { 'x-disable-pagination': '1' } }
 
 export type LoadedItem = { kind: ItemKind; item: Item }
 
-export const itemKey = (projectId: Id, ref: number) =>
+const itemKey = (projectId: Id, ref: number) =>
   ['item', projectId, ref] as const
 
 /** Lists that show items; refreshed after any item change. */
@@ -168,7 +168,7 @@ function writeBack(qc: QueryClient, project: Id, kind: ItemKind, item: Item) {
     )
 }
 
-export async function patchItem(
+async function patchItem(
   qc: QueryClient,
   project: Id,
   kind: ItemKind,

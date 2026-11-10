@@ -23,7 +23,7 @@ export interface WikiPage {
   total_watchers: number
 }
 
-export interface WikiLink {
+interface WikiLink {
   id: Id
   title: string
   href: string

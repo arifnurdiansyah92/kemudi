@@ -15,7 +15,7 @@ type Ref = {
   name?: string
 }
 
-export interface TimelineEvent {
+interface TimelineEvent {
   id: number
   event_type: string
   created: string
@@ -36,7 +36,7 @@ export interface TimelineEvent {
 }
 
 /** project/<id>, user/<id> (what the user did) or profile/<id> (what they follow). */
-export type TimelineSource = `${'project' | 'user' | 'profile'}/${number}`
+type TimelineSource = `${'project' | 'user' | 'profile'}/${number}`
 
 const NOUN: Record<string, string> = {
   userstory: 'story',

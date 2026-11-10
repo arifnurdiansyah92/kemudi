@@ -193,7 +193,7 @@ export function useBulkCreateStories(project: Project) {
   })
 }
 
-export interface ProjectStatsData {
+interface ProjectStatsData {
   total_points: number | null
   closed_points: number
   defined_points: number

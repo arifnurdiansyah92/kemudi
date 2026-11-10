@@ -4,24 +4,27 @@ The Kemudi web UI. React 19, Vite, TypeScript, TanStack Router and Query,
 Tailwind CSS 4 and shadcn/ui, started from
 [shadcn-admin](https://github.com/satnaing/shadcn-admin) 2.2.1 (MIT, see
 `LICENSE.shadcn-admin`). It talks to `services/kemudi-back` over the Taiga
-REST API (`/api/v1`).
+REST API (`/api/v1`) and to `services/kemudi-events` over a websocket
+(`/events`) for live updates.
 
 ## What it covers
 
-| Screen                                     | Route                                                      | Notes                                                                                                          |
-| ------------------------------------------ | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Sign in, forgot password, set new password | `/sign-in`, `/forgot-password`, `/change-password/<token>` | The reset email from kemudi-back links to the last one.                                                        |
-| Projects                                   | `/`                                                        | Projects you are a member of.                                                                                  |
-| Backlog                                    | `/p/<slug>/backlog`                                        | Drag to reorder, quick add, status and assignee menus, move to sprint, open sprints with progress, new sprint. |
-| Kanban                                     | `/p/<slug>/kanban`                                         | Drag across and within columns, WIP counts, quick add per column.                                              |
-| Item sheet                                 | `?ref=<n>` on any project page                             | Stories, tasks, issues, epics: fields, tags, points, due date, blocked, watch/vote, attachments, custom fields, comments, activity, delete. |
-| Appearance                                 | `/settings/appearance`                                     | Font and theme.                                                                                                |
+Everything taiga-front does for day-to-day work and administration; the
+item-by-item list is in
+[docs/web-feature-coverage.md](../../docs/web-feature-coverage.md). In short:
 
-Not built yet, still on the stock UI at <http://localhost:9101>: sprint
-taskboard, issues, epics, wiki, project admin, user profile, and the taiga-v2
-patches (link items, clone, board fields, filter search, sprint access, move
-task). Views respect the project's module switches: kanban redirects to the
-backlog when kanban is off, and the reverse.
+| Area                           | Routes                                                                                                                                                                           |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Account                        | `/sign-in`, `/sign-up`, `/forgot-password`, `/invitation/<token>`, `/settings/*` (profile, password and email, notifications, connected apps, appearance), `/profile/<username>` |
+| Work across projects           | `/` (working on, watching), `/projects` (create, reorder, import), `/discover`, notifications bell, Ctrl/Cmd+K search                                                            |
+| A project                      | `/p/<slug>/epics`, `backlog`, `taskboard/<sprint>`, `kanban`, `issues`, `wiki/<page>`, `team`, `timeline`                                                                        |
+| Any story, task, issue or epic | `?ref=<n>` on any project page opens the item sheet                                                                                                                              |
+| Project admin                  | `/p/<slug>/settings/*`: general, members, roles, statuses and values, custom fields, tags, webhooks, integrations, import and export, sprint access                              |
+
+Old taiga-front URLs (what kemudi-back puts in emails and in rendered
+Markdown, such as `/project/<slug>/us/14`) redirect to the matching screen,
+so `services/kemudi-back` needs no front-end URL changes. Views follow each
+project's module switches.
 
 ## Develop
 
@@ -33,40 +36,49 @@ pnpm install
 pnpm dev          # http://localhost:5173, proxies /api, /media, /events to :9100
 pnpm typecheck
 pnpm lint
+pnpm knip         # unused files, exports and dependencies
 pnpm test         # Vitest in headless Chromium; first run: pnpm test:browser:install
 pnpm build
 ```
 
-Set `KEMUDI_DEV_GATEWAY` to proxy to another stack, or `VITE_API_URL` if the
-API is not on the same origin in production. See `.env.example`.
+Set `KEMUDI_DEV_GATEWAY` to proxy to another stack, `VITE_API_URL` if the API
+is not on the same origin in production, and `VITE_EVENTS_URL` for the
+websocket. See `.env.example`.
 
 ## Layout
 
 ```
 src/
-├── lib/taiga/        API client (auth, token refresh), types, query hooks
+├── lib/taiga/        API client (auth, refresh), types, and hooks per area:
+│                     queries (stories), items (any item kind), sprints,
+│                     issues, epics, wiki, me, account, admin, projects, live
+├── lib/legacy-urls   taiga-front URL → Kemudi route mapping
 ├── stores/           session (token, refresh token, user) in localStorage
 ├── features/
-│   ├── auth/         sign-in, forgot and change password
-│   ├── projects/     projects list
-│   ├── project/      useProject(), permissions, story sheet URL state
-│   ├── backlog/      backlog list, sprint panels, new-sprint dialog
-│   ├── kanban/       board and cards
-│   ├── item/         item sheet for stories, tasks, issues and epics
-│   ├── story/        list-row parts (status, assignee, tags)
-│   └── settings/     appearance
-├── components/       layout shell, sidebar, command menu (Ctrl/Cmd+K), ui/
+│   ├── auth/         sign-in, sign-up, invitation, password and email links
+│   ├── home/ projects/ profile/ notifications/ timeline/ team/
+│   ├── backlog/ taskboard/ kanban/ issues/ epics/ wiki/
+│   ├── item/         the item sheet and its fields, comments, attachments
+│   ├── filters/      filter bar, facets, saved filters
+│   ├── project-settings/  project admin pages
+│   ├── settings/     your own settings
+│   └── importers/    Jira, Trello, GitHub, Asana
+├── components/       layout shell, sidebar, command menu, mention textarea, ui/
 └── routes/           file routes (TanStack Router)
 ```
 
 Notes for changing things:
 
-- Every story `PATCH` sends the cached `version`. kemudi-back rejects stale
-  versions, so mutations write the returned version back into the cache.
-- Kanban position is not writable through `PATCH`. A move is a status
-  `PATCH` (when the column changes) followed by
-  `bulk_update_kanban_order`. Backlog order uses `bulk_update_backlog_order`.
-- Description and comment HTML comes from kemudi-back, which sanitises it.
+- Every item `PATCH` sends the cached `version`; kemudi-back rejects stale
+  versions, so mutations write the returned version back into the caches.
+- Order is never part of `PATCH`: kanban, backlog, taskboard and settings
+  lists use their `bulk_update_*_order` endpoints.
+- Refs are unique per project across stories, tasks, issues and epics, so
+  the item sheet resolves `?ref=` through `/resolver`.
+- HTML from kemudi-back (descriptions, comments, wiki, diffs) is sanitised
+  there; links in it that point at taiga-front routes open in-app.
+- Live updates: requests carry `X-Session-Id`, so the events service does not
+  echo our own changes back.
 - Avatars without an uploaded photo show initials on the member's colour.
   There is deliberately no Gravatar fallback, so a self-hosted install sends
   nothing to third parties.

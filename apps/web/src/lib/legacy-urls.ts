@@ -6,7 +6,7 @@
 import { api } from './taiga/client'
 import type { ResolvedRef } from './taiga/types'
 
-export type Target = {
+type Target = {
   to: string
   params?: Record<string, string>
   search?: Record<string, unknown>

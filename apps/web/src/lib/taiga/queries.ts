@@ -22,7 +22,7 @@ import type {
 
 const ALL = { headers: { 'x-disable-pagination': '1' } }
 
-export const keys = {
+const keys = {
   projects: (userId: Id) => ['projects', userId] as const,
   project: (slug: string) => ['project', slug] as const,
   stories: (projectId: Id) => ['stories', projectId] as const,
@@ -57,7 +57,7 @@ export const projectQuery = (slug: string) =>
     staleTime: 60_000,
   })
 
-export const storiesQuery = (projectId: Id) =>
+const storiesQuery = (projectId: Id) =>
   queryOptions({
     queryKey: keys.stories(projectId),
     queryFn: async () =>

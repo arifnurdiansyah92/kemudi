@@ -10,10 +10,7 @@ const config: KnipConfig = {
   ],
   // Radix packages behind shadcn ui/ primitives that no screen uses yet.
   ignoreDependencies: [
-    '@radix-ui/react-popover',
     '@radix-ui/react-select',
-    '@radix-ui/react-switch',
-    '@radix-ui/react-tabs',
   ],
 }
 

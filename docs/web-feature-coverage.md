@@ -1,7 +1,12 @@
 # apps/web: Taiga feature coverage
 
-What taiga-front does, and whether `apps/web` does it yet. Each item lands as
-its own small commit. Source of truth for the API: `services/kemudi-back/taiga/routers.py`.
+What taiga-front does, and whether `apps/web` does it. Each item landed as its
+own small commit and was checked in a browser against the dev stack.
+Source of truth for the API: `services/kemudi-back/taiga/routers.py`.
+
+Not covered on purpose: the taiga-v2 patches that are not part of Taiga
+(link items, clone, board fields, filter search, move task); they are the
+next roadmap step.
 
 ## Work items (stories, tasks, issues, epics)
 
