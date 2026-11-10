@@ -4,7 +4,7 @@ import { render, type RenderResult } from 'vitest-browser-react'
 import { userEvent } from 'vitest/browser'
 import { SearchProvider } from '@/context/search-provider'
 
-const COMMAND_MENU_PLACEHOLDER = 'Jump to a view, project or story'
+const COMMAND_MENU_PLACEHOLDER = 'Jump to a view or project'
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),

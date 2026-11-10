@@ -2,7 +2,8 @@ import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { FolderKanban, Laptop, Moon, Sun } from 'lucide-react'
-import { projectQuery, storiesQuery, useProjects } from '@/lib/taiga/queries'
+import { api } from '@/lib/taiga/client'
+import { projectQuery, useProjects } from '@/lib/taiga/queries'
 import { useSearch } from '@/context/search-provider'
 import { useTheme } from '@/context/theme-provider'
 import {
@@ -17,7 +18,23 @@ import {
 import { useNavGroups } from './layout/use-nav-groups'
 import { ScrollArea } from './ui/scroll-area'
 
-/** Ctrl/Cmd+K: jump to a view, a project, or a story in the open project. */
+type Hit = { id: number; ref?: number; subject?: string; slug?: string }
+type SearchResults = Record<
+  'userstories' | 'tasks' | 'issues' | 'epics' | 'wikipages',
+  Hit[]
+>
+const SEARCH_GROUPS: [keyof SearchResults, string][] = [
+  ['userstories', 'Stories'],
+  ['tasks', 'Tasks'],
+  ['issues', 'Issues'],
+  ['epics', 'Epics'],
+  ['wikipages', 'Wiki pages'],
+]
+
+/**
+ * Ctrl/Cmd+K: jump to a view or project, or search the open project's
+ * stories, tasks, issues, epics and wiki (server-side, two letters or more).
+ */
 export function CommandMenu() {
   const navigate = useNavigate()
   const { setTheme } = useTheme()
@@ -29,9 +46,21 @@ export function CommandMenu() {
     ...projectQuery(slug ?? ''),
     enabled: !!slug,
   })
-  const { data: stories = [] } = useQuery({
-    ...storiesQuery(project?.id ?? 0),
-    enabled: open && !!project,
+  const [query, setQuery] = React.useState('')
+  const [debounced, setDebounced] = React.useState('')
+  React.useEffect(() => {
+    const t = window.setTimeout(() => setDebounced(query.trim()), 250)
+    return () => window.clearTimeout(t)
+  }, [query])
+  const { data: results } = useQuery({
+    queryKey: ['search', project?.id, debounced],
+    enabled: open && !!project && debounced.length >= 2,
+    queryFn: async () =>
+      (
+        await api.get<SearchResults>('/search', {
+          params: { project: project!.id, text: debounced },
+        })
+      ).data,
   })
 
   const run = React.useCallback(
@@ -44,7 +73,15 @@ export function CommandMenu() {
 
   return (
     <CommandDialog modal open={open} onOpenChange={setOpen}>
-      <CommandInput placeholder='Jump to a view, project or story' />
+      <CommandInput
+        value={query}
+        onValueChange={setQuery}
+        placeholder={
+          project
+            ? `Search ${project.name}, or jump to a view`
+            : 'Jump to a view or project'
+        }
+      />
       <CommandList>
         <ScrollArea type='hover' className='h-80 pe-1'>
           <CommandEmpty>Nothing matches.</CommandEmpty>
@@ -68,32 +105,49 @@ export function CommandMenu() {
             </CommandGroup>
           ))}
 
-          {project && stories.length > 0 && (
-            <CommandGroup heading={`Stories in ${project.name}`}>
-              {stories.map((story) => (
-                <CommandItem
-                  key={story.id}
-                  value={`#${story.ref} ${story.subject}`}
-                  onSelect={() =>
-                    run(() =>
-                      navigate({
-                        to: '.',
-                        search: (prev: Record<string, unknown>) => ({
-                          ...prev,
-                          ref: story.ref,
-                        }),
-                      })
-                    )
-                  }
-                >
-                  <span className='w-10 shrink-0 text-xs text-muted-foreground tabular-nums'>
-                    #{story.ref}
-                  </span>
-                  <span className='truncate'>{story.subject}</span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
+          {project &&
+            results &&
+            SEARCH_GROUPS.map(([key, label]) => {
+              const hits = results[key]
+              if (!hits?.length) return null
+              return (
+                <CommandGroup key={key} heading={`${label} in ${project.name}`}>
+                  {hits.map((hit) => (
+                    <CommandItem
+                      key={`${key}-${hit.id}`}
+                      // Results are already matched by the server; keep the
+                      // query in the value so cmdk does not hide them.
+                      value={`${query} ${key} ${hit.ref ?? hit.slug} ${hit.subject ?? hit.slug}`}
+                      onSelect={() =>
+                        run(() =>
+                          key === 'wikipages'
+                            ? navigate({
+                                to: '/p/$slug/wiki/$page',
+                                params: { slug: project.slug, page: hit.slug! },
+                              })
+                            : navigate({
+                                to: '.',
+                                search: (prev: Record<string, unknown>) => ({
+                                  ...prev,
+                                  ref: hit.ref,
+                                }),
+                              })
+                        )
+                      }
+                    >
+                      {hit.ref && (
+                        <span className='w-10 shrink-0 text-xs text-muted-foreground tabular-nums'>
+                          #{hit.ref}
+                        </span>
+                      )}
+                      <span className='truncate'>
+                        {hit.subject ?? hit.slug}
+                      </span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )
+            })}
 
           {projects.length > 0 && (
             <CommandGroup heading='Projects'>

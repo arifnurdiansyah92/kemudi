@@ -66,7 +66,7 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 - [x] Project timeline (activity)
 - [x] Home: working on, watching
 - [x] Notifications (web notifications)
-- [ ] Global search
+- [x] Global search
 - [ ] Live updates (taiga-events websocket)
 
 ## Projects
