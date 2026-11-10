@@ -1,0 +1,144 @@
+# Kemudi — development stack.
+#
+#   cp infra/.env.example infra/.env
+#   docker compose -f infra/docker-compose.dev.yml --env-file infra/.env up -d --build
+#   docker compose -f infra/docker-compose.dev.yml --env-file infra/.env exec kemudi-back \
+#       python manage.py createsuperuser
+#
+# Open http://localhost:${KEMUDI_PORT:-9100}
+#
+# kemudi-back and kemudi-events are built from services/. Until apps/web exists the
+# UI is the stock taiga-front image (no Aegis front patches).
+
+name: kemudi-dev
+
+x-back-environment: &back-environment
+  POSTGRES_DB: "taiga"
+  POSTGRES_USER: "${POSTGRES_USER}"
+  POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+  POSTGRES_HOST: "kemudi-db"
+  TAIGA_SECRET_KEY: "${SECRET_KEY}"
+  TAIGA_SITES_SCHEME: "${KEMUDI_SCHEME}"
+  TAIGA_SITES_DOMAIN: "${KEMUDI_DOMAIN}"
+  TAIGA_SUBPATH: ""
+  EMAIL_BACKEND: "django.core.mail.backends.console.EmailBackend"
+  DEFAULT_FROM_EMAIL: "kemudi@localhost"
+  RABBITMQ_USER: "${RABBITMQ_USER}"
+  RABBITMQ_PASS: "${RABBITMQ_PASS}"
+  TAIGA_EVENTS_RABBITMQ_HOST: "kemudi-events-rabbitmq"
+  TAIGA_ASYNC_RABBITMQ_HOST: "kemudi-async-rabbitmq"
+  ENABLE_TELEMETRY: "False"
+
+x-back-volumes: &back-volumes
+  - kemudi-static-data:/taiga-back/static
+  - kemudi-media-data:/taiga-back/media
+
+x-rabbitmq: &rabbitmq
+  image: rabbitmq:3.8-management-alpine
+  environment:
+    RABBITMQ_ERLANG_COOKIE: "${RABBITMQ_ERLANG_COOKIE}"
+    RABBITMQ_DEFAULT_USER: "${RABBITMQ_USER}"
+    RABBITMQ_DEFAULT_PASS: "${RABBITMQ_PASS}"
+    RABBITMQ_DEFAULT_VHOST: "taiga"
+  healthcheck:
+    test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+    interval: 5s
+    timeout: 10s
+    retries: 10
+    start_period: 30s
+
+services:
+  kemudi-db:
+    image: postgres:12.3
+    environment:
+      POSTGRES_DB: "taiga"
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 2s
+      timeout: 15s
+      retries: 5
+    volumes:
+      - kemudi-db-data:/var/lib/postgresql/data
+
+  kemudi-back:
+    build:
+      context: ../services/kemudi-back
+      dockerfile: docker/Dockerfile
+    image: kemudi/kemudi-back:dev
+    environment: *back-environment
+    volumes: *back-volumes
+    depends_on:
+      kemudi-db: { condition: service_healthy }
+      kemudi-events-rabbitmq: { condition: service_healthy }
+      kemudi-async-rabbitmq: { condition: service_healthy }
+
+  kemudi-async:
+    image: kemudi/kemudi-back:dev
+    entrypoint: ["/taiga-back/docker/async_entrypoint.sh"]
+    environment: *back-environment
+    volumes: *back-volumes
+    restart: unless-stopped
+    depends_on:
+      kemudi-back: { condition: service_started }
+
+  kemudi-async-rabbitmq:
+    <<: *rabbitmq
+    hostname: kemudi-async-rabbitmq
+    volumes:
+      - kemudi-async-rabbitmq-data:/var/lib/rabbitmq
+
+  kemudi-events:
+    build:
+      context: ../services/kemudi-events
+      dockerfile: docker/Dockerfile
+    image: kemudi/kemudi-events:dev
+    environment:
+      RABBITMQ_USER: "${RABBITMQ_USER}"
+      RABBITMQ_PASS: "${RABBITMQ_PASS}"
+      TAIGA_SECRET_KEY: "${SECRET_KEY}"
+      TAIGA_EVENTS_RABBITMQ_HOST: "kemudi-events-rabbitmq"
+    restart: unless-stopped
+    depends_on:
+      kemudi-events-rabbitmq: { condition: service_healthy }
+
+  kemudi-events-rabbitmq:
+    <<: *rabbitmq
+    hostname: kemudi-events-rabbitmq
+    volumes:
+      - kemudi-events-rabbitmq-data:/var/lib/rabbitmq
+
+  kemudi-protected:
+    image: taigaio/taiga-protected:latest
+    environment:
+      MAX_AGE: "360"
+      SECRET_KEY: "${SECRET_KEY}"
+
+  # Interim UI until apps/web replaces it.
+  kemudi-front:
+    image: taigaio/taiga-front:latest
+    environment:
+      TAIGA_URL: "${KEMUDI_SCHEME}://${KEMUDI_DOMAIN}"
+      TAIGA_WEBSOCKETS_URL: "${KEMUDI_WS_SCHEME}://${KEMUDI_DOMAIN}"
+      TAIGA_SUBPATH: ""
+
+  kemudi-gateway:
+    image: nginx:1.19-alpine
+    ports:
+      - "${KEMUDI_PORT:-9100}:80"
+    volumes:
+      - ./gateway/kemudi.conf:/etc/nginx/conf.d/default.conf:ro
+      - kemudi-static-data:/taiga/static
+      - kemudi-media-data:/taiga/media
+    depends_on:
+      - kemudi-front
+      - kemudi-back
+      - kemudi-events
+
+volumes:
+  kemudi-static-data:
+  kemudi-media-data:
+  kemudi-db-data:
+  kemudi-async-rabbitmq-data:
+  kemudi-events-rabbitmq-data:

@@ -1,0 +1,25 @@
+Kemudi
+Copyright (c) 2026 Kemudi contributors
+
+Code written for Kemudi is licensed under the GNU Affero General Public
+License v3.0 or later (LICENSES/AGPL-3.0.txt), except where noted below.
+
+This repository includes third-party software:
+
+services/kemudi-back
+  Fork of taiga-back (https://github.com/taigaio/taiga-back), version 6.10.2
+  Copyright (c) 2021-present Kaleidos INC
+  Mozilla Public License 2.0 (LICENSES/MPL-2.0.txt, services/kemudi-back/LICENSE)
+  Modified files are listed in docs/third-party/kemudi-back-changes.md
+
+services/kemudi-events
+  Fork of taiga-events (https://github.com/taigaio/taiga-events), version 6.10.0
+  Copyright (c) 2021-present Kaleidos INC
+  Mozilla Public License 2.0 (LICENSES/MPL-2.0.txt, services/kemudi-events/LICENSE)
+
+services/awak (git submodule)
+  Fork of hermes-agent (https://github.com/NousResearch/hermes-agent)
+  MIT License (LICENSES/MIT.txt, services/awak/LICENSE)
+
+"Taiga" is a trademark of Kaleidos INC. Kemudi is not affiliated with or
+endorsed by Kaleidos INC or Nous Research.

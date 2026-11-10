@@ -1,0 +1,5 @@
+[submodule "services/awak"]
+	path = services/awak
+	url = https://github.com/arifnurdiansyah92/hermes-agent.git
+	shallow = true
+	branch = main
