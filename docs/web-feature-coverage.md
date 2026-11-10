@@ -72,8 +72,8 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 ## Projects
 
 - [x] Projects list
-- [ ] Create project (template), duplicate
-- [ ] Discover public projects, like and watch projects
+- [x] Create project (template); duplicate is in project settings
+- [x] Discover public projects, like and watch projects
 - [x] Leave project
 
 ## Project admin

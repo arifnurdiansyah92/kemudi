@@ -1,7 +1,8 @@
 import { Link } from '@tanstack/react-router'
-import { Lock } from 'lucide-react'
+import { Lock, Plus } from 'lucide-react'
 import { useProjects } from '@/lib/taiga/queries'
 import { timeAgo } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AppHeader } from '@/components/layout/app-header'
 import { Main } from '@/components/layout/main'
@@ -13,10 +14,26 @@ export function Projects() {
     <>
       <AppHeader crumbs={[{ label: 'Projects' }]} />
       <Main className='max-w-4xl'>
-        <h1 className='text-2xl font-semibold tracking-tight'>Projects</h1>
-        <p className='mt-1 text-sm text-muted-foreground'>
-          Every project you are a member of.
-        </p>
+        <div className='flex flex-wrap items-end justify-between gap-3'>
+          <div>
+            <h1 className='text-2xl font-semibold tracking-tight'>Projects</h1>
+            <p className='mt-1 text-sm text-muted-foreground'>
+              Every project you are a member of.{' '}
+              <Link
+                to='/discover'
+                className='text-foreground underline-offset-4 hover:underline'
+              >
+                Discover public projects
+              </Link>
+            </p>
+          </div>
+          <Button size='sm' asChild>
+            <Link to='/projects/new'>
+              <Plus />
+              New project
+            </Link>
+          </Button>
+        </div>
 
         <div className='mt-8'>
           {isPending ? (
@@ -39,7 +56,7 @@ export function Projects() {
             <div className='rounded-lg border border-dashed p-10 text-center'>
               <p className='font-medium'>No projects yet</p>
               <p className='mt-1 text-sm text-muted-foreground'>
-                Ask a project admin to invite you.
+                Create one, or ask a project admin to invite you.
               </p>
             </div>
           ) : (

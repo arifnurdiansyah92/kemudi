@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
 import {
+  Compass,
   House,
   BookOpen,
   Users,
@@ -29,6 +30,7 @@ export function useNavGroups(): NavGroup[] {
       items: [
         { title: 'Home', url: '/', icon: House },
         { title: 'Projects', url: '/projects', icon: FolderKanban },
+        { title: 'Discover', url: '/discover', icon: Compass },
       ],
     },
   ]

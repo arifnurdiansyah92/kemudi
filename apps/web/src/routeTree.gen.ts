@@ -11,7 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
-import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
+import { Route as AuthenticatedDiscoverRouteImport } from './routes/_authenticated/discover'
 import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors404RouteImport } from './routes/(errors)/404'
@@ -22,7 +22,10 @@ import { Route as authLoginRouteImport } from './routes/(auth)/login'
 import { Route as authForgotPasswordRouteImport } from './routes/(auth)/forgot-password'
 import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
+import { Route as AuthenticatedProjectsIndexRouteImport } from './routes/_authenticated/projects/index'
 import { Route as AuthenticatedSettingsAppearanceRouteImport } from './routes/_authenticated/settings/appearance'
+import { Route as AuthenticatedProjectsNewRouteImport } from './routes/_authenticated/projects/new'
+import { Route as AuthenticatedProjectNewRouteImport } from './routes/_authenticated/project/new'
 import { Route as authChangePasswordTokenRouteImport } from './routes/(auth)/change-password.$token'
 import { Route as AuthenticatedPSlugRouteRouteImport } from './routes/_authenticated/p/$slug/route'
 import { Route as AuthenticatedProjectSlugIndexRouteImport } from './routes/_authenticated/project/$slug/index'
@@ -48,9 +51,9 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedProjectsRoute = AuthenticatedProjectsRouteImport.update({
-  id: '/projects',
-  path: '/projects',
+const AuthenticatedDiscoverRoute = AuthenticatedDiscoverRouteImport.update({
+  id: '/discover',
+  path: '/discover',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const errors503Route = errors503RouteImport.update({
@@ -105,12 +108,29 @@ const AuthenticatedSettingsIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedSettingsRouteRoute,
   } as any)
+const AuthenticatedProjectsIndexRoute =
+  AuthenticatedProjectsIndexRouteImport.update({
+    id: '/projects/',
+    path: '/projects/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSettingsAppearanceRoute =
   AuthenticatedSettingsAppearanceRouteImport.update({
     id: '/appearance',
     path: '/appearance',
     getParentRoute: () => AuthenticatedSettingsRouteRoute,
   } as any)
+const AuthenticatedProjectsNewRoute =
+  AuthenticatedProjectsNewRouteImport.update({
+    id: '/projects/new',
+    path: '/projects/new',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedProjectNewRoute = AuthenticatedProjectNewRouteImport.update({
+  id: '/project/new',
+  path: '/project/new',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const authChangePasswordTokenRoute = authChangePasswordTokenRouteImport.update({
   id: '/(auth)/change-password/$token',
   path: '/change-password/$token',
@@ -208,10 +228,13 @@ export interface FileRoutesByFullPath {
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
-  '/projects': typeof AuthenticatedProjectsRoute
+  '/discover': typeof AuthenticatedDiscoverRoute
   '/p/$slug': typeof AuthenticatedPSlugRouteRouteWithChildren
   '/change-password/$token': typeof authChangePasswordTokenRoute
+  '/project/new': typeof AuthenticatedProjectNewRoute
+  '/projects/new': typeof AuthenticatedProjectsNewRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/projects/': typeof AuthenticatedProjectsIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
   '/p/$slug/backlog': typeof AuthenticatedPSlugBacklogRoute
   '/p/$slug/epics': typeof AuthenticatedPSlugEpicsRoute
@@ -236,10 +259,13 @@ export interface FileRoutesByTo {
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
-  '/projects': typeof AuthenticatedProjectsRoute
+  '/discover': typeof AuthenticatedDiscoverRoute
   '/': typeof AuthenticatedIndexRoute
   '/change-password/$token': typeof authChangePasswordTokenRoute
+  '/project/new': typeof AuthenticatedProjectNewRoute
+  '/projects/new': typeof AuthenticatedProjectsNewRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/projects': typeof AuthenticatedProjectsIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/p/$slug/backlog': typeof AuthenticatedPSlugBacklogRoute
   '/p/$slug/epics': typeof AuthenticatedPSlugEpicsRoute
@@ -267,11 +293,14 @@ export interface FileRoutesById {
   '/(errors)/404': typeof errors404Route
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
-  '/_authenticated/projects': typeof AuthenticatedProjectsRoute
+  '/_authenticated/discover': typeof AuthenticatedDiscoverRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/p/$slug': typeof AuthenticatedPSlugRouteRouteWithChildren
   '/(auth)/change-password/$token': typeof authChangePasswordTokenRoute
+  '/_authenticated/project/new': typeof AuthenticatedProjectNewRoute
+  '/_authenticated/projects/new': typeof AuthenticatedProjectsNewRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/_authenticated/projects/': typeof AuthenticatedProjectsIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/_authenticated/p/$slug/backlog': typeof AuthenticatedPSlugBacklogRoute
   '/_authenticated/p/$slug/epics': typeof AuthenticatedPSlugEpicsRoute
@@ -300,10 +329,13 @@ export interface FileRouteTypes {
     | '/404'
     | '/500'
     | '/503'
-    | '/projects'
+    | '/discover'
     | '/p/$slug'
     | '/change-password/$token'
+    | '/project/new'
+    | '/projects/new'
     | '/settings/appearance'
+    | '/projects/'
     | '/settings/'
     | '/p/$slug/backlog'
     | '/p/$slug/epics'
@@ -328,10 +360,13 @@ export interface FileRouteTypes {
     | '/404'
     | '/500'
     | '/503'
-    | '/projects'
+    | '/discover'
     | '/'
     | '/change-password/$token'
+    | '/project/new'
+    | '/projects/new'
     | '/settings/appearance'
+    | '/projects'
     | '/settings'
     | '/p/$slug/backlog'
     | '/p/$slug/epics'
@@ -358,11 +393,14 @@ export interface FileRouteTypes {
     | '/(errors)/404'
     | '/(errors)/500'
     | '/(errors)/503'
-    | '/_authenticated/projects'
+    | '/_authenticated/discover'
     | '/_authenticated/'
     | '/_authenticated/p/$slug'
     | '/(auth)/change-password/$token'
+    | '/_authenticated/project/new'
+    | '/_authenticated/projects/new'
     | '/_authenticated/settings/appearance'
+    | '/_authenticated/projects/'
     | '/_authenticated/settings/'
     | '/_authenticated/p/$slug/backlog'
     | '/_authenticated/p/$slug/epics'
@@ -408,11 +446,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/projects': {
-      id: '/_authenticated/projects'
-      path: '/projects'
-      fullPath: '/projects'
-      preLoaderRoute: typeof AuthenticatedProjectsRouteImport
+    '/_authenticated/discover': {
+      id: '/_authenticated/discover'
+      path: '/discover'
+      fullPath: '/discover'
+      preLoaderRoute: typeof AuthenticatedDiscoverRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/(errors)/503': {
@@ -485,12 +523,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsIndexRouteImport
       parentRoute: typeof AuthenticatedSettingsRouteRoute
     }
+    '/_authenticated/projects/': {
+      id: '/_authenticated/projects/'
+      path: '/projects'
+      fullPath: '/projects/'
+      preLoaderRoute: typeof AuthenticatedProjectsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/settings/appearance': {
       id: '/_authenticated/settings/appearance'
       path: '/appearance'
       fullPath: '/settings/appearance'
       preLoaderRoute: typeof AuthenticatedSettingsAppearanceRouteImport
       parentRoute: typeof AuthenticatedSettingsRouteRoute
+    }
+    '/_authenticated/projects/new': {
+      id: '/_authenticated/projects/new'
+      path: '/projects/new'
+      fullPath: '/projects/new'
+      preLoaderRoute: typeof AuthenticatedProjectsNewRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/project/new': {
+      id: '/_authenticated/project/new'
+      path: '/project/new'
+      fullPath: '/project/new'
+      preLoaderRoute: typeof AuthenticatedProjectNewRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/(auth)/change-password/$token': {
       id: '/(auth)/change-password/$token'
@@ -654,18 +713,24 @@ const AuthenticatedPSlugRouteRouteWithChildren =
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
-  AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRoute
+  AuthenticatedDiscoverRoute: typeof AuthenticatedDiscoverRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedPSlugRouteRoute: typeof AuthenticatedPSlugRouteRouteWithChildren
+  AuthenticatedProjectNewRoute: typeof AuthenticatedProjectNewRoute
+  AuthenticatedProjectsNewRoute: typeof AuthenticatedProjectsNewRoute
+  AuthenticatedProjectsIndexRoute: typeof AuthenticatedProjectsIndexRoute
   AuthenticatedProjectSlugSplatRoute: typeof AuthenticatedProjectSlugSplatRoute
   AuthenticatedProjectSlugIndexRoute: typeof AuthenticatedProjectSlugIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
-  AuthenticatedProjectsRoute: AuthenticatedProjectsRoute,
+  AuthenticatedDiscoverRoute: AuthenticatedDiscoverRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedPSlugRouteRoute: AuthenticatedPSlugRouteRouteWithChildren,
+  AuthenticatedProjectNewRoute: AuthenticatedProjectNewRoute,
+  AuthenticatedProjectsNewRoute: AuthenticatedProjectsNewRoute,
+  AuthenticatedProjectsIndexRoute: AuthenticatedProjectsIndexRoute,
   AuthenticatedProjectSlugSplatRoute: AuthenticatedProjectSlugSplatRoute,
   AuthenticatedProjectSlugIndexRoute: AuthenticatedProjectSlugIndexRoute,
 }
