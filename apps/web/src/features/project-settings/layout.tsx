@@ -12,6 +12,7 @@ const SECTIONS = [
   ['custom-fields', 'Custom fields'],
   ['tags', 'Tags'],
   ['webhooks', 'Webhooks'],
+  ['integrations', 'Integrations'],
   ['data', 'Import and export'],
   ['sprint-access', 'Sprint access'],
 ] as const

@@ -63,6 +63,7 @@ import { Route as AuthenticatedPSlugSettingsTagsRouteImport } from './routes/_au
 import { Route as AuthenticatedPSlugSettingsSprintAccessRouteImport } from './routes/_authenticated/p/$slug/settings/sprint-access'
 import { Route as AuthenticatedPSlugSettingsRolesRouteImport } from './routes/_authenticated/p/$slug/settings/roles'
 import { Route as AuthenticatedPSlugSettingsMembersRouteImport } from './routes/_authenticated/p/$slug/settings/members'
+import { Route as AuthenticatedPSlugSettingsIntegrationsRouteImport } from './routes/_authenticated/p/$slug/settings/integrations'
 import { Route as AuthenticatedPSlugSettingsGeneralRouteImport } from './routes/_authenticated/p/$slug/settings/general'
 import { Route as AuthenticatedPSlugSettingsDataRouteImport } from './routes/_authenticated/p/$slug/settings/data'
 import { Route as AuthenticatedPSlugSettingsCustomFieldsRouteImport } from './routes/_authenticated/p/$slug/settings/custom-fields'
@@ -369,6 +370,12 @@ const AuthenticatedPSlugSettingsMembersRoute =
     path: '/members',
     getParentRoute: () => AuthenticatedPSlugSettingsRouteRoute,
   } as any)
+const AuthenticatedPSlugSettingsIntegrationsRoute =
+  AuthenticatedPSlugSettingsIntegrationsRouteImport.update({
+    id: '/integrations',
+    path: '/integrations',
+    getParentRoute: () => AuthenticatedPSlugSettingsRouteRoute,
+  } as any)
 const AuthenticatedPSlugSettingsGeneralRoute =
   AuthenticatedPSlugSettingsGeneralRouteImport.update({
     id: '/general',
@@ -440,6 +447,7 @@ export interface FileRoutesByFullPath {
   '/p/$slug/settings/custom-fields': typeof AuthenticatedPSlugSettingsCustomFieldsRoute
   '/p/$slug/settings/data': typeof AuthenticatedPSlugSettingsDataRoute
   '/p/$slug/settings/general': typeof AuthenticatedPSlugSettingsGeneralRoute
+  '/p/$slug/settings/integrations': typeof AuthenticatedPSlugSettingsIntegrationsRoute
   '/p/$slug/settings/members': typeof AuthenticatedPSlugSettingsMembersRoute
   '/p/$slug/settings/roles': typeof AuthenticatedPSlugSettingsRolesRoute
   '/p/$slug/settings/sprint-access': typeof AuthenticatedPSlugSettingsSprintAccessRoute
@@ -496,6 +504,7 @@ export interface FileRoutesByTo {
   '/p/$slug/settings/custom-fields': typeof AuthenticatedPSlugSettingsCustomFieldsRoute
   '/p/$slug/settings/data': typeof AuthenticatedPSlugSettingsDataRoute
   '/p/$slug/settings/general': typeof AuthenticatedPSlugSettingsGeneralRoute
+  '/p/$slug/settings/integrations': typeof AuthenticatedPSlugSettingsIntegrationsRoute
   '/p/$slug/settings/members': typeof AuthenticatedPSlugSettingsMembersRoute
   '/p/$slug/settings/roles': typeof AuthenticatedPSlugSettingsRolesRoute
   '/p/$slug/settings/sprint-access': typeof AuthenticatedPSlugSettingsSprintAccessRoute
@@ -557,6 +566,7 @@ export interface FileRoutesById {
   '/_authenticated/p/$slug/settings/custom-fields': typeof AuthenticatedPSlugSettingsCustomFieldsRoute
   '/_authenticated/p/$slug/settings/data': typeof AuthenticatedPSlugSettingsDataRoute
   '/_authenticated/p/$slug/settings/general': typeof AuthenticatedPSlugSettingsGeneralRoute
+  '/_authenticated/p/$slug/settings/integrations': typeof AuthenticatedPSlugSettingsIntegrationsRoute
   '/_authenticated/p/$slug/settings/members': typeof AuthenticatedPSlugSettingsMembersRoute
   '/_authenticated/p/$slug/settings/roles': typeof AuthenticatedPSlugSettingsRolesRoute
   '/_authenticated/p/$slug/settings/sprint-access': typeof AuthenticatedPSlugSettingsSprintAccessRoute
@@ -618,6 +628,7 @@ export interface FileRouteTypes {
     | '/p/$slug/settings/custom-fields'
     | '/p/$slug/settings/data'
     | '/p/$slug/settings/general'
+    | '/p/$slug/settings/integrations'
     | '/p/$slug/settings/members'
     | '/p/$slug/settings/roles'
     | '/p/$slug/settings/sprint-access'
@@ -674,6 +685,7 @@ export interface FileRouteTypes {
     | '/p/$slug/settings/custom-fields'
     | '/p/$slug/settings/data'
     | '/p/$slug/settings/general'
+    | '/p/$slug/settings/integrations'
     | '/p/$slug/settings/members'
     | '/p/$slug/settings/roles'
     | '/p/$slug/settings/sprint-access'
@@ -734,6 +746,7 @@ export interface FileRouteTypes {
     | '/_authenticated/p/$slug/settings/custom-fields'
     | '/_authenticated/p/$slug/settings/data'
     | '/_authenticated/p/$slug/settings/general'
+    | '/_authenticated/p/$slug/settings/integrations'
     | '/_authenticated/p/$slug/settings/members'
     | '/_authenticated/p/$slug/settings/roles'
     | '/_authenticated/p/$slug/settings/sprint-access'
@@ -1147,6 +1160,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPSlugSettingsMembersRouteImport
       parentRoute: typeof AuthenticatedPSlugSettingsRouteRoute
     }
+    '/_authenticated/p/$slug/settings/integrations': {
+      id: '/_authenticated/p/$slug/settings/integrations'
+      path: '/integrations'
+      fullPath: '/p/$slug/settings/integrations'
+      preLoaderRoute: typeof AuthenticatedPSlugSettingsIntegrationsRouteImport
+      parentRoute: typeof AuthenticatedPSlugSettingsRouteRoute
+    }
     '/_authenticated/p/$slug/settings/general': {
       id: '/_authenticated/p/$slug/settings/general'
       path: '/general'
@@ -1208,6 +1228,7 @@ interface AuthenticatedPSlugSettingsRouteRouteChildren {
   AuthenticatedPSlugSettingsCustomFieldsRoute: typeof AuthenticatedPSlugSettingsCustomFieldsRoute
   AuthenticatedPSlugSettingsDataRoute: typeof AuthenticatedPSlugSettingsDataRoute
   AuthenticatedPSlugSettingsGeneralRoute: typeof AuthenticatedPSlugSettingsGeneralRoute
+  AuthenticatedPSlugSettingsIntegrationsRoute: typeof AuthenticatedPSlugSettingsIntegrationsRoute
   AuthenticatedPSlugSettingsMembersRoute: typeof AuthenticatedPSlugSettingsMembersRoute
   AuthenticatedPSlugSettingsRolesRoute: typeof AuthenticatedPSlugSettingsRolesRoute
   AuthenticatedPSlugSettingsSprintAccessRoute: typeof AuthenticatedPSlugSettingsSprintAccessRoute
@@ -1225,6 +1246,8 @@ const AuthenticatedPSlugSettingsRouteRouteChildren: AuthenticatedPSlugSettingsRo
     AuthenticatedPSlugSettingsDataRoute: AuthenticatedPSlugSettingsDataRoute,
     AuthenticatedPSlugSettingsGeneralRoute:
       AuthenticatedPSlugSettingsGeneralRoute,
+    AuthenticatedPSlugSettingsIntegrationsRoute:
+      AuthenticatedPSlugSettingsIntegrationsRoute,
     AuthenticatedPSlugSettingsMembersRoute:
       AuthenticatedPSlugSettingsMembersRoute,
     AuthenticatedPSlugSettingsRolesRoute: AuthenticatedPSlugSettingsRolesRoute,

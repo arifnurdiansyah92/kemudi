@@ -107,3 +107,16 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 ## Aegis additions
 
 - [x] Sprint access per role (`sprint_access` backend), in project settings
+
+## Second pass (found by comparing with taiga-front)
+
+- [x] Integrations: GitHub, GitLab, Bitbucket and Gogs commit hooks (project settings)
+- [ ] Watchers: see and change who watches an item
+- [ ] Contact the project (contact form to admins)
+- [ ] Wiki page history
+- [ ] Mentions: @people and #refs suggested while typing comments and descriptions
+- [ ] Saved filters on backlog, kanban and issues
+- [ ] Backlog: drag stories into a sprint; forecast of what fits the next sprint
+- [ ] Kanban: card density (zoom)
+- [ ] Projects list: reorder your projects
+- [ ] Due date reason; epic client and team requirement flags
