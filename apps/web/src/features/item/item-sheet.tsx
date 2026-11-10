@@ -27,6 +27,7 @@ import {
   SprintField,
   StatusField,
   TagsField,
+  WatchersField,
 } from './fields'
 import { ItemActions } from './item-actions'
 import { StoryTasks } from './story-tasks'
@@ -208,7 +209,7 @@ function ItemBody({
           <dd>
             <TagsField {...field} />
           </dd>
-          {kind === 'userstory' && (
+          {(kind === 'userstory' || kind === 'epic') && (
             <>
               <dt className='text-muted-foreground'>Requirement</dt>
               <dd>
@@ -232,6 +233,10 @@ function ItemBody({
               </dd>
             </>
           )}
+          <dt className='text-muted-foreground'>Watchers</dt>
+          <dd className='min-w-0'>
+            <WatchersField {...field} />
+          </dd>
           <dt className='text-muted-foreground'>Created</dt>
           <dd className='text-muted-foreground'>
             {format(new Date(item.created_date), 'd MMM yyyy')}

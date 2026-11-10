@@ -280,14 +280,19 @@ export function TagsField(props: FieldProps) {
 export function DueDateField(props: FieldProps) {
   const save = useSave(props)
   const { item, editable } = props
+  const reason =
+    (item as Item & { due_date_reason?: string }).due_date_reason ?? ''
   if (!editable)
     return (
       <span className='text-sm'>
         {item.due_date ?? <span className='text-muted-foreground'>None</span>}
+        {item.due_date && reason && (
+          <span className='text-muted-foreground'>, {reason}</span>
+        )}
       </span>
     )
   return (
-    <span className='inline-flex items-center gap-1'>
+    <span className='inline-flex flex-wrap items-center gap-1'>
       <Input
         type='date'
         aria-label='Due date'
@@ -304,12 +309,92 @@ export function DueDateField(props: FieldProps) {
           size='icon'
           className='size-7'
           aria-label='Clear due date'
-          onClick={() => save({ due_date: null })}
+          onClick={() => save({ due_date: null, due_date_reason: '' })}
         >
           <X />
         </Button>
       )}
+      {item.due_date && (
+        <Input
+          aria-label='Why this date'
+          placeholder='Why this date (optional)'
+          defaultValue={reason}
+          onBlur={(e) =>
+            e.target.value !== reason &&
+            save({ due_date_reason: e.target.value })
+          }
+          className='h-7 min-w-40 flex-1 text-xs'
+        />
+      )}
     </span>
+  )
+}
+
+/** Who gets notified about changes; members can add others. */
+export function WatchersField(props: FieldProps) {
+  const save = useSave(props)
+  const { project, item, editable } = props
+  const watchers = item.watchers
+    .map((id) => project.members.find((m) => m.id === id))
+    .filter((m) => !!m)
+  const set = (ids: number[]) => save({ watchers: ids })
+
+  const face = (
+    <span className='inline-flex min-w-0 items-center gap-2'>
+      {watchers.length === 0 ? (
+        <span className='text-sm text-muted-foreground'>Nobody</span>
+      ) : (
+        <>
+          <span className='flex -space-x-1.5'>
+            {watchers.slice(0, 6).map((m) => (
+              <UserAvatar
+                key={m.id}
+                user={m}
+                className='ring-2 ring-background'
+              />
+            ))}
+          </span>
+          <span className='truncate text-sm'>
+            {watchers.map((m) => m.full_name_display).join(', ')}
+          </span>
+        </>
+      )}
+    </span>
+  )
+  if (!editable) return face
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger
+        className='-mx-1 max-w-full rounded-md px-1 py-0.5 text-start outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring'
+        aria-label='Change watchers'
+      >
+        {face}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align='start' className='max-h-80 min-w-56'>
+        {project.members
+          .filter((m) => m.is_active)
+          .map((member) => {
+            const on = item.watchers.includes(member.id)
+            return (
+              <DropdownMenuItem
+                key={member.id}
+                onSelect={(e) => {
+                  e.preventDefault()
+                  set(
+                    on
+                      ? item.watchers.filter((i) => i !== member.id)
+                      : [...item.watchers, member.id]
+                  )
+                }}
+              >
+                <UserAvatar user={member} className='size-5' />
+                <span className='truncate'>{member.full_name_display}</span>
+                {on && <Check className='ms-auto' />}
+              </DropdownMenuItem>
+            )
+          })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
