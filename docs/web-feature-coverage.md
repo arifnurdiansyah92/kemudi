@@ -83,8 +83,8 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 - [x] Members: invite (several at once, with a note), change role, admin flag, remove, resend and cancel invitations
 - [x] Roles and permissions (per-role matrix, points roles, public and anonymous access)
 - [x] Attributes: statuses, points, priorities, severities, types, swimlanes, due dates
-- [ ] Custom fields
-- [ ] Tags colours
+- [x] Custom fields (per item kind, all field types, dropdown choices)
+- [x] Tags: colour, rename, merge, delete
 - [ ] Webhooks
 - [ ] Export, import, CSV links
 - [x] Transfer ownership (offer), delete project, duplicate
