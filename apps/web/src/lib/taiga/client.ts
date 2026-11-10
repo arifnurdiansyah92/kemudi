@@ -96,7 +96,10 @@ export function apiErrorMessage(
     // Name the field, so "Invalid value." says which one.
     if (field === 'non_field_errors' || field === 'detail') return message
     const label = field.replace(/_/g, ' ')
-    const name = label.length <= 3 ? label.toUpperCase() : label[0].toUpperCase() + label.slice(1)
+    const name =
+      label.length <= 3
+        ? label.toUpperCase()
+        : label[0].toUpperCase() + label.slice(1)
     return `${name}: ${message}`
   }
   return fallback

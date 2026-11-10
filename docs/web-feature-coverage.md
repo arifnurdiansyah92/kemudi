@@ -86,7 +86,7 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 - [x] Custom fields (per item kind, all field types, dropdown choices)
 - [x] Tags: colour, rename, merge, delete
 - [x] Webhooks (create, edit, test, delivery log, resend)
-- [ ] Export, import, CSV links
+- [x] Export, import (on the new project page), CSV feed links
 - [x] Transfer ownership (offer), delete project, duplicate
 
 ## Account

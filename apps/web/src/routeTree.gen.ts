@@ -48,6 +48,7 @@ import { Route as AuthenticatedPSlugSettingsTagsRouteImport } from './routes/_au
 import { Route as AuthenticatedPSlugSettingsRolesRouteImport } from './routes/_authenticated/p/$slug/settings/roles'
 import { Route as AuthenticatedPSlugSettingsMembersRouteImport } from './routes/_authenticated/p/$slug/settings/members'
 import { Route as AuthenticatedPSlugSettingsGeneralRouteImport } from './routes/_authenticated/p/$slug/settings/general'
+import { Route as AuthenticatedPSlugSettingsDataRouteImport } from './routes/_authenticated/p/$slug/settings/data'
 import { Route as AuthenticatedPSlugSettingsCustomFieldsRouteImport } from './routes/_authenticated/p/$slug/settings/custom-fields'
 import { Route as AuthenticatedPSlugSettingsAttributesRouteImport } from './routes/_authenticated/p/$slug/settings/attributes'
 
@@ -267,6 +268,12 @@ const AuthenticatedPSlugSettingsGeneralRoute =
     path: '/general',
     getParentRoute: () => AuthenticatedPSlugSettingsRouteRoute,
   } as any)
+const AuthenticatedPSlugSettingsDataRoute =
+  AuthenticatedPSlugSettingsDataRouteImport.update({
+    id: '/data',
+    path: '/data',
+    getParentRoute: () => AuthenticatedPSlugSettingsRouteRoute,
+  } as any)
 const AuthenticatedPSlugSettingsCustomFieldsRoute =
   AuthenticatedPSlugSettingsCustomFieldsRouteImport.update({
     id: '/custom-fields',
@@ -311,6 +318,7 @@ export interface FileRoutesByFullPath {
   '/project/$slug/': typeof AuthenticatedProjectSlugIndexRoute
   '/p/$slug/settings/attributes': typeof AuthenticatedPSlugSettingsAttributesRoute
   '/p/$slug/settings/custom-fields': typeof AuthenticatedPSlugSettingsCustomFieldsRoute
+  '/p/$slug/settings/data': typeof AuthenticatedPSlugSettingsDataRoute
   '/p/$slug/settings/general': typeof AuthenticatedPSlugSettingsGeneralRoute
   '/p/$slug/settings/members': typeof AuthenticatedPSlugSettingsMembersRoute
   '/p/$slug/settings/roles': typeof AuthenticatedPSlugSettingsRolesRoute
@@ -350,6 +358,7 @@ export interface FileRoutesByTo {
   '/project/$slug': typeof AuthenticatedProjectSlugIndexRoute
   '/p/$slug/settings/attributes': typeof AuthenticatedPSlugSettingsAttributesRoute
   '/p/$slug/settings/custom-fields': typeof AuthenticatedPSlugSettingsCustomFieldsRoute
+  '/p/$slug/settings/data': typeof AuthenticatedPSlugSettingsDataRoute
   '/p/$slug/settings/general': typeof AuthenticatedPSlugSettingsGeneralRoute
   '/p/$slug/settings/members': typeof AuthenticatedPSlugSettingsMembersRoute
   '/p/$slug/settings/roles': typeof AuthenticatedPSlugSettingsRolesRoute
@@ -394,6 +403,7 @@ export interface FileRoutesById {
   '/_authenticated/project/$slug/': typeof AuthenticatedProjectSlugIndexRoute
   '/_authenticated/p/$slug/settings/attributes': typeof AuthenticatedPSlugSettingsAttributesRoute
   '/_authenticated/p/$slug/settings/custom-fields': typeof AuthenticatedPSlugSettingsCustomFieldsRoute
+  '/_authenticated/p/$slug/settings/data': typeof AuthenticatedPSlugSettingsDataRoute
   '/_authenticated/p/$slug/settings/general': typeof AuthenticatedPSlugSettingsGeneralRoute
   '/_authenticated/p/$slug/settings/members': typeof AuthenticatedPSlugSettingsMembersRoute
   '/_authenticated/p/$slug/settings/roles': typeof AuthenticatedPSlugSettingsRolesRoute
@@ -438,6 +448,7 @@ export interface FileRouteTypes {
     | '/project/$slug/'
     | '/p/$slug/settings/attributes'
     | '/p/$slug/settings/custom-fields'
+    | '/p/$slug/settings/data'
     | '/p/$slug/settings/general'
     | '/p/$slug/settings/members'
     | '/p/$slug/settings/roles'
@@ -477,6 +488,7 @@ export interface FileRouteTypes {
     | '/project/$slug'
     | '/p/$slug/settings/attributes'
     | '/p/$slug/settings/custom-fields'
+    | '/p/$slug/settings/data'
     | '/p/$slug/settings/general'
     | '/p/$slug/settings/members'
     | '/p/$slug/settings/roles'
@@ -520,6 +532,7 @@ export interface FileRouteTypes {
     | '/_authenticated/project/$slug/'
     | '/_authenticated/p/$slug/settings/attributes'
     | '/_authenticated/p/$slug/settings/custom-fields'
+    | '/_authenticated/p/$slug/settings/data'
     | '/_authenticated/p/$slug/settings/general'
     | '/_authenticated/p/$slug/settings/members'
     | '/_authenticated/p/$slug/settings/roles'
@@ -820,6 +833,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPSlugSettingsGeneralRouteImport
       parentRoute: typeof AuthenticatedPSlugSettingsRouteRoute
     }
+    '/_authenticated/p/$slug/settings/data': {
+      id: '/_authenticated/p/$slug/settings/data'
+      path: '/data'
+      fullPath: '/p/$slug/settings/data'
+      preLoaderRoute: typeof AuthenticatedPSlugSettingsDataRouteImport
+      parentRoute: typeof AuthenticatedPSlugSettingsRouteRoute
+    }
     '/_authenticated/p/$slug/settings/custom-fields': {
       id: '/_authenticated/p/$slug/settings/custom-fields'
       path: '/custom-fields'
@@ -856,6 +876,7 @@ const AuthenticatedSettingsRouteRouteWithChildren =
 interface AuthenticatedPSlugSettingsRouteRouteChildren {
   AuthenticatedPSlugSettingsAttributesRoute: typeof AuthenticatedPSlugSettingsAttributesRoute
   AuthenticatedPSlugSettingsCustomFieldsRoute: typeof AuthenticatedPSlugSettingsCustomFieldsRoute
+  AuthenticatedPSlugSettingsDataRoute: typeof AuthenticatedPSlugSettingsDataRoute
   AuthenticatedPSlugSettingsGeneralRoute: typeof AuthenticatedPSlugSettingsGeneralRoute
   AuthenticatedPSlugSettingsMembersRoute: typeof AuthenticatedPSlugSettingsMembersRoute
   AuthenticatedPSlugSettingsRolesRoute: typeof AuthenticatedPSlugSettingsRolesRoute
@@ -870,6 +891,7 @@ const AuthenticatedPSlugSettingsRouteRouteChildren: AuthenticatedPSlugSettingsRo
       AuthenticatedPSlugSettingsAttributesRoute,
     AuthenticatedPSlugSettingsCustomFieldsRoute:
       AuthenticatedPSlugSettingsCustomFieldsRoute,
+    AuthenticatedPSlugSettingsDataRoute: AuthenticatedPSlugSettingsDataRoute,
     AuthenticatedPSlugSettingsGeneralRoute:
       AuthenticatedPSlugSettingsGeneralRoute,
     AuthenticatedPSlugSettingsMembersRoute:
