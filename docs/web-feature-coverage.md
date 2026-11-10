@@ -62,8 +62,8 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 
 ## Team and activity
 
-- [ ] Team page with members and roles
-- [ ] Project timeline (activity)
+- [x] Team page with members and roles
+- [x] Project timeline (activity)
 - [ ] Home: working on, watching
 - [ ] Notifications (web notifications)
 - [ ] Global search
@@ -74,7 +74,7 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 - [x] Projects list
 - [ ] Create project (template), duplicate
 - [ ] Discover public projects, like and watch projects
-- [ ] Leave project
+- [x] Leave project
 
 ## Project admin
 

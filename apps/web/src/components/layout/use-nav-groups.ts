@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
 import {
   BookOpen,
+  Users,
   Bug,
   Layers,
   Columns3,
@@ -66,6 +67,11 @@ export function useNavGroups(): NavGroup[] {
         url: `/p/${project.slug}/wiki`,
         icon: BookOpen,
       })
+    items.push({
+      title: 'Team',
+      url: `/p/${project.slug}/team`,
+      icon: Users,
+    })
     if (items.length) groups.push({ title: project.name, items })
   }
 

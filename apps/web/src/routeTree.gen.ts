@@ -27,6 +27,8 @@ import { Route as AuthenticatedPSlugRouteRouteImport } from './routes/_authentic
 import { Route as AuthenticatedProjectSlugIndexRouteImport } from './routes/_authenticated/project/$slug/index'
 import { Route as AuthenticatedPSlugIndexRouteImport } from './routes/_authenticated/p/$slug/index'
 import { Route as AuthenticatedProjectSlugSplatRouteImport } from './routes/_authenticated/project/$slug/$'
+import { Route as AuthenticatedPSlugTimelineRouteImport } from './routes/_authenticated/p/$slug/timeline'
+import { Route as AuthenticatedPSlugTeamRouteImport } from './routes/_authenticated/p/$slug/team'
 import { Route as AuthenticatedPSlugKanbanRouteImport } from './routes/_authenticated/p/$slug/kanban'
 import { Route as AuthenticatedPSlugIssuesRouteImport } from './routes/_authenticated/p/$slug/issues'
 import { Route as AuthenticatedPSlugEpicsRouteImport } from './routes/_authenticated/p/$slug/epics'
@@ -130,6 +132,17 @@ const AuthenticatedProjectSlugSplatRoute =
     path: '/project/$slug/$',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedPSlugTimelineRoute =
+  AuthenticatedPSlugTimelineRouteImport.update({
+    id: '/timeline',
+    path: '/timeline',
+    getParentRoute: () => AuthenticatedPSlugRouteRoute,
+  } as any)
+const AuthenticatedPSlugTeamRoute = AuthenticatedPSlugTeamRouteImport.update({
+  id: '/team',
+  path: '/team',
+  getParentRoute: () => AuthenticatedPSlugRouteRoute,
+} as any)
 const AuthenticatedPSlugKanbanRoute =
   AuthenticatedPSlugKanbanRouteImport.update({
     id: '/kanban',
@@ -197,6 +210,8 @@ export interface FileRoutesByFullPath {
   '/p/$slug/epics': typeof AuthenticatedPSlugEpicsRoute
   '/p/$slug/issues': typeof AuthenticatedPSlugIssuesRoute
   '/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
+  '/p/$slug/team': typeof AuthenticatedPSlugTeamRoute
+  '/p/$slug/timeline': typeof AuthenticatedPSlugTimelineRoute
   '/project/$slug/$': typeof AuthenticatedProjectSlugSplatRoute
   '/p/$slug/': typeof AuthenticatedPSlugIndexRoute
   '/project/$slug/': typeof AuthenticatedProjectSlugIndexRoute
@@ -222,6 +237,8 @@ export interface FileRoutesByTo {
   '/p/$slug/epics': typeof AuthenticatedPSlugEpicsRoute
   '/p/$slug/issues': typeof AuthenticatedPSlugIssuesRoute
   '/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
+  '/p/$slug/team': typeof AuthenticatedPSlugTeamRoute
+  '/p/$slug/timeline': typeof AuthenticatedPSlugTimelineRoute
   '/project/$slug/$': typeof AuthenticatedProjectSlugSplatRoute
   '/p/$slug': typeof AuthenticatedPSlugIndexRoute
   '/project/$slug': typeof AuthenticatedProjectSlugIndexRoute
@@ -251,6 +268,8 @@ export interface FileRoutesById {
   '/_authenticated/p/$slug/epics': typeof AuthenticatedPSlugEpicsRoute
   '/_authenticated/p/$slug/issues': typeof AuthenticatedPSlugIssuesRoute
   '/_authenticated/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
+  '/_authenticated/p/$slug/team': typeof AuthenticatedPSlugTeamRoute
+  '/_authenticated/p/$slug/timeline': typeof AuthenticatedPSlugTimelineRoute
   '/_authenticated/project/$slug/$': typeof AuthenticatedProjectSlugSplatRoute
   '/_authenticated/p/$slug/': typeof AuthenticatedPSlugIndexRoute
   '/_authenticated/project/$slug/': typeof AuthenticatedProjectSlugIndexRoute
@@ -280,6 +299,8 @@ export interface FileRouteTypes {
     | '/p/$slug/epics'
     | '/p/$slug/issues'
     | '/p/$slug/kanban'
+    | '/p/$slug/team'
+    | '/p/$slug/timeline'
     | '/project/$slug/$'
     | '/p/$slug/'
     | '/project/$slug/'
@@ -305,6 +326,8 @@ export interface FileRouteTypes {
     | '/p/$slug/epics'
     | '/p/$slug/issues'
     | '/p/$slug/kanban'
+    | '/p/$slug/team'
+    | '/p/$slug/timeline'
     | '/project/$slug/$'
     | '/p/$slug'
     | '/project/$slug'
@@ -333,6 +356,8 @@ export interface FileRouteTypes {
     | '/_authenticated/p/$slug/epics'
     | '/_authenticated/p/$slug/issues'
     | '/_authenticated/p/$slug/kanban'
+    | '/_authenticated/p/$slug/team'
+    | '/_authenticated/p/$slug/timeline'
     | '/_authenticated/project/$slug/$'
     | '/_authenticated/p/$slug/'
     | '/_authenticated/project/$slug/'
@@ -483,6 +508,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectSlugSplatRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/p/$slug/timeline': {
+      id: '/_authenticated/p/$slug/timeline'
+      path: '/timeline'
+      fullPath: '/p/$slug/timeline'
+      preLoaderRoute: typeof AuthenticatedPSlugTimelineRouteImport
+      parentRoute: typeof AuthenticatedPSlugRouteRoute
+    }
+    '/_authenticated/p/$slug/team': {
+      id: '/_authenticated/p/$slug/team'
+      path: '/team'
+      fullPath: '/p/$slug/team'
+      preLoaderRoute: typeof AuthenticatedPSlugTeamRouteImport
+      parentRoute: typeof AuthenticatedPSlugRouteRoute
+    }
     '/_authenticated/p/$slug/kanban': {
       id: '/_authenticated/p/$slug/kanban'
       path: '/kanban'
@@ -563,6 +602,8 @@ interface AuthenticatedPSlugRouteRouteChildren {
   AuthenticatedPSlugEpicsRoute: typeof AuthenticatedPSlugEpicsRoute
   AuthenticatedPSlugIssuesRoute: typeof AuthenticatedPSlugIssuesRoute
   AuthenticatedPSlugKanbanRoute: typeof AuthenticatedPSlugKanbanRoute
+  AuthenticatedPSlugTeamRoute: typeof AuthenticatedPSlugTeamRoute
+  AuthenticatedPSlugTimelineRoute: typeof AuthenticatedPSlugTimelineRoute
   AuthenticatedPSlugIndexRoute: typeof AuthenticatedPSlugIndexRoute
   AuthenticatedPSlugTaskboardSprintRoute: typeof AuthenticatedPSlugTaskboardSprintRoute
   AuthenticatedPSlugWikiPageRoute: typeof AuthenticatedPSlugWikiPageRoute
@@ -576,6 +617,8 @@ const AuthenticatedPSlugRouteRouteChildren: AuthenticatedPSlugRouteRouteChildren
     AuthenticatedPSlugEpicsRoute: AuthenticatedPSlugEpicsRoute,
     AuthenticatedPSlugIssuesRoute: AuthenticatedPSlugIssuesRoute,
     AuthenticatedPSlugKanbanRoute: AuthenticatedPSlugKanbanRoute,
+    AuthenticatedPSlugTeamRoute: AuthenticatedPSlugTeamRoute,
+    AuthenticatedPSlugTimelineRoute: AuthenticatedPSlugTimelineRoute,
     AuthenticatedPSlugIndexRoute: AuthenticatedPSlugIndexRoute,
     AuthenticatedPSlugTaskboardSprintRoute:
       AuthenticatedPSlugTaskboardSprintRoute,
