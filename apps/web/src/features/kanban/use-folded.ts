@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Id } from '@/lib/taiga/types'
+import type { Density } from './story-card'
 
 const key = (projectId: Id) => `kemudi.kanban.folded.${projectId}`
 
@@ -27,4 +28,27 @@ export function useFolded(projectId: Id) {
       return next
     })
   return { folded, toggle }
+}
+
+const densityKey = (projectId: Id) => `kemudi.kanban.density.${projectId}`
+
+/** Card density on this project's board, remembered on the device. */
+export function useDensity(projectId: Id) {
+  const [density, setDensity] = useState<Density>(() => {
+    try {
+      const v = localStorage.getItem(densityKey(projectId))
+      return v === 'compact' || v === 'detailed' ? v : 'standard'
+    } catch {
+      return 'standard'
+    }
+  })
+  const set = (d: Density) => {
+    setDensity(d)
+    try {
+      localStorage.setItem(densityKey(projectId), d)
+    } catch {
+      // Storage unavailable: the choice lasts for this visit only.
+    }
+  }
+  return { density, setDensity: set }
 }

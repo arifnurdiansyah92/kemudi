@@ -42,8 +42,8 @@ import { can, useProject } from '@/features/project/use-project'
 import { StatusDot } from '@/features/story/parts'
 import { QuickAdd } from '@/features/story/quick-add'
 import { between, sumPoints } from '@/features/story/utils'
-import { CardFace, StoryCard } from './story-card'
-import { useFolded } from './use-folded'
+import { CardFace, StoryCard, type Density } from './story-card'
+import { useDensity, useFolded } from './use-folded'
 
 /** Cells keyed `${swimlane or 0}:${status}`. */
 type Cells = Record<string, Id[]>
@@ -84,6 +84,7 @@ export function Kanban() {
   const move = useKanbanMove(project)
   const editable = can(project, 'modify_us')
   const { folded, toggle } = useFolded(project.id)
+  const { density, setDensity } = useDensity(project.id)
   const [filters, setFilters] = useState(emptyFilters)
 
   const statuses = useMemo(
@@ -239,6 +240,28 @@ export function Kanban() {
             onChange={setFilters}
             className='min-w-0 flex-1'
           />
+          <div
+            role='radiogroup'
+            aria-label='Card detail'
+            className='flex h-8 items-center rounded-md border p-0.5 text-xs'
+          >
+            {(['compact', 'standard', 'detailed'] as const).map((d) => (
+              <button
+                key={d}
+                role='radio'
+                aria-checked={density === d}
+                onClick={() => setDensity(d)}
+                className={cn(
+                  'h-full rounded px-2 capitalize',
+                  density === d
+                    ? 'bg-accent font-medium'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
           {project.us_statuses.some((s) => s.is_archived) && (
             <label className='flex h-8 items-center gap-2 text-sm text-muted-foreground'>
               <Switch
@@ -285,9 +308,12 @@ export function Kanban() {
                 <section
                   key={lane.id ?? 'none'}
                   aria-label={lane.name || undefined}
+                  // One lane fills the board and scrolls per column; with
+                  // several, each lane keeps its full height and the board
+                  // scrolls, so lanes never overlap.
                   className={cn(
-                    'flex min-h-0 flex-col',
-                    laneList.length === 1 && 'flex-1'
+                    'flex flex-col',
+                    laneList.length === 1 ? 'min-h-0 flex-1' : 'shrink-0'
                   )}
                 >
                   {lane.name && (
@@ -317,6 +343,7 @@ export function Kanban() {
                         }
                         editable={editable}
                         folded={folded.has(status.id)}
+                        density={density}
                         onToggleFold={() => toggle(status.id)}
                         fill={laneList.length === 1}
                       />
@@ -326,7 +353,14 @@ export function Kanban() {
               ))}
             </div>
             <DragOverlay>
-              {active && <CardFace project={project} story={active} lifted />}
+              {active && (
+                <CardFace
+                  project={project}
+                  story={active}
+                  density={density}
+                  lifted
+                />
+              )}
             </DragOverlay>
           </DndContext>
         )}
@@ -345,6 +379,7 @@ function Column({
   folded,
   onToggleFold,
   fill,
+  density,
 }: {
   project: Project
   status: Status
@@ -355,6 +390,7 @@ function Column({
   folded: boolean
   onToggleFold: () => void
   fill: boolean
+  density: Density
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `cell:${cellKey(lane, status.id)}`,
@@ -454,6 +490,7 @@ function Column({
                   project={project}
                   story={story}
                   draggable={editable}
+                  density={density}
                 />
               ))}
             </ul>

@@ -11,9 +11,15 @@ type StoryCardProps = {
   project: Project
   story: UserStory
   draggable: boolean
+  density?: Density
 }
 
-export function StoryCard({ project, story, draggable }: StoryCardProps) {
+export function StoryCard({
+  project,
+  story,
+  draggable,
+  density,
+}: StoryCardProps) {
   const { open } = useRefParam()
   const {
     attributes,
@@ -33,6 +39,7 @@ export function StoryCard({ project, story, draggable }: StoryCardProps) {
       <CardFace
         project={project}
         story={story}
+        density={density}
         {...attributes}
         {...listeners}
         aria-roledescription={draggable ? 'Draggable story' : undefined}
@@ -47,54 +54,111 @@ export function StoryCard({ project, story, draggable }: StoryCardProps) {
   )
 }
 
+export type Density = 'compact' | 'standard' | 'detailed'
+
 type CardFaceProps = React.HTMLAttributes<HTMLDivElement> & {
   project: Project
   story: UserStory
   lifted?: boolean
+  density?: Density
 }
 
 export function CardFace({
   project,
   story,
   lifted,
+  density = 'standard',
   className,
   ...props
 }: CardFaceProps) {
   const assignee = project.members.find((m) => m.id === story.assigned_to)
+  const tasks = story.tasks ?? []
+  const done = tasks.filter((t) => t.is_closed).length
   return (
     <div
       role='button'
       tabIndex={0}
       className={cn(
-        'grid cursor-pointer gap-2 rounded-md border bg-card p-3 text-sm shadow-xs outline-none hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring',
+        'grid cursor-pointer rounded-md border bg-card text-sm shadow-xs outline-none hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring',
+        density === 'compact' ? 'gap-1 px-2.5 py-1.5' : 'gap-2 p-3',
         story.is_blocked && 'border-s-4 border-s-destructive',
         lifted && 'rotate-1 cursor-grabbing shadow-lg',
         className
       )}
       {...props}
     >
-      <p className='line-clamp-3 leading-snug'>{story.subject}</p>
-      {story.tags.length > 0 && (
-        <TagList project={project} tags={story.tags} max={3} />
-      )}
-      <div className='flex items-center gap-2 text-xs text-muted-foreground'>
-        <span className='tabular-nums'>#{story.ref}</span>
-        {story.is_blocked && (
-          <span className='inline-flex items-center gap-1 text-destructive'>
-            <Ban className='size-3' />
-            Blocked
+      {density === 'compact' ? (
+        <p className='flex items-baseline gap-2 leading-snug'>
+          <span className='shrink-0 text-xs text-muted-foreground tabular-nums'>
+            #{story.ref}
           </span>
-        )}
-        <span className='ms-auto inline-flex items-center gap-2'>
-          {story.total_points !== null && (
-            <span className='rounded bg-muted px-1.5 py-0.5 font-medium text-foreground'>
-              <Points value={story.total_points} />
-              <span className='sr-only'> points</span>
-            </span>
+          <span className='line-clamp-2'>{story.subject}</span>
+          {assignee && (
+            <UserAvatar
+              user={assignee}
+              className='ms-auto size-4 shrink-0 self-center'
+            />
           )}
-          {assignee && <UserAvatar user={assignee} className='size-5' />}
-        </span>
-      </div>
+        </p>
+      ) : (
+        <>
+          <p className='line-clamp-3 leading-snug'>{story.subject}</p>
+          {story.tags.length > 0 && (
+            <TagList project={project} tags={story.tags} max={3} />
+          )}
+          {density === 'detailed' && (
+            <div className='grid gap-1 text-xs text-muted-foreground'>
+              {(story.epics ?? []).map((e) => (
+                <span
+                  key={e.id}
+                  className='inline-flex items-center gap-1.5 truncate'
+                >
+                  <span
+                    aria-hidden='true'
+                    className='size-2 shrink-0 rounded-full'
+                    style={{ backgroundColor: e.color }}
+                  />
+                  {e.subject}
+                </span>
+              ))}
+              {tasks.length > 0 && (
+                <span className='inline-flex items-center gap-2'>
+                  <span
+                    className='h-1 w-16 overflow-hidden rounded-full bg-muted'
+                    aria-hidden='true'
+                  >
+                    <span
+                      className='block h-full bg-success'
+                      style={{ width: `${(done / tasks.length) * 100}%` }}
+                    />
+                  </span>
+                  {done} of {tasks.length} tasks
+                </span>
+              )}
+              {story.due_date && <span>Due {story.due_date}</span>}
+              {assignee && <span>{assignee.full_name_display}</span>}
+            </div>
+          )}
+          <div className='flex items-center gap-2 text-xs text-muted-foreground'>
+            <span className='tabular-nums'>#{story.ref}</span>
+            {story.is_blocked && (
+              <span className='inline-flex items-center gap-1 text-destructive'>
+                <Ban className='size-3' />
+                Blocked
+              </span>
+            )}
+            <span className='ms-auto inline-flex items-center gap-2'>
+              {story.total_points !== null && (
+                <span className='rounded bg-muted px-1.5 py-0.5 font-medium text-foreground'>
+                  <Points value={story.total_points} />
+                  <span className='sr-only'> points</span>
+                </span>
+              )}
+              {assignee && <UserAvatar user={assignee} className='size-5' />}
+            </span>
+          </div>
+        </>
+      )}
     </div>
   )
 }
