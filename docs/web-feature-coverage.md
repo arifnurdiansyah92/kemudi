@@ -82,7 +82,7 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 - [x] Modules on/off, videoconference
 - [x] Members: invite (several at once, with a note), change role, admin flag, remove, resend and cancel invitations
 - [x] Roles and permissions (per-role matrix, points roles, public and anonymous access)
-- [ ] Attributes: statuses, points, priorities, severities, types, swimlanes, due dates
+- [x] Attributes: statuses, points, priorities, severities, types, swimlanes, due dates
 - [ ] Custom fields
 - [ ] Tags colours
 - [ ] Webhooks
