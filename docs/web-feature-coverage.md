@@ -47,9 +47,9 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 
 ## Epics
 
-- [ ] Epics list with progress
-- [ ] Create epic, colour
-- [ ] Related stories (link, unlink, create)
+- [x] Epics list with progress
+- [x] Create epic, colour
+- [x] Related stories (link, unlink, create)
 
 ## Wiki
 

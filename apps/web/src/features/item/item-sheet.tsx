@@ -15,6 +15,7 @@ import { Attachments } from './attachments'
 import { Conversation } from './conversation'
 import { CustomFields } from './custom-fields'
 import { Description } from './description'
+import { EpicStories, StoryEpics } from './epic-stories'
 import {
   AssigneeField,
   AttributeField,
@@ -223,24 +224,11 @@ function ItemBody({
               </dd>
             </>
           )}
-          {kind === 'userstory' && item.epics && item.epics.length > 0 && (
+          {kind === 'userstory' && project.is_epics_activated && (
             <>
-              <dt className='text-muted-foreground'>Epics</dt>
-              <dd className='flex flex-wrap gap-1.5'>
-                {item.epics.map((epic) => (
-                  <button
-                    key={epic.id}
-                    onClick={() => open(epic.ref)}
-                    className='inline-flex h-6 items-center gap-1.5 rounded-sm border px-1.5 text-xs hover:bg-accent'
-                  >
-                    <span
-                      aria-hidden='true'
-                      className='size-2 rounded-full'
-                      style={{ backgroundColor: epic.color }}
-                    />
-                    #{epic.ref} {epic.subject}
-                  </button>
-                ))}
+              <dt className='self-start pt-0.5 text-muted-foreground'>Epics</dt>
+              <dd>
+                <StoryEpics project={project} story={item} />
               </dd>
             </>
           )}
@@ -255,6 +243,12 @@ function ItemBody({
         <Section title='Description'>
           <Description {...field} />
         </Section>
+
+        {kind === 'epic' && (
+          <Section title='Stories'>
+            <EpicStories project={project} epic={item} />
+          </Section>
+        )}
 
         {kind === 'userstory' && (
           <Section title='Tasks'>

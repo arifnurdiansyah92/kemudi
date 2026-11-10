@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
 import {
   Bug,
+  Layers,
   Columns3,
   FolderKanban,
   LayoutGrid,
@@ -28,6 +29,12 @@ export function useNavGroups(): NavGroup[] {
 
   if (project) {
     const items: NavGroup['items'] = []
+    if (project.is_epics_activated)
+      items.push({
+        title: 'Epics',
+        url: `/p/${project.slug}/epics`,
+        icon: Layers,
+      })
     if (project.is_backlog_activated)
       items.push({
         title: 'Backlog',
