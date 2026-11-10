@@ -232,6 +232,7 @@ export function Kanban() {
         <h1 className='sr-only'>Kanban</h1>
         <div className='mb-3 flex flex-wrap items-start justify-between gap-3'>
           <FilterBar
+            savedKey={`${project.id}:kemudi-filters-kanban`}
             items={all}
             facets={facets}
             value={filters}

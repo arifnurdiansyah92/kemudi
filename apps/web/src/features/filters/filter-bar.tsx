@@ -24,6 +24,7 @@ import {
   type FacetValue,
   type FilterState,
 } from './apply'
+import { SavedFilters } from './saved-filters'
 
 /** Counts how many items carry each option, for the menus. */
 function useCounts<T>(items: T[], facet: Facet<T>) {
@@ -37,6 +38,8 @@ function useCounts<T>(items: T[], facet: Facet<T>) {
 }
 
 type FilterBarProps<T> = {
+  /** Enables named saved filters, stored per user under this key. */
+  savedKey?: string
   items: T[]
   facets: Facet<T>[]
   value: FilterState
@@ -46,6 +49,7 @@ type FilterBarProps<T> = {
 }
 
 export function FilterBar<T>({
+  savedKey,
   items,
   facets,
   value,
@@ -98,6 +102,13 @@ export function FilterBar<T>({
             onToggle={(v) => toggle(facet.key, v)}
           />
         ))}
+        {savedKey && (
+          <SavedFilters
+            storageKey={savedKey}
+            value={value}
+            onApply={onChange}
+          />
+        )}
         {isFiltering(value) && (
           <Button
             variant='ghost'

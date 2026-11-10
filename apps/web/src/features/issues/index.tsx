@@ -162,6 +162,7 @@ export function Issues() {
         </div>
 
         <FilterBar
+          savedKey={`${project.id}:kemudi-filters-issues`}
           items={list}
           facets={facets}
           value={filters}

@@ -182,6 +182,7 @@ export function Backlog() {
                 Stories not in a sprint
               </h2>
               <FilterBar
+                savedKey={`${project.id}:kemudi-filters-backlog`}
                 items={backlog}
                 facets={facets}
                 value={filters}
