@@ -1,24 +1,32 @@
-import { type SVGProps } from 'react'
 import { cn } from '@/lib/utils'
 
-export function Logo({ className, ...props }: SVGProps<SVGSVGElement>) {
+const SPOKES = [0, 45, 90, 135, 180, 225, 270, 315]
+
+/** Kemudi mark: a ship's helm, eight spokes around a hub. */
+export function Logo({ className, ...props }: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
-      id='shadcn-admin-logo'
       viewBox='0 0 24 24'
-      xmlns='http://www.w3.org/2000/svg'
-      height='24'
-      width='24'
       fill='none'
       stroke='currentColor'
-      strokeWidth='2'
+      strokeWidth={1.75}
       strokeLinecap='round'
-      strokeLinejoin='round'
       className={cn('size-6', className)}
+      aria-hidden='true'
       {...props}
     >
-      <title>Shadcn-Admin</title>
-      <path d='M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3' />
+      <circle cx='12' cy='12' r='6.5' />
+      <circle cx='12' cy='12' r='2' />
+      {SPOKES.map((deg) => (
+        <line
+          key={deg}
+          x1='12'
+          y1='3'
+          x2='12'
+          y2='10'
+          transform={`rotate(${deg} 12 12)`}
+        />
+      ))}
     </svg>
   )
 }

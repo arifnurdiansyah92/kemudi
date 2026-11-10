@@ -1,54 +1,64 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, type RenderResult } from 'vitest-browser-react'
-import { userEvent, type Locator } from 'vitest/browser'
+import { render } from 'vitest-browser-react'
+import { userEvent } from 'vitest/browser'
 import { ForgotPasswordForm } from './forgot-password-form'
 
-const navigateMock = vi.fn()
+const mocks = vi.hoisted(() => ({ requestPasswordReset: vi.fn() }))
 
-vi.mock('@tanstack/react-router', async (orig) => {
-  const actual = await orig<typeof import('@tanstack/react-router')>()
-  return { ...actual, useNavigate: () => navigateMock }
-})
-
-vi.mock('@/lib/utils', async (orig) => ({
-  ...(await orig()),
-  sleep: vi.fn(() => Promise.resolve()),
+vi.mock('@/lib/taiga/client', async (orig) => ({
+  ...(await orig<typeof import('@/lib/taiga/client')>()),
+  requestPasswordReset: mocks.requestPasswordReset,
 }))
 
 describe('ForgotPasswordForm', () => {
-  let screen: RenderResult
-  let emailInput: Locator
-  let continueButton: Locator
-
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks()
-
-    screen = await render(<ForgotPasswordForm />)
-    emailInput = screen.getByRole('textbox', { name: /^Email$/i })
-    continueButton = screen.getByRole('button', { name: /^Continue$/i })
   })
 
-  it('renders email field and continue button', async () => {
-    await expect.element(emailInput).toBeInTheDocument()
-    await expect.element(continueButton).toBeInTheDocument()
-  })
+  it('asks for a username before sending', async () => {
+    const screen = await render(<ForgotPasswordForm />)
+    await userEvent.click(
+      screen.getByRole('button', { name: /^Send reset link$/i })
+    )
 
-  it('shows validation when submitting empty form', async () => {
-    await userEvent.click(continueButton)
     await expect
-      .element(screen.getByText(/^Please enter your email\.$/i))
+      .element(screen.getByText('Enter your username or email.'))
+      .toBeInTheDocument()
+    expect(mocks.requestPasswordReset).not.toHaveBeenCalled()
+  })
+
+  it('requests the reset and confirms without revealing whether the account exists', async () => {
+    mocks.requestPasswordReset.mockResolvedValue(undefined)
+    const screen = await render(<ForgotPasswordForm />)
+    await userEvent.fill(
+      screen.getByLabelText(/^Username or email$/i),
+      'webdev'
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: /^Send reset link$/i })
+    )
+
+    await vi.waitFor(() =>
+      expect(mocks.requestPasswordReset).toHaveBeenCalledWith('webdev')
+    )
+    await expect
+      .element(screen.getByText(/If an account matches/))
       .toBeInTheDocument()
   })
 
-  it('resets the form and navigates to /otp on success', async () => {
-    await userEvent.fill(emailInput, 'a@b.com')
-    await userEvent.click(continueButton)
-
-    await vi.waitFor(() =>
-      expect(navigateMock).toHaveBeenCalledWith({ to: '/otp' })
+  it('shows an error when the request fails', async () => {
+    mocks.requestPasswordReset.mockRejectedValue(new Error('offline'))
+    const screen = await render(<ForgotPasswordForm />)
+    await userEvent.fill(
+      screen.getByLabelText(/^Username or email$/i),
+      'webdev'
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: /^Send reset link$/i })
     )
 
-    // Form should reset on success
-    await expect.element(emailInput).toHaveValue('')
+    await expect
+      .element(screen.getByText('The reset email was not sent. Try again.'))
+      .toBeInTheDocument()
   })
 })

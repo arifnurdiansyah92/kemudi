@@ -5,8 +5,7 @@ export function SettingsAppearance() {
   return (
     <ContentSection
       title='Appearance'
-      desc='Customize the appearance of the app. Automatically switch between day
-          and night themes.'
+      desc='Choose the font and theme Kemudi uses on this device.'
     >
       <AppearanceForm />
     </ContentSection>

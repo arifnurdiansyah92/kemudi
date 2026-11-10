@@ -1,53 +1,64 @@
 import { create } from 'zustand'
-import { getCookie, setCookie, removeCookie } from '@/lib/cookies'
+import type { AuthUser } from '@/lib/taiga/types'
 
-const ACCESS_TOKEN = 'thisisjustarandomstring'
+const STORAGE_KEY = 'kemudi.auth'
 
-interface AuthUser {
-  accountNo: string
-  email: string
-  role: string[]
-  exp: number
+interface Session {
+  token: string
+  refresh: string
+  user: AuthUser
 }
 
 interface AuthState {
-  auth: {
-    user: AuthUser | null
-    setUser: (user: AuthUser | null) => void
-    accessToken: string
-    setAccessToken: (accessToken: string) => void
-    resetAccessToken: () => void
-    reset: () => void
+  session: Session | null
+  setSession: (session: Session) => void
+  setTokens: (token: string, refresh: string) => void
+  setUser: (user: AuthUser) => void
+  reset: () => void
+}
+
+function load(): Session | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Session
+    return parsed.token && parsed.user ? parsed : null
+  } catch {
+    return null
   }
 }
 
-export const useAuthStore = create<AuthState>()((set) => {
-  const cookieState = getCookie(ACCESS_TOKEN)
-  const initToken = cookieState ? JSON.parse(cookieState) : ''
-  return {
-    auth: {
-      user: null,
-      setUser: (user) =>
-        set((state) => ({ ...state, auth: { ...state.auth, user } })),
-      accessToken: initToken,
-      setAccessToken: (accessToken) =>
-        set((state) => {
-          setCookie(ACCESS_TOKEN, JSON.stringify(accessToken))
-          return { ...state, auth: { ...state.auth, accessToken } }
-        }),
-      resetAccessToken: () =>
-        set((state) => {
-          removeCookie(ACCESS_TOKEN)
-          return { ...state, auth: { ...state.auth, accessToken: '' } }
-        }),
-      reset: () =>
-        set((state) => {
-          removeCookie(ACCESS_TOKEN)
-          return {
-            ...state,
-            auth: { ...state.auth, user: null, accessToken: '' },
-          }
-        }),
-    },
+function save(session: Session | null) {
+  try {
+    if (session) localStorage.setItem(STORAGE_KEY, JSON.stringify(session))
+    else localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // Storage unavailable (private mode): the session lives in memory only.
   }
-})
+}
+
+export const useAuthStore = create<AuthState>()((set, get) => ({
+  session: load(),
+  setSession: (session) => {
+    save(session)
+    set({ session })
+  },
+  setTokens: (token, refresh) => {
+    const current = get().session
+    if (!current) return
+    const session = { ...current, token, refresh }
+    save(session)
+    set({ session })
+  },
+  setUser: (user) => {
+    const current = get().session
+    if (!current) return
+    const session = { ...current, user }
+    save(session)
+    set({ session })
+  },
+  reset: () => {
+    save(null)
+    set({ session: null })
+  },
+}))

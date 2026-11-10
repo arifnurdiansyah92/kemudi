@@ -85,3 +85,80 @@
     height: 0;
   }
 }
+
+/* Helm marker: the active sidebar item carries a brass bar on its leading edge. */
+@layer components {
+  [data-sidebar='menu-button'][data-active='true'],
+  [data-sidebar='menu-sub-button'][data-active='true'] {
+    box-shadow: inset 3px 0 0 var(--sidebar-primary);
+  }
+  [dir='rtl'] [data-sidebar='menu-button'][data-active='true'],
+  [dir='rtl'] [data-sidebar='menu-sub-button'][data-active='true'] {
+    box-shadow: inset -3px 0 0 var(--sidebar-primary);
+  }
+}
+
+/* Helm marker: the active sidebar item carries a brass bar on its leading edge. */
+@layer components {
+  [data-sidebar='menu-button'][data-active='true'],
+  [data-sidebar='menu-sub-button'][data-active='true'] {
+    box-shadow: inset 3px 0 0 var(--sidebar-primary);
+  }
+  [dir='rtl'] [data-sidebar='menu-button'][data-active='true'],
+  [dir='rtl'] [data-sidebar='menu-sub-button'][data-active='true'] {
+    box-shadow: inset -3px 0 0 var(--sidebar-primary);
+  }
+}
+
+/* Server-rendered Markdown (descriptions, comments). */
+@layer components {
+  .rich-text {
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+  }
+  .rich-text > * + * {
+    margin-top: 0.75em;
+  }
+  .rich-text a {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .rich-text ul {
+    list-style: disc;
+    padding-inline-start: 1.25rem;
+  }
+  .rich-text ol {
+    list-style: decimal;
+    padding-inline-start: 1.25rem;
+  }
+  .rich-text code {
+    border-radius: 0.25rem;
+    background: var(--muted);
+    padding: 0.1em 0.35em;
+    font-size: 0.9em;
+  }
+  .rich-text pre {
+    overflow-x: auto;
+    border-radius: var(--radius);
+    background: var(--muted);
+    padding: 0.75rem;
+  }
+  .rich-text pre code {
+    background: none;
+    padding: 0;
+  }
+  .rich-text blockquote {
+    border-inline-start: 3px solid var(--border);
+    padding-inline-start: 0.75rem;
+    color: var(--muted-foreground);
+  }
+  .rich-text h1,
+  .rich-text h2,
+  .rich-text h3 {
+    font-weight: 600;
+  }
+  .rich-text img {
+    max-width: 100%;
+    border-radius: var(--radius);
+  }
+}

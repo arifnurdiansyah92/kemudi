@@ -1,9 +1,10 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, type RenderResult } from 'vitest-browser-react'
 import { userEvent } from 'vitest/browser'
 import { SearchProvider } from '@/context/search-provider'
 
-const COMMAND_MENU_PLACEHOLDER = 'Type a command or search...'
+const COMMAND_MENU_PLACEHOLDER = 'Jump to a view, project or story'
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -15,8 +16,17 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
   return {
     ...actual,
     useNavigate: () => mocks.navigate,
+    useParams: () => ({}),
   }
 })
+
+// No project is open; the user belongs to one project.
+vi.mock('@/lib/taiga/queries', async (orig) => ({
+  ...(await orig<typeof import('@/lib/taiga/queries')>()),
+  useProjects: () => ({
+    data: [{ id: 2, name: 'Kemudi Demo', slug: 'kemudi-demo' }],
+  }),
+}))
 
 vi.mock('@/context/theme-provider', () => ({
   useTheme: () => ({ setTheme: mocks.setTheme }),
@@ -25,7 +35,11 @@ vi.mock('@/context/theme-provider', () => ({
 type ShortcutModifier = 'Control' | 'Meta'
 
 async function renderWithSearchProvider() {
-  return await render(<SearchProvider>{null}</SearchProvider>)
+  return await render(
+    <QueryClientProvider client={new QueryClient()}>
+      <SearchProvider>{null}</SearchProvider>
+    </QueryClientProvider>
+  )
 }
 
 /**
@@ -72,8 +86,8 @@ describe('SearchProvider and CommandMenu', () => {
     await expect.element(getByText('Theme')).toBeInTheDocument()
     await expect.element(getByText('Light')).toBeInTheDocument()
     await expect.element(getByText('Dark')).toBeInTheDocument()
-    await expect.element(getByText('System')).toBeInTheDocument()
-    await expect.element(getByText('Dashboard')).toBeInTheDocument()
+    await expect.element(getByText('Match system')).toBeInTheDocument()
+    await expect.element(getByText('Kemudi Demo')).toBeInTheDocument()
   })
 
   it('does not show the dialog content when search is closed', async () => {
@@ -104,28 +118,31 @@ describe('SearchProvider and CommandMenu', () => {
     }
   )
 
-  it('navigates to a top-level route and closes the palette when a nav item is selected', async () => {
+  it('navigates to a view and closes the palette when a nav item is selected', async () => {
     const screen = await renderWithSearchProvider()
 
     await openCommandPalette(screen)
 
-    await userEvent.click(screen.getByText('Tasks'))
+    await userEvent.click(screen.getByRole('option', { name: 'Projects' }))
 
-    expect(mocks.navigate).toHaveBeenCalledWith({ to: '/tasks' })
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: '/' })
     await expect
       .element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER))
       .not.toBeInTheDocument()
   })
 
-  it('navigates for nested sidebar items (group with sub-items)', async () => {
+  it('opens a project from the projects group', async () => {
     const screen = await renderWithSearchProvider()
     const { getByPlaceholder, getByRole } = screen
 
     await openCommandPalette(screen)
 
-    await userEvent.click(getByRole('option', { name: 'Settings Account' }))
+    await userEvent.click(getByRole('option', { name: 'Kemudi Demo' }))
 
-    expect(mocks.navigate).toHaveBeenCalledWith({ to: '/settings/account' })
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: '/p/$slug',
+      params: { slug: 'kemudi-demo' },
+    })
     await expect
       .element(getByPlaceholder(COMMAND_MENU_PLACEHOLDER))
       .not.toBeInTheDocument()
@@ -155,7 +172,7 @@ describe('SearchProvider and CommandMenu', () => {
     )
 
     await expect
-      .element(screen.getByText('No results found.'))
+      .element(screen.getByText('Nothing matches.'))
       .toBeInTheDocument()
   })
 })

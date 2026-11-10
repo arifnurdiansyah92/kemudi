@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useNavigate } from '@tanstack/react-router'
-import { ArrowRight, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
-import { sleep, cn } from '@/lib/utils'
+import { Loader2 } from 'lucide-react'
+import { apiErrorMessage, requestPasswordReset } from '@/lib/taiga/client'
+import { cn } from '@/lib/utils'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -18,61 +18,71 @@ import {
 import { Input } from '@/components/ui/input'
 
 const formSchema = z.object({
-  email: z.email({
-    error: (iss) => (iss.input === '' ? 'Please enter your email.' : undefined),
-  }),
+  username: z.string().trim().min(1, 'Enter your username or email.'),
 })
 
 export function ForgotPasswordForm({
   className,
   ...props
 }: React.HTMLAttributes<HTMLFormElement>) {
-  const navigate = useNavigate()
-  const [isLoading, setIsLoading] = useState(false)
+  const [sentTo, setSentTo] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: { email: '' },
+    defaultValues: { username: '' },
   })
 
-  function onSubmit(data: z.infer<typeof formSchema>) {
-    setIsLoading(true)
-
-    toast.promise(sleep(2000), {
-      loading: 'Sending email...',
-      success: () => {
-        setIsLoading(false)
-        form.reset()
-        navigate({ to: '/otp' })
-        return `Email sent to ${data.email}`
-      },
-      error: 'Error',
-    })
+  async function onSubmit({ username }: z.infer<typeof formSchema>) {
+    setError(null)
+    try {
+      await requestPasswordReset(username)
+      setSentTo(username)
+    } catch (err) {
+      setError(apiErrorMessage(err, 'The reset email was not sent. Try again.'))
+    }
   }
+
+  if (sentTo)
+    return (
+      <Alert>
+        <AlertDescription>
+          If an account matches <strong>{sentTo}</strong>, a reset link is on
+          its way to that account's email address.
+        </AlertDescription>
+      </Alert>
+    )
+
+  const submitting = form.formState.isSubmitting
 
   return (
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
-        className={cn('grid gap-2', className)}
+        className={cn('grid gap-4', className)}
         {...props}
       >
+        {error && (
+          <Alert variant='destructive'>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
         <FormField
           control={form.control}
-          name='email'
+          name='username'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Email</FormLabel>
+              <FormLabel>Username or email</FormLabel>
               <FormControl>
-                <Input placeholder='name@example.com' {...field} />
+                <Input autoComplete='username' autoFocus {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
-        <Button className='mt-2' disabled={isLoading}>
-          Continue
-          {isLoading ? <Loader2 className='animate-spin' /> : <ArrowRight />}
+        <Button className='mt-2' disabled={submitting}>
+          {submitting && <Loader2 className='animate-spin' />}
+          Send reset link
         </Button>
       </form>
     </Form>

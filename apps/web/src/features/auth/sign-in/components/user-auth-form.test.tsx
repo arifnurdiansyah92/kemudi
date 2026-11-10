@@ -1,133 +1,120 @@
+import { AxiosError, AxiosHeaders } from 'axios'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, type RenderResult } from 'vitest-browser-react'
-import { type Locator, userEvent } from 'vitest/browser'
+import { render } from 'vitest-browser-react'
+import { userEvent } from 'vitest/browser'
 import { UserAuthForm } from './user-auth-form'
 
-const FORM_MESSAGES = {
-  emailEmpty: 'Please enter your email.',
-  passwordEmpty: 'Please enter your password.',
-  passwordShort: 'Password must be at least 7 characters long.',
-} as const
+const mocks = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  signIn: vi.fn(),
+}))
 
-const navigate = vi.fn()
-const setUserMock = vi.fn()
-const setAccessTokenMock = vi.fn()
-
-vi.mock('@/stores/auth-store', () => ({
-  useAuthStore: () => ({
-    auth: {
-      setUser: setUserMock,
-      setAccessToken: setAccessTokenMock,
-    },
-  }),
+vi.mock('@/lib/taiga/client', async (orig) => ({
+  ...(await orig<typeof import('@/lib/taiga/client')>()),
+  signIn: mocks.signIn,
 }))
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
   return {
     ...actual,
-    useNavigate: () => navigate,
-    Link: ({
-      children,
-      to,
-      className,
-      ...rest
-    }: {
-      children?: React.ReactNode
-      to: string
-      className?: string
-    }) => (
-      <a href={to} className={className} {...rest}>
-        {children}
-      </a>
+    useNavigate: () => mocks.navigate,
+    Link: ({ children, to }: { children?: React.ReactNode; to: string }) => (
+      <a href={to}>{children}</a>
     ),
   }
 })
 
-vi.mock('@/lib/utils', async (orig) => ({
-  ...(await orig()),
-  sleep: vi.fn(() => Promise.resolve()),
-}))
+function taigaError(status: number, data: unknown) {
+  return new AxiosError('Request failed', String(status), undefined, null, {
+    status,
+    statusText: '',
+    data,
+    headers: {},
+    config: { headers: new AxiosHeaders() },
+  })
+}
+
+async function fillAndSubmit(
+  screen: Awaited<ReturnType<typeof render>>,
+  username = 'webdev',
+  password = 'secret'
+) {
+  await userEvent.fill(screen.getByLabelText(/^Username or email$/i), username)
+  await userEvent.fill(screen.getByLabelText(/^Password$/i), password)
+  await userEvent.click(screen.getByRole('button', { name: /^Sign in$/i }))
+}
 
 describe('UserAuthForm', () => {
-  describe('Rendering without redirectTo', () => {
-    let screen: RenderResult
-    let emailInput: Locator
-    let passwordInput: Locator
-    let signInButton: Locator
-    let forgotPasswordLink: Locator
-
-    beforeEach(async () => {
-      vi.clearAllMocks()
-      screen = await render(<UserAuthForm />)
-      emailInput = screen.getByRole('textbox', { name: /^Email$/i })
-      passwordInput = screen.getByLabelText(/^Password$/i)
-      signInButton = screen.getByRole('button', { name: /^Sign in$/i })
-      forgotPasswordLink = screen.getByText(/^Forgot password\?$/i)
-    })
-
-    it('renders fields, submit button, and forgot password link', async () => {
-      await expect.element(emailInput).toBeInTheDocument()
-      await expect.element(passwordInput).toBeInTheDocument()
-      await expect.element(signInButton).toBeInTheDocument()
-      await expect.element(forgotPasswordLink).toBeInTheDocument()
-    })
-
-    it('shows validation messages when submitting empty form', async () => {
-      await userEvent.click(signInButton)
-
-      await expect
-        .element(screen.getByText(FORM_MESSAGES.emailEmpty))
-        .toBeInTheDocument()
-      await expect
-        .element(screen.getByText(FORM_MESSAGES.passwordEmpty))
-        .toBeInTheDocument()
-    })
-
-    it('authenticates and navigates to default route on success', async () => {
-      await userEvent.fill(emailInput, 'a@b.com')
-      await userEvent.fill(passwordInput, '1234567')
-
-      await userEvent.click(signInButton)
-
-      await vi.waitFor(() => expect(setUserMock).toHaveBeenCalledOnce())
-      expect(setUserMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          email: 'a@b.com',
-          accountNo: expect.any(String),
-          role: expect.any(Array),
-          exp: expect.any(Number),
-        })
-      )
-      expect(setAccessTokenMock).toHaveBeenCalledOnce()
-      expect(setAccessTokenMock).toHaveBeenCalledWith('mock-access-token')
-
-      await vi.waitFor(() =>
-        expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
-      )
-    })
+  beforeEach(() => {
+    vi.clearAllMocks()
   })
 
-  it('navigates to redirectTo when provided', async () => {
-    vi.clearAllMocks()
+  it('asks for both fields before calling the API', async () => {
+    const screen = await render(<UserAuthForm />)
+    await userEvent.click(screen.getByRole('button', { name: /^Sign in$/i }))
 
-    const { getByRole, getByLabelText } = await render(
-      <UserAuthForm redirectTo='/settings' />
-    )
+    await expect
+      .element(screen.getByText('Enter your username or email.'))
+      .toBeInTheDocument()
+    await expect
+      .element(screen.getByText('Enter your password.'))
+      .toBeInTheDocument()
+    expect(mocks.signIn).not.toHaveBeenCalled()
+  })
 
-    await userEvent.fill(getByRole('textbox', { name: /Email/i }), 'a@b.com')
-    await userEvent.fill(getByLabelText('Password'), '1234567')
-
-    await userEvent.click(getByRole('button', { name: /Sign in/i }))
-
-    await vi.waitFor(() => expect(setUserMock).toHaveBeenCalledOnce())
-    expect(setAccessTokenMock).toHaveBeenCalledOnce()
+  it('signs in and goes to the projects list by default', async () => {
+    mocks.signIn.mockResolvedValue({ id: 6 })
+    const screen = await render(<UserAuthForm />)
+    await fillAndSubmit(screen)
 
     await vi.waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith({
-        to: '/settings',
+      expect(mocks.signIn).toHaveBeenCalledWith('webdev', 'secret')
+    )
+    await vi.waitFor(() =>
+      expect(mocks.navigate).toHaveBeenCalledWith({ to: '/', replace: true })
+    )
+  })
+
+  it('returns to a same-origin redirect after signing in', async () => {
+    mocks.signIn.mockResolvedValue({ id: 6 })
+    const screen = await render(
+      <UserAuthForm redirectTo='/p/kemudi-demo/kanban?story=3' />
+    )
+    await fillAndSubmit(screen)
+
+    await vi.waitFor(() =>
+      expect(mocks.navigate).toHaveBeenCalledWith({
+        to: '/p/kemudi-demo/kanban?story=3',
         replace: true,
       })
     )
+  })
+
+  it('ignores a redirect to another origin', async () => {
+    mocks.signIn.mockResolvedValue({ id: 6 })
+    const screen = await render(
+      <UserAuthForm redirectTo='https://evil.example/phish' />
+    )
+    await fillAndSubmit(screen)
+
+    await vi.waitFor(() =>
+      expect(mocks.navigate).toHaveBeenCalledWith({ to: '/', replace: true })
+    )
+  })
+
+  it("shows the server's message when the credentials are wrong", async () => {
+    mocks.signIn.mockRejectedValue(
+      taigaError(400, {
+        _error_message: 'Username or password does not match user.',
+      })
+    )
+    const screen = await render(<UserAuthForm />)
+    await fillAndSubmit(screen)
+
+    await expect
+      .element(screen.getByText('Username or password does not match user.'))
+      .toBeInTheDocument()
+    expect(mocks.navigate).not.toHaveBeenCalled()
   })
 })

@@ -1,13 +1,25 @@
 /// <reference types="vitest/config" />
 import path from 'path'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import { playwright } from '@vitest/browser-playwright'
 
 // https://vite.dev/config/
+const env = loadEnv(process.env.NODE_ENV ?? 'development', process.cwd(), '')
+const gateway = env.KEMUDI_DEV_GATEWAY ?? 'http://localhost:9100'
+
 export default defineConfig({
+  server: {
+    port: 5173,
+    // The dev stack's gateway serves the API, media and websocket events.
+    proxy: {
+      '/api': { target: gateway, changeOrigin: true },
+      '/media': { target: gateway, changeOrigin: true },
+      '/events': { target: gateway, changeOrigin: true, ws: true },
+    },
+  },
   plugins: [
     tanstackRouter({
       target: 'react',
