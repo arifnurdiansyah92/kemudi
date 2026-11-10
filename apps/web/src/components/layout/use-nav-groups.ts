@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
 import {
+  Bug,
   Columns3,
   FolderKanban,
   LayoutGrid,
@@ -44,6 +45,12 @@ export function useNavGroups(): NavGroup[] {
         title: 'Kanban',
         url: `/p/${project.slug}/kanban`,
         icon: Columns3,
+      })
+    if (project.is_issues_activated)
+      items.push({
+        title: 'Issues',
+        url: `/p/${project.slug}/issues`,
+        icon: Bug,
       })
     if (items.length) groups.push({ title: project.name, items })
   }

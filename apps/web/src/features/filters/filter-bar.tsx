@@ -150,6 +150,7 @@ function FacetMenu<T>({
         <Button
           variant='outline'
           size='sm'
+          aria-label={`Filter by ${facet.label.toLowerCase()}${selected.length ? `, ${selected.length} selected` : ''}`}
           className={cn('h-8 border-dashed', selected.length && 'border-solid')}
         >
           <ListFilter className='size-3.5' />

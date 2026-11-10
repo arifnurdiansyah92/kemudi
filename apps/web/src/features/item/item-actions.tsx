@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Eye, Link2, MoreHorizontal, ThumbsUp } from 'lucide-react'
 import { toast } from 'sonner'
+import { usePromote } from '@/lib/taiga/issues'
 import {
   KINDS,
   useDeleteItem,
@@ -27,7 +28,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Textarea } from '@/components/ui/textarea'
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { can } from '@/features/project/use-project'
+import { can, useRefParam } from '@/features/project/use-project'
 
 type Props = {
   project: Project
@@ -42,6 +43,8 @@ export function ItemActions({ project, kind, item, onDeleted }: Props) {
   const vote = useToggle(project, kind, 'vote')
   const update = useUpdateItem(project, kind)
   const remove = useDeleteItem(project, kind)
+  const promote = usePromote(project, kind)
+  const { open } = useRefParam()
   const [blocking, setBlocking] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const label = KINDS[kind].label
@@ -119,6 +122,24 @@ export function ItemActions({ project, kind, item, onDeleted }: Props) {
                 Mark as blocked
               </DropdownMenuItem>
             ))}
+          {(kind === 'issue' || kind === 'task') && can(project, 'add_us') && (
+            <DropdownMenuItem
+              onSelect={() =>
+                promote.mutate(item, {
+                  onSuccess: (refs) => {
+                    toast.success(
+                      kind === 'task'
+                        ? `Task turned into story #${refs[0]}`
+                        : `Story #${refs[0]} created from this issue`
+                    )
+                    if (refs[0]) open(refs[0])
+                  },
+                })
+              }
+            >
+              Promote to story
+            </DropdownMenuItem>
+          )}
           {can(project, KINDS[kind].perm.delete) && (
             <>
               <DropdownMenuSeparator />

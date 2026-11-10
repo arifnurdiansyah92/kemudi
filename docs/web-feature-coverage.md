@@ -40,10 +40,10 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 
 ## Issues
 
-- [ ] Issues list with sort, search, filters
-- [ ] Create issue, bulk create
-- [ ] Type, severity, priority
-- [ ] Promote issue to story
+- [x] Issues list with sort, search, filters
+- [x] Create issue, bulk create
+- [x] Type, severity, priority
+- [x] Promote issue to story
 
 ## Epics
 
