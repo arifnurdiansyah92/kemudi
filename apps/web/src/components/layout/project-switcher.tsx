@@ -70,7 +70,7 @@ export function ProjectSwitcher() {
             )}
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link to='/'>All projects</Link>
+              <Link to='/projects'>All projects</Link>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -4,6 +4,7 @@ import { ChevronRight } from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { Search } from '@/components/search'
 import { ThemeSwitch } from '@/components/theme-switch'
+import { NotificationsBell } from '@/features/notifications/notifications-bell'
 
 type Crumb = { label: string; to?: LinkProps['to']; params?: object }
 
@@ -47,6 +48,7 @@ export function AppHeader({ crumbs }: { crumbs: Crumb[] }) {
         </ol>
       </nav>
       <Search className='max-sm:hidden' placeholder='Jump to…' />
+      <NotificationsBell />
       <ThemeSwitch />
     </Header>
   )

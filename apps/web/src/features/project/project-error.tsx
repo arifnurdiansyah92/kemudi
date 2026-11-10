@@ -20,7 +20,7 @@ export function ProjectError({ error, reset }: ErrorComponentProps) {
       <div className='mt-4 flex gap-2'>
         {!missing && <Button onClick={reset}>Try again</Button>}
         <Button variant='outline' asChild>
-          <Link to='/'>All projects</Link>
+          <Link to='/projects'>All projects</Link>
         </Button>
       </div>
     </div>

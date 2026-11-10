@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
 import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors404RouteImport } from './routes/(errors)/404'
@@ -45,6 +46,11 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedProjectsRoute = AuthenticatedProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const errors503Route = errors503RouteImport.update({
@@ -202,6 +208,7 @@ export interface FileRoutesByFullPath {
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
+  '/projects': typeof AuthenticatedProjectsRoute
   '/p/$slug': typeof AuthenticatedPSlugRouteRouteWithChildren
   '/change-password/$token': typeof authChangePasswordTokenRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
@@ -229,6 +236,7 @@ export interface FileRoutesByTo {
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
+  '/projects': typeof AuthenticatedProjectsRoute
   '/': typeof AuthenticatedIndexRoute
   '/change-password/$token': typeof authChangePasswordTokenRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
@@ -259,6 +267,7 @@ export interface FileRoutesById {
   '/(errors)/404': typeof errors404Route
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
+  '/_authenticated/projects': typeof AuthenticatedProjectsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/p/$slug': typeof AuthenticatedPSlugRouteRouteWithChildren
   '/(auth)/change-password/$token': typeof authChangePasswordTokenRoute
@@ -291,6 +300,7 @@ export interface FileRouteTypes {
     | '/404'
     | '/500'
     | '/503'
+    | '/projects'
     | '/p/$slug'
     | '/change-password/$token'
     | '/settings/appearance'
@@ -318,6 +328,7 @@ export interface FileRouteTypes {
     | '/404'
     | '/500'
     | '/503'
+    | '/projects'
     | '/'
     | '/change-password/$token'
     | '/settings/appearance'
@@ -347,6 +358,7 @@ export interface FileRouteTypes {
     | '/(errors)/404'
     | '/(errors)/500'
     | '/(errors)/503'
+    | '/_authenticated/projects'
     | '/_authenticated/'
     | '/_authenticated/p/$slug'
     | '/(auth)/change-password/$token'
@@ -394,6 +406,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/projects': {
+      id: '/_authenticated/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof AuthenticatedProjectsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/(errors)/503': {
@@ -635,6 +654,7 @@ const AuthenticatedPSlugRouteRouteWithChildren =
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
+  AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedPSlugRouteRoute: typeof AuthenticatedPSlugRouteRouteWithChildren
   AuthenticatedProjectSlugSplatRoute: typeof AuthenticatedProjectSlugSplatRoute
@@ -643,6 +663,7 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
+  AuthenticatedProjectsRoute: AuthenticatedProjectsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedPSlugRouteRoute: AuthenticatedPSlugRouteRouteWithChildren,
   AuthenticatedProjectSlugSplatRoute: AuthenticatedProjectSlugSplatRoute,
