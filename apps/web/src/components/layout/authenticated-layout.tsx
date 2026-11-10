@@ -1,4 +1,5 @@
 import { Outlet } from '@tanstack/react-router'
+import { useLanguageSync } from '@/i18n/use-language'
 import { getCookie } from '@/lib/cookies'
 import { useLiveUpdates } from '@/lib/taiga/live'
 import { cn } from '@/lib/utils'
@@ -17,6 +18,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   const defaultOpen = getCookie('sidebar_state') !== 'false'
   useInAppLinks()
   useLiveUpdates()
+  useLanguageSync()
   return (
     <SearchProvider>
       <LayoutProvider>

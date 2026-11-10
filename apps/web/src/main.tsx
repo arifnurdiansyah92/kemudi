@@ -10,6 +10,7 @@ import { RouterProvider, createRouter } from '@tanstack/react-router'
 // Styles
 import '@fontsource-variable/schibsted-grotesk'
 import { toast } from 'sonner'
+import i18n from '@/i18n'
 import { useAuthStore } from '@/stores/auth-store'
 import { handleServerError } from '@/lib/handle-server-error'
 import { DirectionProvider } from './context/direction-provider'
@@ -43,7 +44,7 @@ const queryClient = new QueryClient({
 
         if (error instanceof AxiosError) {
           if (error.response?.status === 304) {
-            toast.error('Nothing changed.')
+            toast.error(i18n.t('errors.nothingChanged'))
           }
         }
       },
@@ -54,13 +55,13 @@ const queryClient = new QueryClient({
       if (error instanceof AxiosError) {
         if (error.response?.status === 401) {
           // The client already tried a token refresh; the session is over.
-          toast.error('Your session ended. Sign in again.')
+          toast.error(i18n.t('errors.sessionEnded'))
           useAuthStore.getState().reset()
           const redirect = `${router.history.location.href}`
           router.navigate({ to: '/sign-in', search: { redirect } })
         }
         if (error.response?.status === 500) {
-          toast.error('The Kemudi server hit an error. Try again.')
+          toast.error(i18n.t('errors.server'))
           // Only navigate to error page in production to avoid disrupting HMR in development
           if (import.meta.env.PROD) {
             router.navigate({ to: '/500' })

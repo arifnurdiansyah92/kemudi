@@ -1,4 +1,3 @@
-import { formatDistanceToNowStrict } from 'date-fns'
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
@@ -56,21 +55,7 @@ export function getPageNumbers(currentPage: number, totalPages: number) {
   return rangeWithDots
 }
 
-/**
- * "3 minutes ago". Clamps dates a moment in the future (server and browser
- * clocks disagree by a little) to "just now".
- */
-export function timeAgo(date: string | Date) {
-  const d = typeof date === 'string' ? new Date(date) : date
-  if (Date.now() - d.getTime() < 45_000) return 'just now'
-  return formatDistanceToNowStrict(d, { addSuffix: true })
-}
-
-export function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${(bytes / 1024 ** 2).toFixed(1)} MB`
-}
+export { formatBytes, timeAgo } from '@/i18n/format'
 
 /** Only follow same-origin, path-style redirects. */
 export function safeRedirect(target?: string) {

@@ -1,0 +1,35 @@
+name: web
+
+on:
+  push:
+    branches: [main]
+    paths: ['apps/web/**', '.github/workflows/web.yml']
+  pull_request:
+    paths: ['apps/web/**', '.github/workflows/web.yml']
+
+defaults:
+  run:
+    working-directory: apps/web
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/web/.node-version
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # Includes i18next/no-literal-string: fails on hard-coded UI text.
+      - run: pnpm lint
+      # Fails on translation keys missing from src/locales/en.
+      - run: pnpm typecheck
+      - run: pnpm test:browser:install
+      # Includes src/i18n/resources.test.ts: id and en carry the same keys.
+      - run: pnpm test
+      - run: pnpm build

@@ -22,6 +22,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { LanguageSwitch } from '@/components/language-switch'
 import { SignOutDialog } from '@/components/sign-out-dialog'
 import { UserAvatar } from '@/components/user-avatar'
 
@@ -87,6 +88,10 @@ export function NavUser() {
                   Appearance
                 </Link>
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <div className='px-2 py-1.5'>
+                <LanguageSwitch className='w-full justify-between' />
+              </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant='destructive'

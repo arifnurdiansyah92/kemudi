@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form'
 import { ChevronDownIcon } from '@radix-ui/react-icons'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { fonts } from '@/config/fonts'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useFont } from '@/context/font-provider'
@@ -18,6 +19,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { LanguageSwitch } from '@/components/language-switch'
 
 const appearanceFormSchema = z.object({
   theme: z.enum(['light', 'dark']),
@@ -27,6 +29,7 @@ const appearanceFormSchema = z.object({
 type AppearanceFormValues = z.infer<typeof appearanceFormSchema>
 
 export function AppearanceForm() {
+  const { t } = useTranslation(['settings', 'common'])
   const { font, setFont } = useFont()
   const { theme, setTheme } = useTheme()
 
@@ -51,6 +54,15 @@ export function AppearanceForm() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-8'>
+        <div className='space-y-2'>
+          <div className='text-sm font-medium'>
+            {t('common:language.label')}
+          </div>
+          <LanguageSwitch />
+          <p className='text-sm text-muted-foreground'>
+            {t('appearance.languageHelp')}
+          </p>
+        </div>
         <FormField
           control={form.control}
           name='font'
