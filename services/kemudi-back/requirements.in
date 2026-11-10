@@ -1,0 +1,44 @@
+# Main
+Django>=3.2.19,<4
+celery
+gunicorn
+psycopg2<2.10  # required by django, 2.9.10 was the latest
+redis
+
+# Third party by Kaleidos
+django-sampledatahelper>=0.5
+django-sites>=0.11
+django-sr>=0.0.4
+djmail>=2.0.0
+
+# Other third party
+bleach<5 # v6.0.0 has backwards incompatible changes https://github.com/mozilla/bleach/blob/main/CHANGES#L44
+diff-match-patch
+django-ipware>7
+django-jinja
+django-picklefield<3.3.0 # 3.3.0 dropped support for Django 3.2
+django-pglocks
+easy-thumbnails<2.9 # 2.9 released after Django 3.2 LTS EOL
+netaddr
+premailer>=3.10
+psd-tools>=1.9.18,<1.10.0 # https://psd-tools.readthedocs.io/en/latest/migration.html#migrating-to-1-10
+python-dateutil
+python-magic
+pytz
+requests
+requests_oauthlib
+rudder-sdk-python==1.0.0b1 # it is a pre-release!
+sentry-sdk
+serpy
+webcolors
+cairosvg
+Markdown
+pymdown-extensions
+Pillow
+Unidecode
+Pygments>=2.7.4
+oauthlib[signedtoken]
+html5lib
+
+# Importers
+asana>=3.0,<4.0 # asana v4 is complete rewrite
