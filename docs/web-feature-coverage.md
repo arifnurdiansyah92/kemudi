@@ -93,10 +93,10 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 
 - [x] Sign in, forgot and change password
 - [ ] Sign up, accept invitation
-- [ ] Profile: name, bio, photo, language, timezone
-- [ ] Change password, email, delete account
-- [ ] Notification settings per project
-- [ ] Application tokens
+- [x] Profile: name, username, bio, photo, language, timezone
+- [x] Change password, email (with confirm link), delete account (also from the emailed link)
+- [x] Notification settings per project (email level, bell)
+- [x] Connected apps (application tokens): list and revoke
 
 ## Importers
 

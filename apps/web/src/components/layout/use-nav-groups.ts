@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
 import {
   Compass,
+  UserCog,
   Settings,
   House,
   BookOpen,
@@ -91,6 +92,7 @@ export function useNavGroups(): NavGroup[] {
   groups.push({
     title: 'You',
     items: [
+      { title: 'Your settings', url: '/settings/profile', icon: UserCog },
       { title: 'Appearance', url: '/settings/appearance', icon: Palette },
     ],
   })

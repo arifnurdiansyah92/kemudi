@@ -23,10 +23,18 @@ import { Route as authForgotPasswordRouteImport } from './routes/(auth)/forgot-p
 import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
 import { Route as AuthenticatedProjectsIndexRouteImport } from './routes/_authenticated/projects/index'
+import { Route as AuthenticatedUserSettingsSplatRouteImport } from './routes/_authenticated/user-settings/$'
+import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated/settings/profile'
+import { Route as AuthenticatedSettingsNotificationsRouteImport } from './routes/_authenticated/settings/notifications'
+import { Route as AuthenticatedSettingsAppsRouteImport } from './routes/_authenticated/settings/apps'
 import { Route as AuthenticatedSettingsAppearanceRouteImport } from './routes/_authenticated/settings/appearance'
+import { Route as AuthenticatedSettingsAccountRouteImport } from './routes/_authenticated/settings/account'
 import { Route as AuthenticatedProjectsNewRouteImport } from './routes/_authenticated/projects/new'
 import { Route as AuthenticatedProjectNewRouteImport } from './routes/_authenticated/project/new'
+import { Route as authVerifyEmailTokenRouteImport } from './routes/(auth)/verify-email.$token'
 import { Route as authChangePasswordTokenRouteImport } from './routes/(auth)/change-password.$token'
+import { Route as authChangeEmailTokenRouteImport } from './routes/(auth)/change-email.$token'
+import { Route as authCancelAccountTokenRouteImport } from './routes/(auth)/cancel-account.$token'
 import { Route as AuthenticatedPSlugRouteRouteImport } from './routes/_authenticated/p/$slug/route'
 import { Route as AuthenticatedProjectSlugIndexRouteImport } from './routes/_authenticated/project/$slug/index'
 import { Route as AuthenticatedPSlugIndexRouteImport } from './routes/_authenticated/p/$slug/index'
@@ -125,10 +133,40 @@ const AuthenticatedProjectsIndexRoute =
     path: '/projects/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedUserSettingsSplatRoute =
+  AuthenticatedUserSettingsSplatRouteImport.update({
+    id: '/user-settings/$',
+    path: '/user-settings/$',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSettingsProfileRoute =
+  AuthenticatedSettingsProfileRouteImport.update({
+    id: '/profile',
+    path: '/profile',
+    getParentRoute: () => AuthenticatedSettingsRouteRoute,
+  } as any)
+const AuthenticatedSettingsNotificationsRoute =
+  AuthenticatedSettingsNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
+    getParentRoute: () => AuthenticatedSettingsRouteRoute,
+  } as any)
+const AuthenticatedSettingsAppsRoute =
+  AuthenticatedSettingsAppsRouteImport.update({
+    id: '/apps',
+    path: '/apps',
+    getParentRoute: () => AuthenticatedSettingsRouteRoute,
+  } as any)
 const AuthenticatedSettingsAppearanceRoute =
   AuthenticatedSettingsAppearanceRouteImport.update({
     id: '/appearance',
     path: '/appearance',
+    getParentRoute: () => AuthenticatedSettingsRouteRoute,
+  } as any)
+const AuthenticatedSettingsAccountRoute =
+  AuthenticatedSettingsAccountRouteImport.update({
+    id: '/account',
+    path: '/account',
     getParentRoute: () => AuthenticatedSettingsRouteRoute,
   } as any)
 const AuthenticatedProjectsNewRoute =
@@ -142,9 +180,24 @@ const AuthenticatedProjectNewRoute = AuthenticatedProjectNewRouteImport.update({
   path: '/project/new',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const authVerifyEmailTokenRoute = authVerifyEmailTokenRouteImport.update({
+  id: '/(auth)/verify-email/$token',
+  path: '/verify-email/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const authChangePasswordTokenRoute = authChangePasswordTokenRouteImport.update({
   id: '/(auth)/change-password/$token',
   path: '/change-password/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const authChangeEmailTokenRoute = authChangeEmailTokenRouteImport.update({
+  id: '/(auth)/change-email/$token',
+  path: '/change-email/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const authCancelAccountTokenRoute = authCancelAccountTokenRouteImport.update({
+  id: '/(auth)/cancel-account/$token',
+  path: '/cancel-account/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedPSlugRouteRoute = AuthenticatedPSlugRouteRouteImport.update({
@@ -307,10 +360,18 @@ export interface FileRoutesByFullPath {
   '/503': typeof errors503Route
   '/discover': typeof AuthenticatedDiscoverRoute
   '/p/$slug': typeof AuthenticatedPSlugRouteRouteWithChildren
+  '/cancel-account/$token': typeof authCancelAccountTokenRoute
+  '/change-email/$token': typeof authChangeEmailTokenRoute
   '/change-password/$token': typeof authChangePasswordTokenRoute
+  '/verify-email/$token': typeof authVerifyEmailTokenRoute
   '/project/new': typeof AuthenticatedProjectNewRoute
   '/projects/new': typeof AuthenticatedProjectsNewRoute
+  '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/settings/apps': typeof AuthenticatedSettingsAppsRoute
+  '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
+  '/settings/profile': typeof AuthenticatedSettingsProfileRoute
+  '/user-settings/$': typeof AuthenticatedUserSettingsSplatRoute
   '/projects/': typeof AuthenticatedProjectsIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
   '/p/$slug/settings': typeof AuthenticatedPSlugSettingsRouteRouteWithChildren
@@ -349,10 +410,18 @@ export interface FileRoutesByTo {
   '/503': typeof errors503Route
   '/discover': typeof AuthenticatedDiscoverRoute
   '/': typeof AuthenticatedIndexRoute
+  '/cancel-account/$token': typeof authCancelAccountTokenRoute
+  '/change-email/$token': typeof authChangeEmailTokenRoute
   '/change-password/$token': typeof authChangePasswordTokenRoute
+  '/verify-email/$token': typeof authVerifyEmailTokenRoute
   '/project/new': typeof AuthenticatedProjectNewRoute
   '/projects/new': typeof AuthenticatedProjectsNewRoute
+  '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/settings/apps': typeof AuthenticatedSettingsAppsRoute
+  '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
+  '/settings/profile': typeof AuthenticatedSettingsProfileRoute
+  '/user-settings/$': typeof AuthenticatedUserSettingsSplatRoute
   '/projects': typeof AuthenticatedProjectsIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/p/$slug/backlog': typeof AuthenticatedPSlugBacklogRoute
@@ -394,10 +463,18 @@ export interface FileRoutesById {
   '/_authenticated/discover': typeof AuthenticatedDiscoverRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/p/$slug': typeof AuthenticatedPSlugRouteRouteWithChildren
+  '/(auth)/cancel-account/$token': typeof authCancelAccountTokenRoute
+  '/(auth)/change-email/$token': typeof authChangeEmailTokenRoute
   '/(auth)/change-password/$token': typeof authChangePasswordTokenRoute
+  '/(auth)/verify-email/$token': typeof authVerifyEmailTokenRoute
   '/_authenticated/project/new': typeof AuthenticatedProjectNewRoute
   '/_authenticated/projects/new': typeof AuthenticatedProjectsNewRoute
+  '/_authenticated/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/_authenticated/settings/apps': typeof AuthenticatedSettingsAppsRoute
+  '/_authenticated/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
+  '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRoute
+  '/_authenticated/user-settings/$': typeof AuthenticatedUserSettingsSplatRoute
   '/_authenticated/projects/': typeof AuthenticatedProjectsIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/_authenticated/p/$slug/settings': typeof AuthenticatedPSlugSettingsRouteRouteWithChildren
@@ -440,10 +517,18 @@ export interface FileRouteTypes {
     | '/503'
     | '/discover'
     | '/p/$slug'
+    | '/cancel-account/$token'
+    | '/change-email/$token'
     | '/change-password/$token'
+    | '/verify-email/$token'
     | '/project/new'
     | '/projects/new'
+    | '/settings/account'
     | '/settings/appearance'
+    | '/settings/apps'
+    | '/settings/notifications'
+    | '/settings/profile'
+    | '/user-settings/$'
     | '/projects/'
     | '/settings/'
     | '/p/$slug/settings'
@@ -482,10 +567,18 @@ export interface FileRouteTypes {
     | '/503'
     | '/discover'
     | '/'
+    | '/cancel-account/$token'
+    | '/change-email/$token'
     | '/change-password/$token'
+    | '/verify-email/$token'
     | '/project/new'
     | '/projects/new'
+    | '/settings/account'
     | '/settings/appearance'
+    | '/settings/apps'
+    | '/settings/notifications'
+    | '/settings/profile'
+    | '/user-settings/$'
     | '/projects'
     | '/settings'
     | '/p/$slug/backlog'
@@ -526,10 +619,18 @@ export interface FileRouteTypes {
     | '/_authenticated/discover'
     | '/_authenticated/'
     | '/_authenticated/p/$slug'
+    | '/(auth)/cancel-account/$token'
+    | '/(auth)/change-email/$token'
     | '/(auth)/change-password/$token'
+    | '/(auth)/verify-email/$token'
     | '/_authenticated/project/new'
     | '/_authenticated/projects/new'
+    | '/_authenticated/settings/account'
     | '/_authenticated/settings/appearance'
+    | '/_authenticated/settings/apps'
+    | '/_authenticated/settings/notifications'
+    | '/_authenticated/settings/profile'
+    | '/_authenticated/user-settings/$'
     | '/_authenticated/projects/'
     | '/_authenticated/settings/'
     | '/_authenticated/p/$slug/settings'
@@ -568,7 +669,10 @@ export interface RootRouteChildren {
   errors404Route: typeof errors404Route
   errors500Route: typeof errors500Route
   errors503Route: typeof errors503Route
+  authCancelAccountTokenRoute: typeof authCancelAccountTokenRoute
+  authChangeEmailTokenRoute: typeof authChangeEmailTokenRoute
   authChangePasswordTokenRoute: typeof authChangePasswordTokenRoute
+  authVerifyEmailTokenRoute: typeof authVerifyEmailTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -671,11 +775,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/user-settings/$': {
+      id: '/_authenticated/user-settings/$'
+      path: '/user-settings/$'
+      fullPath: '/user-settings/$'
+      preLoaderRoute: typeof AuthenticatedUserSettingsSplatRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/settings/profile': {
+      id: '/_authenticated/settings/profile'
+      path: '/profile'
+      fullPath: '/settings/profile'
+      preLoaderRoute: typeof AuthenticatedSettingsProfileRouteImport
+      parentRoute: typeof AuthenticatedSettingsRouteRoute
+    }
+    '/_authenticated/settings/notifications': {
+      id: '/_authenticated/settings/notifications'
+      path: '/notifications'
+      fullPath: '/settings/notifications'
+      preLoaderRoute: typeof AuthenticatedSettingsNotificationsRouteImport
+      parentRoute: typeof AuthenticatedSettingsRouteRoute
+    }
+    '/_authenticated/settings/apps': {
+      id: '/_authenticated/settings/apps'
+      path: '/apps'
+      fullPath: '/settings/apps'
+      preLoaderRoute: typeof AuthenticatedSettingsAppsRouteImport
+      parentRoute: typeof AuthenticatedSettingsRouteRoute
+    }
     '/_authenticated/settings/appearance': {
       id: '/_authenticated/settings/appearance'
       path: '/appearance'
       fullPath: '/settings/appearance'
       preLoaderRoute: typeof AuthenticatedSettingsAppearanceRouteImport
+      parentRoute: typeof AuthenticatedSettingsRouteRoute
+    }
+    '/_authenticated/settings/account': {
+      id: '/_authenticated/settings/account'
+      path: '/account'
+      fullPath: '/settings/account'
+      preLoaderRoute: typeof AuthenticatedSettingsAccountRouteImport
       parentRoute: typeof AuthenticatedSettingsRouteRoute
     }
     '/_authenticated/projects/new': {
@@ -692,11 +831,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectNewRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/(auth)/verify-email/$token': {
+      id: '/(auth)/verify-email/$token'
+      path: '/verify-email/$token'
+      fullPath: '/verify-email/$token'
+      preLoaderRoute: typeof authVerifyEmailTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/(auth)/change-password/$token': {
       id: '/(auth)/change-password/$token'
       path: '/change-password/$token'
       fullPath: '/change-password/$token'
       preLoaderRoute: typeof authChangePasswordTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/(auth)/change-email/$token': {
+      id: '/(auth)/change-email/$token'
+      path: '/change-email/$token'
+      fullPath: '/change-email/$token'
+      preLoaderRoute: typeof authChangeEmailTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/(auth)/cancel-account/$token': {
+      id: '/(auth)/cancel-account/$token'
+      path: '/cancel-account/$token'
+      fullPath: '/cancel-account/$token'
+      preLoaderRoute: typeof authCancelAccountTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/p/$slug': {
@@ -878,13 +1038,22 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedSettingsRouteRouteChildren {
+  AuthenticatedSettingsAccountRoute: typeof AuthenticatedSettingsAccountRoute
   AuthenticatedSettingsAppearanceRoute: typeof AuthenticatedSettingsAppearanceRoute
+  AuthenticatedSettingsAppsRoute: typeof AuthenticatedSettingsAppsRoute
+  AuthenticatedSettingsNotificationsRoute: typeof AuthenticatedSettingsNotificationsRoute
+  AuthenticatedSettingsProfileRoute: typeof AuthenticatedSettingsProfileRoute
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
 }
 
 const AuthenticatedSettingsRouteRouteChildren: AuthenticatedSettingsRouteRouteChildren =
   {
+    AuthenticatedSettingsAccountRoute: AuthenticatedSettingsAccountRoute,
     AuthenticatedSettingsAppearanceRoute: AuthenticatedSettingsAppearanceRoute,
+    AuthenticatedSettingsAppsRoute: AuthenticatedSettingsAppsRoute,
+    AuthenticatedSettingsNotificationsRoute:
+      AuthenticatedSettingsNotificationsRoute,
+    AuthenticatedSettingsProfileRoute: AuthenticatedSettingsProfileRoute,
     AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
   }
 
@@ -977,6 +1146,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPSlugRouteRoute: typeof AuthenticatedPSlugRouteRouteWithChildren
   AuthenticatedProjectNewRoute: typeof AuthenticatedProjectNewRoute
   AuthenticatedProjectsNewRoute: typeof AuthenticatedProjectsNewRoute
+  AuthenticatedUserSettingsSplatRoute: typeof AuthenticatedUserSettingsSplatRoute
   AuthenticatedProjectsIndexRoute: typeof AuthenticatedProjectsIndexRoute
   AuthenticatedProjectSlugSplatRoute: typeof AuthenticatedProjectSlugSplatRoute
   AuthenticatedProjectSlugIndexRoute: typeof AuthenticatedProjectSlugIndexRoute
@@ -989,6 +1159,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPSlugRouteRoute: AuthenticatedPSlugRouteRouteWithChildren,
   AuthenticatedProjectNewRoute: AuthenticatedProjectNewRoute,
   AuthenticatedProjectsNewRoute: AuthenticatedProjectsNewRoute,
+  AuthenticatedUserSettingsSplatRoute: AuthenticatedUserSettingsSplatRoute,
   AuthenticatedProjectsIndexRoute: AuthenticatedProjectsIndexRoute,
   AuthenticatedProjectSlugSplatRoute: AuthenticatedProjectSlugSplatRoute,
   AuthenticatedProjectSlugIndexRoute: AuthenticatedProjectSlugIndexRoute,
@@ -1007,7 +1178,10 @@ const rootRouteChildren: RootRouteChildren = {
   errors404Route: errors404Route,
   errors500Route: errors500Route,
   errors503Route: errors503Route,
+  authCancelAccountTokenRoute: authCancelAccountTokenRoute,
+  authChangeEmailTokenRoute: authChangeEmailTokenRoute,
   authChangePasswordTokenRoute: authChangePasswordTokenRoute,
+  authVerifyEmailTokenRoute: authVerifyEmailTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
