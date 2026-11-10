@@ -42,10 +42,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Textarea } from '@/components/ui/textarea'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { AppHeader } from '@/components/layout/app-header'
 import { Main } from '@/components/layout/main'
+import { MentionTextarea } from '@/components/mention-textarea'
 import { Attachments } from '@/features/item/attachments'
 import { can, useProject } from '@/features/project/use-project'
 import { WikiHistory } from './history'
@@ -280,9 +280,10 @@ function Editor({
           <TabsTrigger value='preview'>Preview</TabsTrigger>
         </TabsList>
         <TabsContent value='write' className='mt-3'>
-          <Textarea
+          <MentionTextarea
+            project={project}
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={setContent}
             rows={20}
             autoFocus
             aria-label='Page content'

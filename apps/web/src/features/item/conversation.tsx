@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Textarea } from '@/components/ui/textarea'
+import { MentionTextarea } from '@/components/mention-textarea'
 import { UserAvatar } from '@/components/user-avatar'
 import { can } from '@/features/project/use-project'
 import { describe, visibleKey } from './history-text'
@@ -100,9 +100,10 @@ function Comments({
               add.mutate({ item, comment }, { onSuccess: () => setText('') })
           }}
         >
-          <Textarea
+          <MentionTextarea
+            project={project}
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={setText}
             rows={3}
             placeholder='Write a comment. Markdown works.'
             aria-label='New comment'
@@ -199,9 +200,10 @@ function CommentEntry({
               )
             }}
           >
-            <Textarea
+            <MentionTextarea
+              project={project}
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={setDraft}
               rows={3}
               autoFocus
               aria-label='Edit comment'

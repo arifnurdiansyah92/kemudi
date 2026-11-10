@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react'
 import { useUpdateItem } from '@/lib/taiga/items'
 import type { Item, ItemKind, Project } from '@/lib/taiga/types'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
+import { MentionTextarea } from '@/components/mention-textarea'
 
 export function Description({
   project,
@@ -37,9 +37,10 @@ export function Description({
           )
         }}
       >
-        <Textarea
+        <MentionTextarea
+          project={project}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={setValue}
           rows={8}
           autoFocus
           aria-label='Description'
