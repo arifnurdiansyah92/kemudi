@@ -43,6 +43,7 @@ import { Route as AuthenticatedPSlugTaskboardIndexRouteImport } from './routes/_
 import { Route as AuthenticatedPSlugSettingsIndexRouteImport } from './routes/_authenticated/p/$slug/settings/index'
 import { Route as AuthenticatedPSlugWikiPageRouteImport } from './routes/_authenticated/p/$slug/wiki/$page'
 import { Route as AuthenticatedPSlugTaskboardSprintRouteImport } from './routes/_authenticated/p/$slug/taskboard/$sprint'
+import { Route as AuthenticatedPSlugSettingsMembersRouteImport } from './routes/_authenticated/p/$slug/settings/members'
 import { Route as AuthenticatedPSlugSettingsGeneralRouteImport } from './routes/_authenticated/p/$slug/settings/general'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
@@ -231,6 +232,12 @@ const AuthenticatedPSlugTaskboardSprintRoute =
     path: '/taskboard/$sprint',
     getParentRoute: () => AuthenticatedPSlugRouteRoute,
   } as any)
+const AuthenticatedPSlugSettingsMembersRoute =
+  AuthenticatedPSlugSettingsMembersRouteImport.update({
+    id: '/members',
+    path: '/members',
+    getParentRoute: () => AuthenticatedPSlugSettingsRouteRoute,
+  } as any)
 const AuthenticatedPSlugSettingsGeneralRoute =
   AuthenticatedPSlugSettingsGeneralRouteImport.update({
     id: '/general',
@@ -268,6 +275,7 @@ export interface FileRoutesByFullPath {
   '/p/$slug/': typeof AuthenticatedPSlugIndexRoute
   '/project/$slug/': typeof AuthenticatedProjectSlugIndexRoute
   '/p/$slug/settings/general': typeof AuthenticatedPSlugSettingsGeneralRoute
+  '/p/$slug/settings/members': typeof AuthenticatedPSlugSettingsMembersRoute
   '/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
   '/p/$slug/wiki/$page': typeof AuthenticatedPSlugWikiPageRoute
   '/p/$slug/settings/': typeof AuthenticatedPSlugSettingsIndexRoute
@@ -301,6 +309,7 @@ export interface FileRoutesByTo {
   '/p/$slug': typeof AuthenticatedPSlugIndexRoute
   '/project/$slug': typeof AuthenticatedProjectSlugIndexRoute
   '/p/$slug/settings/general': typeof AuthenticatedPSlugSettingsGeneralRoute
+  '/p/$slug/settings/members': typeof AuthenticatedPSlugSettingsMembersRoute
   '/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
   '/p/$slug/wiki/$page': typeof AuthenticatedPSlugWikiPageRoute
   '/p/$slug/settings': typeof AuthenticatedPSlugSettingsIndexRoute
@@ -339,6 +348,7 @@ export interface FileRoutesById {
   '/_authenticated/p/$slug/': typeof AuthenticatedPSlugIndexRoute
   '/_authenticated/project/$slug/': typeof AuthenticatedProjectSlugIndexRoute
   '/_authenticated/p/$slug/settings/general': typeof AuthenticatedPSlugSettingsGeneralRoute
+  '/_authenticated/p/$slug/settings/members': typeof AuthenticatedPSlugSettingsMembersRoute
   '/_authenticated/p/$slug/taskboard/$sprint': typeof AuthenticatedPSlugTaskboardSprintRoute
   '/_authenticated/p/$slug/wiki/$page': typeof AuthenticatedPSlugWikiPageRoute
   '/_authenticated/p/$slug/settings/': typeof AuthenticatedPSlugSettingsIndexRoute
@@ -377,6 +387,7 @@ export interface FileRouteTypes {
     | '/p/$slug/'
     | '/project/$slug/'
     | '/p/$slug/settings/general'
+    | '/p/$slug/settings/members'
     | '/p/$slug/taskboard/$sprint'
     | '/p/$slug/wiki/$page'
     | '/p/$slug/settings/'
@@ -410,6 +421,7 @@ export interface FileRouteTypes {
     | '/p/$slug'
     | '/project/$slug'
     | '/p/$slug/settings/general'
+    | '/p/$slug/settings/members'
     | '/p/$slug/taskboard/$sprint'
     | '/p/$slug/wiki/$page'
     | '/p/$slug/settings'
@@ -447,6 +459,7 @@ export interface FileRouteTypes {
     | '/_authenticated/p/$slug/'
     | '/_authenticated/project/$slug/'
     | '/_authenticated/p/$slug/settings/general'
+    | '/_authenticated/p/$slug/settings/members'
     | '/_authenticated/p/$slug/taskboard/$sprint'
     | '/_authenticated/p/$slug/wiki/$page'
     | '/_authenticated/p/$slug/settings/'
@@ -707,6 +720,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPSlugTaskboardSprintRouteImport
       parentRoute: typeof AuthenticatedPSlugRouteRoute
     }
+    '/_authenticated/p/$slug/settings/members': {
+      id: '/_authenticated/p/$slug/settings/members'
+      path: '/members'
+      fullPath: '/p/$slug/settings/members'
+      preLoaderRoute: typeof AuthenticatedPSlugSettingsMembersRouteImport
+      parentRoute: typeof AuthenticatedPSlugSettingsRouteRoute
+    }
     '/_authenticated/p/$slug/settings/general': {
       id: '/_authenticated/p/$slug/settings/general'
       path: '/general'
@@ -735,6 +755,7 @@ const AuthenticatedSettingsRouteRouteWithChildren =
 
 interface AuthenticatedPSlugSettingsRouteRouteChildren {
   AuthenticatedPSlugSettingsGeneralRoute: typeof AuthenticatedPSlugSettingsGeneralRoute
+  AuthenticatedPSlugSettingsMembersRoute: typeof AuthenticatedPSlugSettingsMembersRoute
   AuthenticatedPSlugSettingsIndexRoute: typeof AuthenticatedPSlugSettingsIndexRoute
 }
 
@@ -742,6 +763,8 @@ const AuthenticatedPSlugSettingsRouteRouteChildren: AuthenticatedPSlugSettingsRo
   {
     AuthenticatedPSlugSettingsGeneralRoute:
       AuthenticatedPSlugSettingsGeneralRoute,
+    AuthenticatedPSlugSettingsMembersRoute:
+      AuthenticatedPSlugSettingsMembersRoute,
     AuthenticatedPSlugSettingsIndexRoute: AuthenticatedPSlugSettingsIndexRoute,
   }
 

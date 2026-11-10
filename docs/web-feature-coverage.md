@@ -80,7 +80,7 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 
 - [x] Details: name, description, logo, privacy, planned sprints and points, looking for people
 - [x] Modules on/off, videoconference
-- [ ] Members: invite, change role, remove
+- [x] Members: invite (several at once, with a note), change role, admin flag, remove, resend and cancel invitations
 - [ ] Roles and permissions
 - [ ] Attributes: statuses, points, priorities, severities, types, swimlanes, due dates
 - [ ] Custom fields
