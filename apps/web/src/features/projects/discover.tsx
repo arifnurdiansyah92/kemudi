@@ -32,7 +32,7 @@ export function Discover() {
   return (
     <>
       <AppHeader crumbs={[{ label: t('projects.discover.title') }]} />
-      <Main className='max-w-4xl'>
+      <Main width='reading'>
         <h1 className='text-2xl font-semibold tracking-tight'>
           {t('projects.discover.title')}
         </h1>

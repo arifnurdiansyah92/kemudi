@@ -118,6 +118,11 @@
       "send": "Send invitation",
       "inviteMany_one": "Invite {{count}} person",
       "inviteMany_other": "Invite {{count}} people"
+    },
+    "promote": {
+      "title": "Make {{name}} a project admin?",
+      "description": "Admins can change every project setting, manage members and roles, and delete the project.",
+      "confirm": "Make admin"
     }
   },
   "roles": {

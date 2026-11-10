@@ -43,7 +43,7 @@ export function NewProject() {
           { label: t('projects.newProject') },
         ]}
       />
-      <Main className='max-w-2xl'>
+      <Main width='form'>
         <h1 className='text-2xl font-semibold tracking-tight'>
           {t('projects.newProject')}
         </h1>
@@ -90,7 +90,7 @@ export function NewProject() {
                       checked={on}
                       onChange={() => setTemplate(tpl.id)}
                     />
-                    <Icon className='mt-0.5 size-5 shrink-0 text-brass' />
+                    <Icon className='mt-0.5 size-5 shrink-0 text-muted-foreground' />
                     <span>
                       <span className='block font-medium'>{tpl.name}</span>
                       <span className='mt-1 block text-sm text-muted-foreground'>

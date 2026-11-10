@@ -38,7 +38,7 @@ export function ProjectSettingsLayout() {
           ...(current ? [{ label: t(current[1]) }] : []),
         ]}
       />
-      <Main fluid className='mx-auto w-full max-w-6xl'>
+      <Main width='list'>
         <h1 className='text-2xl font-semibold tracking-tight'>
           {t('nav.title')}
         </h1>

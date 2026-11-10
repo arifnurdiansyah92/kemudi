@@ -168,7 +168,7 @@ export function Taskboard({ sprintId }: { sprintId: Id }) {
             { label: t('common:terms.taskboard') },
           ]}
         />
-        <Main>
+        <Main width='reading'>
           <p className='text-sm'>
             {t('taskboard.notFound')}{' '}
             <Link
@@ -197,7 +197,7 @@ export function Taskboard({ sprintId }: { sprintId: Id }) {
           { label: t('common:terms.taskboard') },
         ]}
       />
-      <Main fluid className='pb-0'>
+      <Main width='board' className='pb-0'>
         <div className='flex flex-wrap items-start justify-between gap-6'>
           <div className='min-w-0'>
             <div className='flex items-center gap-1'>
@@ -674,7 +674,7 @@ function TaskFace({
       tabIndex={0}
       className={cn(
         'grid cursor-pointer gap-1.5 rounded-md border bg-background p-2 text-sm shadow-xs outline-none hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring',
-        task.is_blocked && 'border-s-4 border-s-destructive',
+        task.is_blocked && 'border-destructive/40 bg-destructive/5',
         task.is_closed && 'text-muted-foreground',
         lifted && 'rotate-1 cursor-grabbing shadow-lg',
         className
@@ -692,14 +692,14 @@ function TaskFace({
       <div className='flex items-center gap-1.5 text-xs text-muted-foreground'>
         <span className='tabular-nums'>#{task.ref}</span>
         {task.is_blocked && (
-          <Ban
-            className='size-3 text-destructive'
-            aria-label={t('taskboard.task.blocked')}
-          />
+          <span className='inline-flex items-center gap-1 text-destructive'>
+            <Ban aria-hidden className='size-3' />
+            {t('taskboard.task.blocked')}
+          </span>
         )}
         {task.is_iocaine && (
           <Flame
-            className='size-3 text-brass'
+            className='size-3 text-foreground/70'
             aria-label={t('taskboard.task.iocaine')}
           />
         )}

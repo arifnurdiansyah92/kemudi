@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
+import { timeZoneLabel } from '@/i18n/format'
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
@@ -84,6 +85,9 @@ function Photo({ me }: { me: Me }) {
     </SettingsSection>
   )
 }
+
+/** WIB, WITA and WIT first: most Kemudi clients are in one of them. */
+const INDONESIAN_ZONES = ['Asia/Jakarta', 'Asia/Makassar', 'Asia/Jayapura']
 
 function ProfileForm({ me }: { me: Me }) {
   const { t } = useTranslation('settings')
@@ -170,11 +174,22 @@ function ProfileForm({ me }: { me: Me }) {
               className='h-9 rounded-md border bg-transparent px-2 text-sm'
             >
               <option value=''>{t('profile.serverDefault')}</option>
-              {zones.map((z) => (
-                <option key={z} value={z}>
-                  {z.replace(/_/g, ' ')}
-                </option>
-              ))}
+              <optgroup label={t('profile.timezoneIndonesia')}>
+                {INDONESIAN_ZONES.map((z) => (
+                  <option key={z} value={z}>
+                    {timeZoneLabel(z)}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label={t('profile.timezoneOther')}>
+                {zones
+                  .filter((z) => !INDONESIAN_ZONES.includes(z))
+                  .map((z) => (
+                    <option key={z} value={z}>
+                      {timeZoneLabel(z)}
+                    </option>
+                  ))}
+              </optgroup>
             </select>
           </div>
         </div>

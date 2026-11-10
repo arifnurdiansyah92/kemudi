@@ -53,7 +53,7 @@ export function Team({ tab = 'members' }: { tab?: 'members' | 'activity' }) {
           },
         ]}
       />
-      <Main fluid className='mx-auto w-full max-w-4xl'>
+      <Main width='reading'>
         <h1 className='text-2xl font-semibold tracking-tight'>
           {t('common:terms.team')}
         </h1>

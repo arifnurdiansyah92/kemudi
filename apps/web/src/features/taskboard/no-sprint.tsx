@@ -9,7 +9,7 @@ export function NoSprint() {
   return (
     <>
       <AppHeader crumbs={[{ label: t('common:terms.taskboard') }]} />
-      <Main>
+      <Main width='reading'>
         <h1 className='text-2xl font-semibold tracking-tight'>
           {t('common:terms.taskboard')}
         </h1>

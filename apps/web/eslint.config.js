@@ -85,6 +85,8 @@ export default defineConfig(
               String.raw`^[0-9!-/:-@[-\`{-~\s·•–—…×→←↑↓⌘]+$`,
               '^(Kemudi|Awak|Kemudi Radar|Kemudi Assist)$',
               '^[A-Z]{1,4}$',
+              // Keyboard key names.
+              '^(Ctrl|Alt|Shift|Esc|Enter|Tab|Space)$',
               // Identifiers, not words: permission codes, slugs, keys, paths.
               '^[a-z0-9]+([_.:/-][a-z0-9]+)+$',
             ],

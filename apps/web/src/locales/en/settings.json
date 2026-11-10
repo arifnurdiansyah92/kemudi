@@ -25,7 +25,9 @@
     "language": "Account language",
     "timezone": "Time zone",
     "serverDefault": "Server default",
-    "save": "Save profile"
+    "save": "Save profile",
+    "timezoneIndonesia": "Indonesia",
+    "timezoneOther": "Other time zones"
   },
   "password": {
     "title": "Password",

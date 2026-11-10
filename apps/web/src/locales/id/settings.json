@@ -25,7 +25,9 @@
     "language": "Bahasa akun",
     "timezone": "Zona waktu",
     "serverDefault": "Bawaan server",
-    "save": "Simpan profil"
+    "save": "Simpan profil",
+    "timezoneIndonesia": "Indonesia",
+    "timezoneOther": "Zona waktu lainnya"
   },
   "password": {
     "title": "Kata sandi",
@@ -72,8 +74,8 @@
     "title": "Tampilan",
     "description": "Pilih fon dan tema yang digunakan Kemudi di perangkat ini.",
     "languageHelp": "Kemudi dan email yang dikirimkan kepada Anda memakai bahasa ini. Tersimpan di akun Anda, jadi berlaku di semua perangkat.",
-    "font": "Fon",
-    "fontHelp": "Fon yang digunakan Kemudi untuk semua teks.",
+    "font": "Font",
+    "fontHelp": "Font yang digunakan Kemudi untuk semua teks.",
     "theme": "Tema",
     "themeHelp": "Terang atau gelap.",
     "light": "Terang",

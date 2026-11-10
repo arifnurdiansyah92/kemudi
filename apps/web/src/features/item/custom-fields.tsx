@@ -47,7 +47,7 @@ export function CustomFields({
   return (
     <section className='border-t px-6 py-5'>
       <h3 className='mb-3 text-sm font-semibold'>{t('customFields.title')}</h3>
-      <dl className='grid grid-cols-[7rem_1fr] items-start gap-x-4 gap-y-3 text-sm'>
+      <dl className='grid grid-cols-[minmax(7rem,max-content)_1fr] items-start gap-x-4 gap-y-3 text-sm'>
         {attributes.data!.map((attr) => (
           <div key={attr.id} className='contents'>
             <dt

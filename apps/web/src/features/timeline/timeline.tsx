@@ -114,6 +114,7 @@ function sentence(e: TimelineEvent): {
   key: EventKey
   noun: Noun | string
   changes?: string
+  list?: string[]
   epic?: string
 } {
   const [, model, action] = e.event_type.split('.')
@@ -131,9 +132,10 @@ function sentence(e: TimelineEvent): {
   const changes = Object.entries(e.data.values_diff ?? {})
     .filter(([k]) => visibleKey(k))
     .map(([k, v]) => describe(k, v))
-  return changes.length
-    ? { key: 'changed', noun, changes: changes.join('; ') }
-    : { key: 'updated', noun }
+  // One change reads as a sentence; several get a line each under
+  // "updated", instead of one run-on sentence.
+  if (changes.length === 1) return { key: 'changed', noun, changes: changes[0] }
+  return { key: 'updated', noun, list: changes }
 }
 
 const NOUNS = new Set<string>(Object.values(NOUN))
@@ -222,6 +224,13 @@ export function Timeline({
                     }}
                   />
                 </p>
+                {s.list && s.list.length > 0 && (
+                  <ul className='mt-1 grid gap-0.5 text-muted-foreground'>
+                    {s.list.map((c, i) => (
+                      <li key={i}>{c}</li>
+                    ))}
+                  </ul>
+                )}
                 {e.data.comment_html && (
                   <div
                     className='rich-text mt-1 border-s-2 ps-3 text-muted-foreground'

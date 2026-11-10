@@ -22,6 +22,26 @@
     overflow: unset !important;
   }
 
+  /*
+   * Native selects stay native (better on phones and with screen readers)
+   * but share the Input's stroke, depth and brass focus ring.
+   */
+  select {
+    border-color: var(--input);
+    box-shadow: var(--shadow-xs, 0 1px 2px 0 rgb(0 0 0 / 0.05));
+    transition:
+      box-shadow 150ms,
+      border-color 150ms;
+  }
+  select:focus-visible {
+    outline: none;
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent);
+  }
+  .dark select {
+    background-color: color-mix(in oklch, var(--input) 30%, transparent);
+  }
+
   /* Cursor pointer for buttons */
   button:not(:disabled),
   [role='button']:not(:disabled) {
@@ -83,18 +103,6 @@
   }
   to {
     height: 0;
-  }
-}
-
-/* Helm marker: the active sidebar item carries a brass bar on its leading edge. */
-@layer components {
-  [data-sidebar='menu-button'][data-active='true'],
-  [data-sidebar='menu-sub-button'][data-active='true'] {
-    box-shadow: inset 3px 0 0 var(--sidebar-primary);
-  }
-  [dir='rtl'] [data-sidebar='menu-button'][data-active='true'],
-  [dir='rtl'] [data-sidebar='menu-sub-button'][data-active='true'] {
-    box-shadow: inset -3px 0 0 var(--sidebar-primary);
   }
 }
 

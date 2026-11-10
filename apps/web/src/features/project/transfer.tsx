@@ -53,7 +53,7 @@ export function TransferOwnership({ token }: { token: string }) {
       <AppHeader
         crumbs={[{ label: project.name }, { label: t('transfer.crumb') }]}
       />
-      <Main className='max-w-xl'>
+      <Main width='form'>
         <h1 className='text-2xl font-semibold tracking-tight'>
           {t('transfer.title', { project: project.name })}
         </h1>

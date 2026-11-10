@@ -234,48 +234,52 @@ export function Kanban() {
           { label: t('common:terms.kanban') },
         ]}
       />
-      <Main fixed fluid className='pb-0'>
-        <h1 className='sr-only'>{t('common:terms.kanban')}</h1>
-        <div className='mb-3 flex flex-wrap items-start justify-between gap-3'>
+      <Main fixed width='board' className='pb-0'>
+        <h1 className='mb-3 text-xl font-semibold tracking-tight'>
+          {t('common:terms.kanban')}
+        </h1>
+        <div className='mb-3 flex flex-wrap items-start justify-between gap-x-3 gap-y-2'>
           <FilterBar
             savedKey={`${project.id}:kemudi-filters-kanban`}
             items={all}
             facets={facets}
             value={filters}
             onChange={setFilters}
-            className='min-w-0 flex-1'
+            className='w-full min-w-0 lg:w-auto lg:flex-1'
           />
-          <div
-            role='radiogroup'
-            aria-label={t('kanban.density.label')}
-            className='flex h-8 items-center rounded-md border p-0.5 text-xs'
-          >
-            {densities.map((d) => (
-              <button
-                key={d}
-                role='radio'
-                aria-checked={density === d}
-                onClick={() => setDensity(d)}
-                className={cn(
-                  'h-full rounded px-2 capitalize',
-                  density === d
-                    ? 'bg-accent font-medium'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {t(`kanban.density.${d}`)}
-              </button>
-            ))}
+          <div className='flex flex-wrap items-center gap-3'>
+            <div
+              role='radiogroup'
+              aria-label={t('kanban.density.label')}
+              className='flex h-8 items-center rounded-md border p-0.5 text-xs'
+            >
+              {densities.map((d) => (
+                <button
+                  key={d}
+                  role='radio'
+                  aria-checked={density === d}
+                  onClick={() => setDensity(d)}
+                  className={cn(
+                    'h-full rounded px-2',
+                    density === d
+                      ? 'bg-accent font-medium'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {t(`kanban.density.${d}`)}
+                </button>
+              ))}
+            </div>
+            {project.us_statuses.some((s) => s.is_archived) && (
+              <label className='flex h-8 items-center gap-2 text-sm text-muted-foreground'>
+                <Switch
+                  checked={showArchived}
+                  onCheckedChange={setShowArchived}
+                />
+                {t('kanban.showArchived')}
+              </label>
+            )}
           </div>
-          {project.us_statuses.some((s) => s.is_archived) && (
-            <label className='flex h-8 items-center gap-2 text-sm text-muted-foreground'>
-              <Switch
-                checked={showArchived}
-                onCheckedChange={setShowArchived}
-              />
-              {t('kanban.showArchived')}
-            </label>
-          )}
         </div>
 
         {stories.isError ? (

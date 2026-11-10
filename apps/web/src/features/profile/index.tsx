@@ -94,7 +94,7 @@ export function Profile({ username }: { username: string }) {
         <AppHeader
           crumbs={[{ label: t('profile.people') }, { label: username }]}
         />
-        <Main>
+        <Main width='reading'>
           <p className='text-sm'>
             {missing
               ? t('profile.notFound', { username })
@@ -114,7 +114,7 @@ export function Profile({ username }: { username: string }) {
           { label: u?.full_name_display ?? username },
         ]}
       />
-      <Main className='max-w-4xl'>
+      <Main width='reading'>
         {!u ? (
           <Skeleton className='h-24 w-full' />
         ) : (

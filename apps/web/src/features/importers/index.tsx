@@ -108,7 +108,7 @@ export function Importer({
           { label: t('importers.title', { service: label }) },
         ]}
       />
-      <Main className='max-w-2xl'>
+      <Main width='form'>
         <h1 className='text-2xl font-semibold tracking-tight'>
           {t('importers.title', { service: label })}
         </h1>

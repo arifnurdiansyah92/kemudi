@@ -116,6 +116,11 @@
       "note": "Catatan pribadi (opsional)",
       "send": "Kirim undangan",
       "inviteMany_other": "Undang {{count}} orang"
+    },
+    "promote": {
+      "title": "Jadikan {{name}} admin proyek?",
+      "description": "Admin dapat mengubah semua pengaturan proyek, mengelola anggota dan peran, serta menghapus proyek.",
+      "confirm": "Jadikan admin"
     }
   },
   "roles": {

@@ -12,8 +12,16 @@ const HIDDEN = new Set([
   'version',
 ])
 
+/**
+ * Taiga also sends rendered copies of some fields (`blocked_note_html`,
+ * `blocked_note_diff`): HTML meant for its own front end. The plain field
+ * carries the same change, so only `description_diff` is shown.
+ */
 export function visibleKey(key: string) {
-  return !HIDDEN.has(key)
+  if (HIDDEN.has(key)) return false
+  if (key.endsWith('_html')) return false
+  if (key.endsWith('_diff') && key !== 'description_diff') return false
+  return true
 }
 
 /** Diff keys with a translated name; others fall back to the raw key. */

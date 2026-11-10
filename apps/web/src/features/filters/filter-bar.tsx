@@ -82,7 +82,7 @@ export function FilterBar<T>({
   return (
     <div className={cn('grid gap-2', className)}>
       <div className='flex flex-wrap items-center gap-2'>
-        <div className='relative min-w-48 flex-1 sm:max-w-72'>
+        <div className='relative w-full sm:w-auto sm:max-w-72 sm:min-w-48 sm:flex-1'>
           <Search
             aria-hidden='true'
             className='absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground'

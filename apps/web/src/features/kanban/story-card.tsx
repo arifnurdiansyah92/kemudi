@@ -88,7 +88,7 @@ export function CardFace({
       className={cn(
         'grid cursor-pointer rounded-md border bg-card text-sm shadow-xs outline-none hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring',
         density === 'compact' ? 'gap-1 px-2.5 py-1.5' : 'gap-2 p-3',
-        story.is_blocked && 'border-s-4 border-s-destructive',
+        story.is_blocked && 'border-destructive/40 bg-destructive/5',
         lifted && 'rotate-1 cursor-grabbing shadow-lg',
         className
       )}

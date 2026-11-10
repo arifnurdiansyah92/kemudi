@@ -103,6 +103,8 @@ export function MembersSettings() {
   const project = useProject()
   const m = useMemberships(project)
   const [removing, setRemoving] = useState<Membership | null>(null)
+  // Granting admin hands over every setting; ask first. Revoking is instant.
+  const [promoting, setPromoting] = useState<Membership | null>(null)
   const roles = [...project.roles].sort((a, b) => a.order - b.order)
   const members = m.list.data ?? []
   const pending = members.filter((x) => !x.user)
@@ -171,7 +173,9 @@ export function MembersSettings() {
                   disabled={x.is_owner}
                   aria-pressed={x.is_admin}
                   onClick={() =>
-                    m.update.mutate({ m: x, patch: { is_admin: !x.is_admin } })
+                    x.is_admin
+                      ? m.update.mutate({ m: x, patch: { is_admin: false } })
+                      : setPromoting(x)
                   }
                   className={cn(
                     'h-8 rounded-full border px-3 text-xs',
@@ -247,6 +251,23 @@ export function MembersSettings() {
         </SettingsSection>
       )}
 
+      <ConfirmDialog
+        open={!!promoting}
+        onOpenChange={(o) => !o && setPromoting(null)}
+        title={t('members.promote.title', {
+          name: promoting?.full_name ?? '',
+        })}
+        desc={t('members.promote.description')}
+        confirmText={t('members.promote.confirm')}
+        isLoading={m.update.isPending}
+        handleConfirm={() =>
+          promoting &&
+          m.update.mutate(
+            { m: promoting, patch: { is_admin: true } },
+            { onSuccess: () => setPromoting(null) }
+          )
+        }
+      />
       <ConfirmDialog
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}

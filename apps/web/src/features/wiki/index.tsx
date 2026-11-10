@@ -76,7 +76,7 @@ export function Wiki({ slug, edit = false }: { slug: string; edit?: boolean }) {
           { label: pageTitle(slug) },
         ]}
       />
-      <Main fluid className='mx-auto w-full max-w-6xl'>
+      <Main width='list'>
         <div className='grid gap-8 lg:grid-cols-[14rem_minmax(0,1fr)]'>
           <WikiNav project={project} current={slug} />
           <article className='min-w-0'>

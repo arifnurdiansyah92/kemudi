@@ -15,7 +15,7 @@ export function Projects() {
   return (
     <>
       <AppHeader crumbs={[{ label: t('common:terms.project_other') }]} />
-      <Main className='max-w-4xl'>
+      <Main width='reading'>
         <div className='flex flex-wrap items-end justify-between gap-3'>
           <div>
             <h1 className='text-2xl font-semibold tracking-tight'>

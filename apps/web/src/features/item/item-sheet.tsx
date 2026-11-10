@@ -176,7 +176,7 @@ function ItemBody({
           </div>
         )}
 
-        <dl className='grid grid-cols-[7rem_1fr] items-center gap-x-4 gap-y-3 px-6 py-5 text-sm'>
+        <dl className='grid grid-cols-[minmax(7rem,max-content)_1fr] items-center gap-x-4 gap-y-3 px-6 py-5 text-sm'>
           <dt className='text-muted-foreground'>{t('common:terms.status')}</dt>
           <dd>
             <StatusField {...field} />

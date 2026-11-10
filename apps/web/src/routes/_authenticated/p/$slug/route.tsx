@@ -6,7 +6,7 @@ import { ProjectError } from '@/features/project/project-error'
 
 const searchSchema = z.object({
   /** Ref of the story, task, issue or epic open in the side sheet. */
-  ref: z.coerce.number().int().positive().optional(),
+  ref: z.coerce.number().int().positive().optional().catch(undefined),
 })
 
 export const Route = createFileRoute('/_authenticated/p/$slug')({

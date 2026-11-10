@@ -63,6 +63,16 @@
       "delete": "Delete sprint",
       "deleteTitle": "Delete {{name}}?",
       "deleteDescription": "Its stories go back to the backlog. Its tasks stay with their stories. This cannot be undone."
+    },
+    "close": {
+      "title": "Close {{name}}?",
+      "summary": "{{done}} of {{total}} stories done, {{points}} of {{totalPoints}} points.",
+      "openStories_one": "{{count}} story is not done yet. Where should it go?",
+      "openStories_other": "{{count}} stories are not done yet. Where should they go?",
+      "toNext": "Move to {{name}}",
+      "toBacklog": "Back to the backlog",
+      "stay": "Leave them in this sprint",
+      "confirm": "Close sprint"
     }
   },
   "taskboard": {

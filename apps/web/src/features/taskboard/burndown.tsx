@@ -5,7 +5,7 @@ import type { SprintStats } from '@/lib/taiga/sprints'
 
 const W = 360
 const H = 120
-const PAD = { top: 8, right: 8, bottom: 18, left: 28 }
+const PAD = { top: 8, right: 8, bottom: 20, left: 30 }
 
 /**
  * Remaining points per day against the ideal line. Days after today have no
@@ -39,7 +39,7 @@ export function Burndown({ stats }: { stats: SprintStats }) {
     <figure className='min-w-0'>
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className='h-auto w-full max-w-[360px]'
+        className='h-auto w-full max-w-[400px]'
         role='img'
         aria-label={
           last
@@ -65,7 +65,7 @@ export function Burndown({ stats }: { stats: SprintStats }) {
               x={PAD.left - 6}
               y={y(max * t) + 3}
               textAnchor='end'
-              className='fill-muted-foreground text-[9px] tabular-nums'
+              className='fill-muted-foreground text-[11px] tabular-nums'
             >
               {Math.round(max * t)}
             </text>
@@ -100,7 +100,7 @@ export function Burndown({ stats }: { stats: SprintStats }) {
             x={x(i)}
             y={H - 4}
             textAnchor={i ? 'end' : 'start'}
-            className='fill-muted-foreground text-[9px]'
+            className='fill-muted-foreground text-[11px]'
           >
             {dayLabel(i)}
           </text>

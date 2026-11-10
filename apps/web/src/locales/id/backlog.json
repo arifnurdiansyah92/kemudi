@@ -24,9 +24,9 @@
     }
   },
   "sprint": {
-    "openSprints": "Sprint terbuka",
+    "openSprints": "Sprint aktif",
     "closedSprints": "Sprint yang ditutup",
-    "noOpen": "Belum ada sprint terbuka. Buat sprint untuk merencanakan pekerjaan berikutnya.",
+    "noOpen": "Belum ada sprint aktif. Buat sprint untuk merencanakan pekerjaan berikutnya.",
     "noClosed": "Belum ada sprint yang ditutup.",
     "showClosed": "Tampilkan sprint yang ditutup",
     "form": {
@@ -62,13 +62,22 @@
       "delete": "Hapus sprint",
       "deleteTitle": "Hapus {{name}}?",
       "deleteDescription": "Story di dalamnya akan kembali ke backlog, dan tugasnya tetap melekat pada story masing-masing. Tindakan ini tidak dapat dibatalkan."
+    },
+    "close": {
+      "title": "Tutup {{name}}?",
+      "summary": "{{done}} dari {{total}} story selesai, {{points}} dari {{totalPoints}} poin.",
+      "openStories_other": "{{count}} story belum selesai. Mau dipindahkan ke mana?",
+      "toNext": "Pindahkan ke {{name}}",
+      "toBacklog": "Kembalikan ke backlog",
+      "stay": "Biarkan di sprint ini",
+      "confirm": "Tutup sprint"
     }
   },
   "taskboard": {
     "notFound": "Sprint ini tidak ditemukan.",
     "backToBacklog": "Kembali ke backlog",
     "closedSuffix": ", ditutup",
-    "noSprint": "Belum ada sprint terbuka. <link>Buat sprint di backlog</link>.",
+    "noSprint": "Belum ada sprint aktif. <link>Buat sprint di backlog</link>.",
     "ofTotal": "{{done}} dari {{total}}",
     "stats": {
       "pointsDone": "Poin selesai",

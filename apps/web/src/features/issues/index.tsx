@@ -167,7 +167,7 @@ export function Issues() {
           { label: t('common:terms.issue', { count: 2 }) },
         ]}
       />
-      <Main fluid className='mx-auto w-full max-w-7xl'>
+      <Main width='table'>
         <div className='flex flex-wrap items-end justify-between gap-3'>
           <div>
             <h1 className='text-2xl font-semibold tracking-tight'>

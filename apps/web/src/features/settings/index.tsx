@@ -25,7 +25,7 @@ export function Settings() {
           ...(current ? [{ label: t(`nav.sections.${current}`) }] : []),
         ]}
       />
-      <Main fluid className='mx-auto w-full max-w-5xl'>
+      <Main width='list'>
         <h1 className='text-2xl font-semibold tracking-tight'>
           {t('nav.title')}
         </h1>

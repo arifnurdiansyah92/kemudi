@@ -26,6 +26,14 @@ Markdown, such as `/project/<slug>/us/14`) redirect to the matching screen,
 so `services/kemudi-back` needs no front-end URL changes. Views follow each
 project's module switches.
 
+## Languages
+
+The UI ships in Bahasa Indonesia and English, switchable per user (ID/EN in
+the user menu and Settings → Appearance; saved to the user's Taiga `lang`).
+Strings live in `src/locales/<lang>/<namespace>.json`; `pnpm lint` fails on
+hard-coded UI text. Rules, Indonesian style and the glossary are in
+[docs/i18n.md](../../docs/i18n.md).
+
 ## Develop
 
 Needs Node 22.12+ (see `.node-version`) and pnpm 10, plus the dev stack from

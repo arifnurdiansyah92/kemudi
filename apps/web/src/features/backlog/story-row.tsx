@@ -83,7 +83,7 @@ export function StoryRow({
       <button
         onClick={() => open(story.ref)}
         className={cn(
-          'min-w-0 flex-1 truncate text-start outline-none hover:underline hover:underline-offset-4 focus-visible:underline',
+          'line-clamp-2 min-w-0 flex-1 text-start break-words outline-none hover:underline hover:underline-offset-4 focus-visible:underline',
           story.is_closed && 'line-through decoration-muted-foreground/60'
         )}
       >

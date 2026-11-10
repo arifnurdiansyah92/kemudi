@@ -34,7 +34,7 @@ export function Home() {
   return (
     <>
       <AppHeader crumbs={[{ label: t('home.title') }]} />
-      <Main fluid className='mx-auto w-full max-w-6xl'>
+      <Main width='list'>
         <h1 className='text-2xl font-semibold tracking-tight'>
           {user
             ? t('home.greeting', { name: user.full_name_display })
@@ -136,7 +136,7 @@ function ItemList({
                 <span
                   className={cn(
                     'w-12 shrink-0 text-xs text-muted-foreground',
-                    item.kind === 'issue' && 'text-destructive/80'
+                    item.kind === 'issue' && 'text-destructive'
                   )}
                 >
                   {t(KIND_LABEL[item.kind])}
@@ -151,7 +151,7 @@ function ItemList({
                   <StatusDot color={item.status_extra_info.color} />
                   {item.status_extra_info.name}
                 </span>
-                <span className='hidden w-36 truncate text-end text-xs text-muted-foreground md:block'>
+                <span className='hidden w-44 truncate text-end text-xs text-muted-foreground md:block lg:w-56'>
                   {t('home.itemMeta', {
                     project: item.project_extra_info.name,
                     time: format.timeAgo(item.modified_date),

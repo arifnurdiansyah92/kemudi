@@ -15,6 +15,7 @@ import {
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { EditSprintDialog } from '@/features/backlog/new-sprint-dialog'
 import { can } from '@/features/project/use-project'
+import { CloseSprintDialog } from './close-sprint-dialog'
 
 /** Edit, close or reopen, and delete a sprint. */
 export function SprintMenu({
@@ -32,6 +33,7 @@ export function SprintMenu({
   const remove = useDeleteSprint()
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [closing, setClosing] = useState(false)
 
   const canEdit = can(project, 'modify_milestone')
   const canDelete = can(project, 'delete_milestone')
@@ -57,7 +59,11 @@ export function SprintMenu({
                 {t('sprint.menu.edit')}
               </DropdownMenuItem>
               <DropdownMenuItem
-                onSelect={() => update.mutate({ closed: !sprint.closed })}
+                onSelect={() =>
+                  sprint.closed
+                    ? update.mutate({ closed: false })
+                    : setClosing(true)
+                }
               >
                 {sprint.closed
                   ? t('sprint.menu.reopen')
@@ -82,6 +88,12 @@ export function SprintMenu({
         sprint={sprint}
         open={editing}
         onOpenChange={setEditing}
+      />
+      <CloseSprintDialog
+        project={project}
+        sprint={sprint}
+        open={closing}
+        onOpenChange={setClosing}
       />
       <ConfirmDialog
         open={deleting}

@@ -58,7 +58,7 @@ export function Epics() {
           { label: t('common:terms.epic', { count: 2 }) },
         ]}
       />
-      <Main fluid className='mx-auto w-full max-w-5xl'>
+      <Main width='list'>
         <div className='flex flex-wrap items-end justify-between gap-3'>
           <div>
             <h1 className='text-2xl font-semibold tracking-tight'>
