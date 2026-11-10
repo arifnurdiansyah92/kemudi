@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { format, parseISO } from 'date-fns'
 import { Link } from '@tanstack/react-router'
+import { useFormat } from '@/i18n/format'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { ChevronRight, LayoutGrid } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { Milestone, Project, UserStory } from '@/lib/taiga/types'
 import { cn } from '@/lib/utils'
 import {
@@ -16,12 +17,6 @@ import { QuickAdd } from '@/features/story/quick-add'
 import { sumPoints } from '@/features/story/utils'
 import { SprintMenu } from '@/features/taskboard/sprint-menu'
 import { StoryRow } from './story-row'
-
-function dateRange(sprint: Milestone) {
-  const start = parseISO(sprint.estimated_start)
-  const end = parseISO(sprint.estimated_finish)
-  return `${format(start, 'd MMM')} – ${format(end, 'd MMM yyyy')}`
-}
 
 type SprintPanelProps = {
   project: Project
@@ -38,11 +33,14 @@ export function SprintPanel({
   sprints,
   defaultOpen = true,
 }: SprintPanelProps) {
+  const { t } = useTranslation(['backlog', 'common'])
+  const { dateRange } = useFormat()
   const [open, setOpen] = useState(defaultOpen)
   const { setNodeRef, isOver } = useDroppable({ id: `sprint:${sprint.id}` })
   const total = sumPoints(stories)
   const done = sumPoints(stories.filter((s) => s.is_closed))
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
+  const canAdd = can(project, 'add_us')
 
   return (
     <Collapsible
@@ -66,23 +64,23 @@ export function SprintPanel({
           <span className='min-w-0 flex-1'>
             <span className='block truncate font-medium'>{sprint.name}</span>
             <span className='block text-xs text-muted-foreground tabular-nums'>
-              {dateRange(sprint)}
+              {dateRange(sprint.estimated_start, sprint.estimated_finish)}
             </span>
           </span>
           <span className='shrink-0 text-end text-xs tabular-nums'>
             <span className='font-medium'>
-              {done} of {total} pts
+              {t('sprint.panel.points', { done, total })}
             </span>
             <span className='block text-muted-foreground'>
-              {stories.length} {stories.length === 1 ? 'story' : 'stories'}
+              {t('story.count', { count: stories.length })}
             </span>
           </span>
         </CollapsibleTrigger>
         <Link
           to='/p/$slug/taskboard/$sprint'
           params={{ slug: project.slug, sprint: String(sprint.id) }}
-          aria-label={`Open the ${sprint.name} taskboard`}
-          title='Taskboard'
+          aria-label={t('sprint.panel.openTaskboard', { name: sprint.name })}
+          title={t('common:terms.taskboard')}
           className='flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground'
         >
           <LayoutGrid className='size-4' />
@@ -92,7 +90,7 @@ export function SprintPanel({
       <div
         className='h-1 bg-muted'
         role='progressbar'
-        aria-label={`${sprint.name} progress`}
+        aria-label={t('sprint.panel.progress', { name: sprint.name })}
         aria-valuenow={pct}
         aria-valuemin={0}
         aria-valuemax={100}
@@ -123,14 +121,14 @@ export function SprintPanel({
           </SortableContext>
         ) : (
           <p className='border-b px-4 py-4 text-sm text-muted-foreground'>
-            No stories in this sprint. Drag some here from the backlog.
+            {t('sprint.panel.empty')}
           </p>
         )}
-        {can(project, 'add_us') && (
+        {canAdd && (
           <QuickAdd
             project={project}
             milestone={sprint.id}
-            placeholder={`Add a story to ${sprint.name}`}
+            placeholder={t('sprint.panel.addStory', { name: sprint.name })}
             className='rounded-none'
           />
         )}

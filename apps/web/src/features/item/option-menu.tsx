@@ -1,4 +1,5 @@
 import { Check, ChevronDown } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import {
   DropdownMenu,
@@ -30,7 +31,9 @@ export function OptionMenu({
   disabled,
   emptyLabel,
 }: OptionMenuProps) {
+  const { t } = useTranslation(['item', 'common'])
   const current = options.find((o) => o.id === value)
+  const shown = current?.name ?? emptyLabel ?? t('common:status.none')
   const pill = (
     <span
       className={cn(
@@ -40,7 +43,7 @@ export function OptionMenu({
       )}
     >
       {current?.color && <StatusDot color={current.color} />}
-      <span className='truncate'>{current?.name ?? emptyLabel ?? 'None'}</span>
+      <span className='truncate'>{shown}</span>
       {!disabled && <ChevronDown className='size-3 text-muted-foreground' />}
     </span>
   )
@@ -50,7 +53,11 @@ export function OptionMenu({
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger
         className='rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring'
-        aria-label={`${label}: ${current?.name ?? emptyLabel ?? 'none'}. Change ${label.toLowerCase()}`}
+        aria-label={t('optionMenu.change', {
+          label,
+          value: shown,
+          field: label.toLowerCase(),
+        })}
       >
         {pill}
       </DropdownMenuTrigger>

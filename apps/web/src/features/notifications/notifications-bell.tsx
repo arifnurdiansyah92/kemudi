@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { useFormat } from '@/i18n/format'
 import { Bell } from 'lucide-react'
+import { Trans, useTranslation } from 'react-i18next'
 import {
   useMarkNotificationsRead,
   useNotifications,
   type WebNotification,
 } from '@/lib/taiga/me'
-import { cn, timeAgo } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   Popover,
@@ -15,14 +17,14 @@ import {
 } from '@/components/ui/popover'
 import { UserAvatar } from '@/components/user-avatar'
 
-const VERB: Record<WebNotification['event_type'], string> = {
-  1: 'assigned you to',
-  2: 'mentioned you in',
-  3: 'added you as a watcher of',
-  4: 'added you to the project',
-  5: 'commented on',
-  6: 'mentioned you in a comment on',
-}
+const EVENT = {
+  1: 'assigned',
+  2: 'mentioned',
+  3: 'addedWatcher',
+  4: 'addedToProject',
+  5: 'commented',
+  6: 'mentionedInComment',
+} as const satisfies Record<WebNotification['event_type'], string>
 
 const PAGE: Record<string, string> = {
   userstory: '/p/$slug/backlog',
@@ -32,6 +34,8 @@ const PAGE: Record<string, string> = {
 }
 
 export function NotificationsBell() {
+  const { t } = useTranslation('home')
+  const format = useFormat()
   const navigate = useNavigate()
   const { data } = useNotifications()
   const mark = useMarkNotificationsRead()
@@ -62,7 +66,9 @@ export function NotificationsBell() {
           size='icon'
           className='relative rounded-full'
           aria-label={
-            unread ? `Notifications, ${unread} unread` : 'Notifications'
+            unread
+              ? t('notifications.unreadLabel', { unread })
+              : t('notifications.title')
           }
         >
           <Bell className='size-[1.15rem]' />
@@ -75,7 +81,7 @@ export function NotificationsBell() {
       </PopoverTrigger>
       <PopoverContent align='end' className='w-96 p-0'>
         <div className='flex items-center justify-between border-b px-4 py-2.5'>
-          <h2 className='text-sm font-semibold'>Notifications</h2>
+          <h2 className='text-sm font-semibold'>{t('notifications.title')}</h2>
           {unread > 0 && (
             <Button
               variant='ghost'
@@ -83,13 +89,13 @@ export function NotificationsBell() {
               className='h-7 text-xs'
               onClick={() => mark.mutate(undefined)}
             >
-              Mark all as read
+              {t('notifications.markAllRead')}
             </Button>
           )}
         </div>
         {list.length === 0 ? (
           <p className='px-4 py-8 text-center text-sm text-muted-foreground'>
-            Nothing new. You hear about assignments, mentions and comments here.
+            {t('notifications.empty')}
           </p>
         ) : (
           <ul className='max-h-[60vh] divide-y overflow-y-auto'>
@@ -113,31 +119,35 @@ export function NotificationsBell() {
                     />
                     <span className='min-w-0 flex-1'>
                       <span className='block leading-snug'>
-                        <span className='font-medium'>{n.data.user?.name}</span>{' '}
-                        <span className='text-muted-foreground'>
-                          {VERB[n.event_type]}
-                        </span>{' '}
-                        {obj?.ref ? (
-                          <span className='font-medium'>
-                            #{obj.ref} {obj.subject}
-                          </span>
-                        ) : (
-                          <span className='font-medium'>
-                            {n.data.project?.name}
-                          </span>
-                        )}
+                        <Trans
+                          t={t}
+                          i18nKey={`notifications.events.${EVENT[n.event_type]}`}
+                          values={{
+                            user: n.data.user?.name ?? '',
+                            target: obj?.ref
+                              ? `#${obj.ref} ${obj.subject}`
+                              : (n.data.project?.name ?? ''),
+                          }}
+                          components={{
+                            user: <span className='font-medium' />,
+                            muted: <span className='text-muted-foreground' />,
+                            target: <span className='font-medium' />,
+                          }}
+                        />
                       </span>
                       <span className='mt-0.5 block text-xs text-muted-foreground'>
-                        {timeAgo(n.created)}
-                        {obj?.ref &&
-                          n.data.project &&
-                          ` in ${n.data.project.name}`}
+                        {obj?.ref && n.data.project
+                          ? t('notifications.meta', {
+                              time: format.timeAgo(n.created),
+                              project: n.data.project.name,
+                            })
+                          : format.timeAgo(n.created)}
                       </span>
                     </span>
                     {!n.read && (
                       <span
                         className='mt-2 size-2 shrink-0 rounded-full bg-brass'
-                        aria-label='Unread'
+                        aria-label={t('notifications.unread')}
                       />
                     )}
                   </button>

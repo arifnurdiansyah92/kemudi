@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { format } from 'date-fns'
+import { useFormat } from '@/i18n/format'
 import { Ban } from 'lucide-react'
+import { Trans, useTranslation } from 'react-i18next'
 import { KINDS, useRefItem, useUpdateItem } from '@/lib/taiga/items'
 import type { Item, ItemKind, Project } from '@/lib/taiga/types'
 import {
@@ -32,8 +33,17 @@ import {
 import { ItemActions } from './item-actions'
 import { StoryTasks } from './story-tasks'
 
+/** Each item kind's name in common:terms. */
+const TERM = {
+  userstory: 'story',
+  task: 'task',
+  issue: 'issue',
+  epic: 'epic',
+} as const
+
 /** Side sheet for whatever item `?ref=<n>` names: story, task, issue or epic. */
 export function ItemSheet() {
+  const { t } = useTranslation(['item', 'common'])
   const project = useProject()
   const { openRef, close } = useRefParam()
   const loaded = useRefItem(project, openRef)
@@ -46,17 +56,20 @@ export function ItemSheet() {
       >
         {loaded.isError ? (
           <div className='p-6'>
-            <SheetTitle>Nothing at #{openRef}</SheetTitle>
+            <SheetTitle>
+              {t('sheet.notFoundTitle', { ref: openRef })}
+            </SheetTitle>
             <SheetDescription className='mt-1'>
-              {project.name} has no story, task, issue or epic #{openRef}. It
-              may have been deleted.
+              {t('sheet.notFoundDesc', { project: project.name, ref: openRef })}
             </SheetDescription>
           </div>
         ) : !loaded.data ? (
           <div className='space-y-3 p-6'>
-            <SheetTitle className='sr-only'>Loading #{openRef}</SheetTitle>
+            <SheetTitle className='sr-only'>
+              {t('sheet.loadingTitle', { ref: openRef })}
+            </SheetTitle>
             <SheetDescription className='sr-only'>
-              Loading the item.
+              {t('sheet.loadingDesc')}
             </SheetDescription>
             <Skeleton className='h-4 w-16' />
             <Skeleton className='h-7 w-3/4' />
@@ -87,32 +100,49 @@ function ItemBody({
   item: Item
   onDeleted: () => void
 }) {
+  const { t } = useTranslation(['item', 'common'])
+  const fmt = useFormat()
   const { open } = useRefParam()
   const editable = can(project, KINDS[kind].perm.modify)
   const field = { project, kind, item, editable }
   const parent = item.user_story_extra_info
+  const where = {
+    kind: t(`common:terms.${TERM[kind]}`, { count: 1 }),
+    ref: item.ref,
+  }
 
   return (
     <div className='flex min-h-0 flex-1 flex-col'>
       <header className='border-b px-6 pt-4 pb-4'>
         <div className='flex items-center gap-2 pe-8'>
           <SheetDescription className='min-w-0 flex-1 truncate text-xs tabular-nums'>
-            {KINDS[kind].label} #{item.ref}
-            {parent && (
-              <>
-                {' in '}
-                <button
-                  onClick={() => open(parent.ref)}
-                  className='underline-offset-4 hover:text-foreground hover:underline'
-                >
-                  #{parent.ref} {parent.subject}
-                </button>
-              </>
+            {kind === 'userstory' ? (
+              item.milestone_name ? (
+                t('sheet.inSprint', { ...where, sprint: item.milestone_name })
+              ) : (
+                t('sheet.inBacklog', where)
+              )
+            ) : parent ? (
+              <Trans
+                t={t}
+                i18nKey='sheet.inStory'
+                values={{
+                  ...where,
+                  parentRef: parent.ref,
+                  parentSubject: parent.subject,
+                }}
+                components={{
+                  parent: (
+                    <button
+                      onClick={() => open(parent.ref)}
+                      className='underline-offset-4 hover:text-foreground hover:underline'
+                    />
+                  ),
+                }}
+              />
+            ) : (
+              t('sheet.ref', where)
             )}
-            {kind === 'userstory' &&
-              (item.milestone_name
-                ? ` in ${item.milestone_name}`
-                : ' in the backlog')}
           </SheetDescription>
           <ItemActions
             project={project}
@@ -138,35 +168,45 @@ function ItemBody({
           >
             <Ban className='mt-0.5 size-4 shrink-0 text-destructive' />
             <p>
-              <span className='font-medium text-destructive'>Blocked. </span>
-              {item.blocked_note || 'No reason given.'}
+              <span className='font-medium text-destructive'>
+                {t('sheet.blocked')}{' '}
+              </span>
+              {item.blocked_note || t('sheet.noBlockReason')}
             </p>
           </div>
         )}
 
         <dl className='grid grid-cols-[7rem_1fr] items-center gap-x-4 gap-y-3 px-6 py-5 text-sm'>
-          <dt className='text-muted-foreground'>Status</dt>
+          <dt className='text-muted-foreground'>{t('common:terms.status')}</dt>
           <dd>
             <StatusField {...field} />
           </dd>
           {kind === 'issue' && (
             <>
-              <dt className='text-muted-foreground'>Type</dt>
+              <dt className='text-muted-foreground'>
+                {t('common:terms.type')}
+              </dt>
               <dd>
                 <AttributeField {...field} field='type' />
               </dd>
-              <dt className='text-muted-foreground'>Severity</dt>
+              <dt className='text-muted-foreground'>
+                {t('common:terms.severity')}
+              </dt>
               <dd>
                 <AttributeField {...field} field='severity' />
               </dd>
-              <dt className='text-muted-foreground'>Priority</dt>
+              <dt className='text-muted-foreground'>
+                {t('common:terms.priority')}
+              </dt>
               <dd>
                 <AttributeField {...field} field='priority' />
               </dd>
             </>
           )}
           <dt className='text-muted-foreground'>
-            {kind === 'userstory' ? 'Assignees' : 'Assignee'}
+            {kind === 'userstory'
+              ? t('common:terms.assignees')
+              : t('common:terms.assignee')}
           </dt>
           <dd className='min-w-0'>
             <AssigneeField {...field} />
@@ -174,7 +214,7 @@ function ItemBody({
           {kind === 'userstory' && (
             <>
               <dt className='self-start pt-1.5 text-muted-foreground'>
-                Points
+                {t('common:terms.points')}
               </dt>
               <dd>
                 <PointsField {...field} />
@@ -183,7 +223,9 @@ function ItemBody({
           )}
           {(kind === 'userstory' || kind === 'issue') && (
             <>
-              <dt className='text-muted-foreground'>Sprint</dt>
+              <dt className='text-muted-foreground'>
+                {t('common:terms.sprint', { count: 1 })}
+              </dt>
               <dd>
                 <SprintField {...field} />
               </dd>
@@ -191,7 +233,7 @@ function ItemBody({
           )}
           {kind === 'epic' && (
             <>
-              <dt className='text-muted-foreground'>Colour</dt>
+              <dt className='text-muted-foreground'>{t('sheet.colour')}</dt>
               <dd>
                 <ColorField {...field} />
               </dd>
@@ -199,19 +241,25 @@ function ItemBody({
           )}
           {kind !== 'epic' && (
             <>
-              <dt className='text-muted-foreground'>Due date</dt>
+              <dt className='text-muted-foreground'>
+                {t('common:terms.dueDate')}
+              </dt>
               <dd>
                 <DueDateField {...field} />
               </dd>
             </>
           )}
-          <dt className='self-start pt-1 text-muted-foreground'>Tags</dt>
+          <dt className='self-start pt-1 text-muted-foreground'>
+            {t('common:terms.tags')}
+          </dt>
           <dd>
             <TagsField {...field} />
           </dd>
           {(kind === 'userstory' || kind === 'epic') && (
             <>
-              <dt className='text-muted-foreground'>Requirement</dt>
+              <dt className='text-muted-foreground'>
+                {t('sheet.requirement')}
+              </dt>
               <dd>
                 <FlagsField {...field} />
               </dd>
@@ -219,7 +267,7 @@ function ItemBody({
           )}
           {kind === 'task' && (
             <>
-              <dt className='text-muted-foreground'>Flags</dt>
+              <dt className='text-muted-foreground'>{t('sheet.flags')}</dt>
               <dd>
                 <IocaineField {...field} />
               </dd>
@@ -227,43 +275,50 @@ function ItemBody({
           )}
           {kind === 'userstory' && project.is_epics_activated && (
             <>
-              <dt className='self-start pt-0.5 text-muted-foreground'>Epics</dt>
+              <dt className='self-start pt-0.5 text-muted-foreground'>
+                {t('common:terms.epic', { count: 2 })}
+              </dt>
               <dd>
                 <StoryEpics project={project} story={item} />
               </dd>
             </>
           )}
-          <dt className='text-muted-foreground'>Watchers</dt>
+          <dt className='text-muted-foreground'>
+            {t('common:terms.watchers')}
+          </dt>
           <dd className='min-w-0'>
             <WatchersField {...field} />
           </dd>
-          <dt className='text-muted-foreground'>Created</dt>
+          <dt className='text-muted-foreground'>{t('sheet.created')}</dt>
           <dd className='text-muted-foreground'>
-            {format(new Date(item.created_date), 'd MMM yyyy')}
-            {item.owner_extra_info &&
-              ` by ${item.owner_extra_info.full_name_display}`}
+            {item.owner_extra_info
+              ? t('sheet.createdBy', {
+                  date: fmt.date(item.created_date),
+                  name: item.owner_extra_info.full_name_display,
+                })
+              : fmt.date(item.created_date)}
           </dd>
         </dl>
 
-        <Section title='Description'>
+        <Section title={t('common:terms.description')}>
           <Description {...field} />
         </Section>
 
         {kind === 'epic' && (
-          <Section title='Stories'>
+          <Section title={t('common:terms.story', { count: 2 })}>
             <EpicStories project={project} epic={item} />
           </Section>
         )}
 
         {kind === 'userstory' && (
-          <Section title='Tasks'>
+          <Section title={t('common:terms.task', { count: 2 })}>
             <StoryTasks project={project} story={item} />
           </Section>
         )}
 
         <CustomFields {...field} />
 
-        <Section title='Attachments'>
+        <Section title={t('common:terms.attachments')}>
           <Attachments project={project} kind={kind} item={item} />
         </Section>
 
@@ -301,6 +356,7 @@ function Subject({
   item: Item
   editable: boolean
 }) {
+  const { t } = useTranslation('item')
   const update = useUpdateItem(project, kind)
   const [value, setValue] = useState(item.subject)
 
@@ -321,7 +377,7 @@ function Subject({
     <>
       <SheetTitle className='sr-only'>{item.subject}</SheetTitle>
       <textarea
-        aria-label='Subject'
+        aria-label={t('sheet.subject')}
         value={value}
         rows={1}
         maxLength={500}

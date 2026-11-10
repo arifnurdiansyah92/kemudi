@@ -15,11 +15,13 @@ import {
   ListOrdered,
   Palette,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { projectQuery } from '@/lib/taiga/queries'
 import { type NavGroup } from './types'
 
 /** Sidebar groups: the workspace, then the open project's views. */
 export function useNavGroups(): NavGroup[] {
+  const { t } = useTranslation(['shell', 'common'])
   const { slug } = useParams({ strict: false }) as { slug?: string }
   const { data: project } = useQuery({
     ...projectQuery(slug ?? ''),
@@ -28,11 +30,15 @@ export function useNavGroups(): NavGroup[] {
 
   const groups: NavGroup[] = [
     {
-      title: 'Workspace',
+      title: t('nav.workspace'),
       items: [
-        { title: 'Home', url: '/', icon: House },
-        { title: 'Projects', url: '/projects', icon: FolderKanban },
-        { title: 'Discover', url: '/discover', icon: Compass },
+        { title: t('nav.home'), url: '/', icon: House },
+        {
+          title: t('common:terms.project_other'),
+          url: '/projects',
+          icon: FolderKanban,
+        },
+        { title: t('nav.discover'), url: '/discover', icon: Compass },
       ],
     },
   ]
@@ -41,48 +47,48 @@ export function useNavGroups(): NavGroup[] {
     const items: NavGroup['items'] = []
     if (project.is_epics_activated)
       items.push({
-        title: 'Epics',
+        title: t('common:terms.epic_other'),
         url: `/p/${project.slug}/epics`,
         icon: Layers,
       })
     if (project.is_backlog_activated)
       items.push({
-        title: 'Backlog',
+        title: t('common:terms.backlog'),
         url: `/p/${project.slug}/backlog`,
         icon: ListOrdered,
       })
     if (project.is_backlog_activated)
       items.push({
-        title: 'Taskboard',
+        title: t('common:terms.taskboard'),
         url: `/p/${project.slug}/taskboard`,
         icon: LayoutGrid,
       })
     if (project.is_kanban_activated)
       items.push({
-        title: 'Kanban',
+        title: t('common:terms.kanban'),
         url: `/p/${project.slug}/kanban`,
         icon: Columns3,
       })
     if (project.is_issues_activated)
       items.push({
-        title: 'Issues',
+        title: t('common:terms.issue_other'),
         url: `/p/${project.slug}/issues`,
         icon: Bug,
       })
     if (project.is_wiki_activated)
       items.push({
-        title: 'Wiki',
+        title: t('common:terms.wiki'),
         url: `/p/${project.slug}/wiki`,
         icon: BookOpen,
       })
     items.push({
-      title: 'Team',
+      title: t('common:terms.team'),
       url: `/p/${project.slug}/team`,
       icon: Users,
     })
     if (project.i_am_admin)
       items.push({
-        title: 'Settings',
+        title: t('common:terms.settings'),
         url: `/p/${project.slug}/settings`,
         icon: Settings,
       })
@@ -90,10 +96,18 @@ export function useNavGroups(): NavGroup[] {
   }
 
   groups.push({
-    title: 'You',
+    title: t('nav.you'),
     items: [
-      { title: 'Your settings', url: '/settings/profile', icon: UserCog },
-      { title: 'Appearance', url: '/settings/appearance', icon: Palette },
+      {
+        title: t('userMenu.settings'),
+        url: '/settings/profile',
+        icon: UserCog,
+      },
+      {
+        title: t('userMenu.appearance'),
+        url: '/settings/appearance',
+        icon: Palette,
+      },
     ],
   })
   return groups

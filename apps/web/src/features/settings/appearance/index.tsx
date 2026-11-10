@@ -1,11 +1,13 @@
+import { useTranslation } from 'react-i18next'
 import { ContentSection } from '../components/content-section'
 import { AppearanceForm } from './appearance-form'
 
 export function SettingsAppearance() {
+  const { t } = useTranslation('settings')
   return (
     <ContentSection
-      title='Appearance'
-      desc='Choose the font and theme Kemudi uses on this device.'
+      title={t('appearance.title')}
+      desc={t('appearance.description')}
     >
       <AppearanceForm />
     </ContentSection>

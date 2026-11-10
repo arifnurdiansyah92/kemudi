@@ -1,1 +1,95 @@
-{}
+{
+  "kanban": {
+    "density": {
+      "label": "Card detail",
+      "compact": "Compact",
+      "standard": "Standard",
+      "detailed": "Detailed"
+    },
+    "showArchived": "Show archived",
+    "loadError": "Stories could not be loaded.",
+    "noSwimlane": "No swimlane",
+    "column": {
+      "inLane": "{{status}} in {{lane}}",
+      "folded": "{{label}} (folded)",
+      "fold": "Fold {{status}}",
+      "unfold": "Unfold {{status}}",
+      "overWip": "Over the work-in-progress limit",
+      "points_one": "{{points}} pt",
+      "points_other": "{{points}} pts",
+      "addTo": "Add to {{status}}"
+    },
+    "card": {
+      "draggable": "Draggable story",
+      "tasksDone_one": "{{done}} of {{count}} task",
+      "tasksDone_other": "{{done}} of {{count}} tasks",
+      "due": "Due {{date}}",
+      "blocked": "Blocked",
+      "points": "points"
+    }
+  },
+  "issues": {
+    "summary": "{{open}} open, {{closed}} closed",
+    "new": "New issue",
+    "empty": "No issues yet.",
+    "emptyHint": "Report the first one with New issue.",
+    "noMatch": "No issues match these filters.",
+    "columns": {
+      "votes": "Votes",
+      "updated": "Updated"
+    },
+    "create": {
+      "title": "New issue",
+      "description": "Report a bug, a question or an improvement.",
+      "tabOne": "One issue",
+      "tabMany": "Several at once",
+      "subject": "Subject",
+      "descriptionPlaceholder": "Steps to reproduce, what you expected, what happened.",
+      "submit": "Create issue",
+      "bulkLabel": "Issues, one per line",
+      "bulkPlaceholder": "Login fails on Safari\nTypo on the pricing page",
+      "bulkHelp": "One issue per line, with the project's default type, severity and priority.",
+      "submitMany_one": "Create {{count}} issue",
+      "submitMany_other": "Create {{count}} issues"
+    }
+  },
+  "epics": {
+    "intro": "Large pieces of work, made of stories across sprints.",
+    "new": "New epic",
+    "empty": {
+      "title": "No epics yet",
+      "body": "Group related stories under an epic to follow a feature from start to finish."
+    },
+    "showStories": "Show stories of #{{ref}}",
+    "hideStories": "Hide stories of #{{ref}}",
+    "progress": "#{{ref}} progress",
+    "create": {
+      "title": "New epic",
+      "description": "Add stories to it from the epic or from each story.",
+      "name": "Name",
+      "colour": "Colour",
+      "otherColour": "Other colour",
+      "descriptionPlaceholder": "What this epic delivers, and when it is done.",
+      "submit": "Create epic"
+    }
+  },
+  "filters": {
+    "searchPlaceholder": "Search by subject or #ref",
+    "clear": "Clear filters",
+    "active": "Active filters",
+    "remove": "Remove filter {{facet}}: {{value}}",
+    "filterBy": "Filter by {{facet}}",
+    "filterBySelected": "Filter by {{facet}}, {{count}} selected",
+    "find": "Find {{facet}}",
+    "nothingMatches": "Nothing matches.",
+    "noEpic": "No epic",
+    "saved": {
+      "button": "Saved filters",
+      "namePlaceholder": "Name these filters",
+      "nameLabel": "Name for the saved filters",
+      "empty": "Nothing saved yet",
+      "saveCurrent": "Save current filters…",
+      "delete": "Delete saved filters"
+    }
+  }
+}

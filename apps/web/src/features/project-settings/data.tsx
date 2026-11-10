@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 import { Copy, Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useRefreshProject } from '@/lib/taiga/admin'
 import { api } from '@/lib/taiga/client'
@@ -10,25 +11,27 @@ import { Input } from '@/components/ui/input'
 import { useProject } from '@/features/project/use-project'
 import { SettingsSection } from './layout'
 
+/** Feed endpoint and its list name key in the common namespace. */
 const FEEDS = [
-  ['userstories', 'Stories'],
-  ['tasks', 'Tasks'],
-  ['issues', 'Issues'],
-  ['epics', 'Epics'],
+  ['userstories', 'common:terms.story_other'],
+  ['tasks', 'common:terms.task_other'],
+  ['issues', 'common:terms.issue_other'],
+  ['epics', 'common:terms.epic_other'],
 ] as const
 
 export function DataSettings() {
+  const { t } = useTranslation(['admin', 'common'])
   const project = useProject()
   return (
     <div className='grid gap-6'>
       <Export project={project} />
       <SettingsSection
-        title='CSV feeds'
-        description='A secret link per list that always downloads the current data as CSV, for spreadsheets and reports. Anyone with the link can read it; make a new link to cut off the old one.'
+        title={t('exportImport.feeds.title')}
+        description={t('exportImport.feeds.description')}
       >
         <ul className='grid gap-3'>
           {FEEDS.map(([key, label]) => (
-            <Feed key={key} project={project} feed={key} label={label} />
+            <Feed key={key} project={project} feed={key} label={t(label)} />
           ))}
         </ul>
       </SettingsSection>
@@ -37,6 +40,7 @@ export function DataSettings() {
 }
 
 function Export({ project }: { project: Project }) {
+  const { t } = useTranslation(['admin', 'common'])
   const run = useMutation({
     mutationFn: async () => {
       const res = await api.get<{ export_id?: string; url?: string }>(
@@ -46,17 +50,14 @@ function Export({ project }: { project: Project }) {
     },
     onSuccess: (data) => {
       if (data.url) window.location.assign(data.url)
-      else
-        toast.success(
-          'Export started. You get an email with the download link when it is ready.'
-        )
+      else toast.success(t('exportImport.export.started'))
     },
     onError: onFail,
   })
   return (
     <SettingsSection
-      title='Export'
-      description='A full copy of the project (items, comments, attachments, settings) as a Taiga export file. Import it into Kemudi or Taiga to restore or move the project.'
+      title={t('exportImport.export.title')}
+      description={t('exportImport.export.description')}
     >
       <Button
         variant='outline'
@@ -64,7 +65,7 @@ function Export({ project }: { project: Project }) {
         disabled={run.isPending}
       >
         {run.isPending && <Loader2 className='animate-spin' />}
-        Export project
+        {t('exportImport.export.action')}
       </Button>
     </SettingsSection>
   )
@@ -79,6 +80,7 @@ function Feed({
   feed: (typeof FEEDS)[number][0]
   label: string
 }) {
+  const { t } = useTranslation(['admin', 'common'])
   const refresh = useRefreshProject()
   const uuid = (project as unknown as Record<string, string | null>)[
     `${feed}_csv_uuid`
@@ -106,7 +108,7 @@ function Feed({
           <Input
             readOnly
             value={url}
-            aria-label={`${label} CSV link`}
+            aria-label={t('exportImport.feeds.linkLabel', { label })}
             className='h-8 min-w-60 flex-1 text-xs'
           />
           <Button
@@ -115,17 +117,17 @@ function Feed({
             onClick={() =>
               navigator.clipboard
                 ?.writeText(url)
-                .then(() => toast.success('Link copied'))
+                .then(() => toast.success(t('exportImport.feeds.copied')))
             }
           >
             <Copy />
-            Copy
+            {t('common:actions.copy')}
           </Button>
           <Button size='sm' variant='ghost' onClick={() => regenerate.mutate()}>
-            New link
+            {t('exportImport.feeds.newLink')}
           </Button>
           <Button size='sm' variant='ghost' onClick={() => remove.mutate()}>
-            Turn off
+            {t('exportImport.feeds.turnOff')}
           </Button>
         </div>
       ) : (
@@ -135,7 +137,7 @@ function Feed({
             variant='outline'
             onClick={() => regenerate.mutate()}
           >
-            Create link
+            {t('exportImport.feeds.create')}
           </Button>
         </div>
       )}

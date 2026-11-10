@@ -1,6 +1,7 @@
 /** Wiki pages, their bookmarks (wiki links), and Markdown preview. */
 import { AxiosError } from 'axios'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import i18n from '@/i18n'
 import { toast } from 'sonner'
 import { api } from './client'
 import { onFail } from './items'
@@ -101,7 +102,7 @@ export function useDeleteWikiPage(project: Project) {
   return useMutation({
     mutationFn: (page: WikiPage) => api.delete(`/wiki/${page.id}`),
     onSuccess: (_d, page) => {
-      toast.success(`Page "${page.slug}" deleted`)
+      toast.success(i18n.t('shell:toast.wikiPageDeleted', { page: page.slug }))
       qc.setQueryData(['wiki', project.id, page.slug], null)
     },
     onError: onFail,

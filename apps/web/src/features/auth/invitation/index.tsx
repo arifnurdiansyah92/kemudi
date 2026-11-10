@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
 import {
   api,
@@ -29,6 +30,7 @@ interface Invitation {
 
 /** Landing page of an invitation email: /invitation/<token>. */
 export function InvitationPage({ token }: { token: string }) {
+  const { t } = useTranslation('auth')
   const navigate = useNavigate()
   const signedInAs = useAuthStore((s) => s.session?.user.username)
   const invitation = useQuery({
@@ -47,17 +49,16 @@ export function InvitationPage({ token }: { token: string }) {
 
   if (invitation.isPending)
     return (
-      <AuthLayout title='Invitation'>
+      <AuthLayout title={t('invitation.title')}>
         <Skeleton className='h-40 w-full' />
       </AuthLayout>
     )
 
   if (invitation.isError)
     return (
-      <AuthLayout title='Invitation not found'>
+      <AuthLayout title={t('invitation.notFoundTitle')}>
         <p className='text-sm text-muted-foreground'>
-          This invitation was already used or has been cancelled. Ask the person
-          who invited you to send a new one.
+          {t('invitation.notFound')}
         </p>
       </AuthLayout>
     )
@@ -65,22 +66,29 @@ export function InvitationPage({ token }: { token: string }) {
   const inv = invitation.data
   return (
     <AuthLayout
-      title={`Join ${inv.project_name}`}
-      description={`${inv.invited_by?.full_name_display ?? 'A project admin'} invited you as ${inv.role_name}.`}
+      title={t('invitation.join', { project: inv.project_name })}
+      description={
+        inv.invited_by
+          ? t('invitation.invitedBy', {
+              name: inv.invited_by.full_name_display,
+              role: inv.role_name,
+            })
+          : t('invitation.invitedByAdmin', { role: inv.role_name })
+      }
     >
       <Tabs defaultValue={signedInAs ? 'existing' : 'new'}>
         <TabsList className='w-full'>
           <TabsTrigger value='new' className='flex-1'>
-            I am new here
+            {t('invitation.newTab')}
           </TabsTrigger>
           <TabsTrigger value='existing' className='flex-1'>
-            I have an account
+            {t('invitation.existingTab')}
           </TabsTrigger>
         </TabsList>
         <TabsContent value='new' className='mt-5'>
           <AccountForm
             email={inv.email ?? ''}
-            submitLabel='Create account and join'
+            submitLabel={t('invitation.createAndJoin')}
             onSubmit={async (account) => {
               await registerFromInvitation(token, account)
               goToProject()
@@ -108,6 +116,7 @@ function ExistingAccount({
   username: string
   onDone: () => void
 }) {
+  const { t } = useTranslation('auth')
   const [username, setUsername] = useState(initial)
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -123,7 +132,7 @@ function ExistingAccount({
           await signIn(username.trim(), password, token)
           onDone()
         } catch (err) {
-          setError(apiErrorMessage(err, 'Sign-in failed.'))
+          setError(apiErrorMessage(err, t('invitation.signInFailed')))
         } finally {
           setBusy(false)
         }
@@ -135,10 +144,10 @@ function ExistingAccount({
         </Alert>
       )}
       <p className='text-sm text-muted-foreground'>
-        Sign in to accept. The project is added to your account.
+        {t('invitation.existingHint')}
       </p>
       <div className='grid gap-1.5'>
-        <Label htmlFor='inv-user'>Username or email</Label>
+        <Label htmlFor='inv-user'>{t('fields.usernameOrEmail')}</Label>
         <Input
           id='inv-user'
           autoComplete='username'
@@ -147,7 +156,7 @@ function ExistingAccount({
         />
       </div>
       <div className='grid gap-1.5'>
-        <Label htmlFor='inv-pass'>Password</Label>
+        <Label htmlFor='inv-pass'>{t('fields.password')}</Label>
         <PasswordInput
           id='inv-pass'
           autoComplete='current-password'
@@ -157,7 +166,7 @@ function ExistingAccount({
       </div>
       <Button type='submit' disabled={!username.trim() || !password || busy}>
         {busy && <Loader2 className='animate-spin' />}
-        Sign in and join
+        {t('invitation.signInAndJoin')}
       </Button>
     </form>
   )

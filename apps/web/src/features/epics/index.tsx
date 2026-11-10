@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronRight, Loader2, Plus } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import {
   useCreateEpic,
   useEpicStories,
@@ -37,11 +38,13 @@ const PALETTE = [
 ]
 
 export function Epics() {
+  const { t } = useTranslation(['board', 'common'])
   const project = useProject()
   const epics = useEpics(project.id)
   const { open } = useRefParam()
   const [creating, setCreating] = useState(false)
   const list = epics.data ?? []
+  const canAdd = can(project, 'add_epic')
 
   return (
     <>
@@ -52,21 +55,23 @@ export function Epics() {
             to: '/p/$slug',
             params: { slug: project.slug },
           },
-          { label: 'Epics' },
+          { label: t('common:terms.epic', { count: 2 }) },
         ]}
       />
       <Main fluid className='mx-auto w-full max-w-5xl'>
         <div className='flex flex-wrap items-end justify-between gap-3'>
           <div>
-            <h1 className='text-2xl font-semibold tracking-tight'>Epics</h1>
+            <h1 className='text-2xl font-semibold tracking-tight'>
+              {t('common:terms.epic', { count: 2 })}
+            </h1>
             <p className='mt-1 text-sm text-muted-foreground'>
-              Large pieces of work, made of stories across sprints.
+              {t('epics.intro')}
             </p>
           </div>
-          {can(project, 'add_epic') && (
+          {canAdd && (
             <Button size='sm' onClick={() => setCreating(true)}>
               <Plus />
-              New epic
+              {t('epics.new')}
             </Button>
           )}
         </div>
@@ -76,10 +81,9 @@ export function Epics() {
             <Skeleton className='h-32 w-full' />
           ) : list.length === 0 ? (
             <div className='rounded-lg border border-dashed p-10 text-center'>
-              <p className='font-medium'>No epics yet</p>
+              <p className='font-medium'>{t('epics.empty.title')}</p>
               <p className='mt-1 text-sm text-muted-foreground'>
-                Group related stories under an epic to follow a feature from
-                start to finish.
+                {t('epics.empty.body')}
               </p>
             </div>
           ) : (
@@ -117,6 +121,7 @@ function EpicRow({
   epic: Epic
   onOpen: (ref: number) => void
 }) {
+  const { t } = useTranslation(['board', 'common'])
   const [expanded, setExpanded] = useState(false)
   const stories = useEpicStories(project.id, epic.id, expanded)
   const { total, progress } = epic.user_stories_counts
@@ -129,7 +134,9 @@ function EpicRow({
         <button
           onClick={() => setExpanded((e) => !e)}
           aria-expanded={expanded}
-          aria-label={`${expanded ? 'Hide' : 'Show'} stories of #${epic.ref}`}
+          aria-label={t(expanded ? 'epics.hideStories' : 'epics.showStories', {
+            ref: epic.ref,
+          })}
           className='rounded p-1 text-muted-foreground hover:bg-accent'
           disabled={total === 0}
         >
@@ -161,7 +168,7 @@ function EpicRow({
           <span
             className='h-1.5 flex-1 overflow-hidden rounded-full bg-muted'
             role='progressbar'
-            aria-label={`#${epic.ref} progress`}
+            aria-label={t('epics.progress', { ref: epic.ref })}
             aria-valuenow={pct}
             aria-valuemin={0}
             aria-valuemax={100}
@@ -229,6 +236,7 @@ function NewEpicDialog({
   onOpenChange: (open: boolean) => void
   onCreated: (ref: number) => void
 }) {
+  const { t } = useTranslation(['board', 'common'])
   const create = useCreateEpic(project)
   const [subject, setSubject] = useState('')
   const [description, setDescription] = useState('')
@@ -256,13 +264,13 @@ function NewEpicDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>New epic</DialogTitle>
+            <DialogTitle>{t('epics.create.title')}</DialogTitle>
             <DialogDescription>
-              Add stories to it from the epic or from each story.
+              {t('epics.create.description')}
             </DialogDescription>
           </DialogHeader>
           <div className='grid gap-1.5'>
-            <Label htmlFor='epic-subject'>Name</Label>
+            <Label htmlFor='epic-subject'>{t('epics.create.name')}</Label>
             <Input
               id='epic-subject'
               autoFocus
@@ -271,7 +279,9 @@ function NewEpicDialog({
             />
           </div>
           <fieldset className='grid gap-1.5'>
-            <legend className='mb-1.5 text-sm font-medium'>Colour</legend>
+            <legend className='mb-1.5 text-sm font-medium'>
+              {t('epics.create.colour')}
+            </legend>
             <div className='flex items-center gap-2'>
               {PALETTE.map((c) => (
                 <button
@@ -289,7 +299,7 @@ function NewEpicDialog({
               ))}
               <input
                 type='color'
-                aria-label='Other colour'
+                aria-label={t('epics.create.otherColour')}
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
                 className='size-7 cursor-pointer rounded-full border bg-transparent'
@@ -297,13 +307,15 @@ function NewEpicDialog({
             </div>
           </fieldset>
           <div className='grid gap-1.5'>
-            <Label htmlFor='epic-description'>Description</Label>
+            <Label htmlFor='epic-description'>
+              {t('common:terms.description')}
+            </Label>
             <Textarea
               id='epic-description'
               rows={4}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder='What this epic delivers, and when it is done.'
+              placeholder={t('epics.create.descriptionPlaceholder')}
             />
           </div>
           <DialogFooter>
@@ -312,7 +324,7 @@ function NewEpicDialog({
               disabled={!subject.trim() || create.isPending}
             >
               {create.isPending && <Loader2 className='animate-spin' />}
-              Create epic
+              {t('epics.create.submit')}
             </Button>
           </DialogFooter>
         </form>

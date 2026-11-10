@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import type { TFunction } from 'i18next'
 import { Loader2 } from 'lucide-react'
+import { Trans, useTranslation } from 'react-i18next'
 import { apiErrorMessage, requestPasswordReset } from '@/lib/taiga/client'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -17,29 +19,34 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 
-const formSchema = z.object({
-  username: z.string().trim().min(1, 'Enter your username or email.'),
-})
+const makeSchema = (t: TFunction<'auth'>) =>
+  z.object({
+    username: z.string().trim().min(1, t('validation.usernameRequired')),
+  })
+
+type FormValues = z.infer<ReturnType<typeof makeSchema>>
 
 export function ForgotPasswordForm({
   className,
   ...props
 }: React.HTMLAttributes<HTMLFormElement>) {
+  const { t } = useTranslation('auth')
   const [sentTo, setSentTo] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const formSchema = useMemo(() => makeSchema(t), [t])
 
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: { username: '' },
   })
 
-  async function onSubmit({ username }: z.infer<typeof formSchema>) {
+  async function onSubmit({ username }: FormValues) {
     setError(null)
     try {
       await requestPasswordReset(username)
       setSentTo(username)
     } catch (err) {
-      setError(apiErrorMessage(err, 'The reset email was not sent. Try again.'))
+      setError(apiErrorMessage(err, t('forgotPassword.failed')))
     }
   }
 
@@ -47,8 +54,12 @@ export function ForgotPasswordForm({
     return (
       <Alert>
         <AlertDescription>
-          If an account matches <strong>{sentTo}</strong>, a reset link is on
-          its way to that account's email address.
+          <Trans
+            t={t}
+            i18nKey='forgotPassword.sent'
+            values={{ username: sentTo }}
+            components={{ strong: <strong /> }}
+          />
         </AlertDescription>
       </Alert>
     )
@@ -72,7 +83,7 @@ export function ForgotPasswordForm({
           name='username'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Username or email</FormLabel>
+              <FormLabel>{t('fields.usernameOrEmail')}</FormLabel>
               <FormControl>
                 <Input autoComplete='username' autoFocus {...field} />
               </FormControl>
@@ -82,7 +93,7 @@ export function ForgotPasswordForm({
         />
         <Button className='mt-2' disabled={submitting}>
           {submitting && <Loader2 className='animate-spin' />}
-          Send reset link
+          {t('forgotPassword.submit')}
         </Button>
       </form>
     </Form>

@@ -5,6 +5,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query'
+import i18n from '@/i18n'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { api, apiErrorMessage } from './client'
@@ -148,7 +149,7 @@ async function patchStory(
 }
 
 function onFail(error: unknown) {
-  toast.error(apiErrorMessage(error, 'The change was not saved.'))
+  toast.error(apiErrorMessage(error, i18n.t('shell:toast.notSaved')))
 }
 
 /* ---------- mutations ---------- */

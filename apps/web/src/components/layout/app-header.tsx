@@ -1,6 +1,7 @@
 import { Fragment } from 'react'
 import { Link, type LinkProps } from '@tanstack/react-router'
 import { ChevronRight } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Header } from '@/components/layout/header'
 import { Search } from '@/components/search'
 import { ThemeSwitch } from '@/components/theme-switch'
@@ -10,9 +11,10 @@ type Crumb = { label: string; to?: LinkProps['to']; params?: object }
 
 /** Top bar: where you are, then search and theme. */
 export function AppHeader({ crumbs }: { crumbs: Crumb[] }) {
+  const { t } = useTranslation('shell')
   return (
     <Header fixed>
-      <nav aria-label='Breadcrumb' className='min-w-0 flex-1'>
+      <nav aria-label={t('header.breadcrumb')} className='min-w-0 flex-1'>
         <ol className='flex min-w-0 items-center gap-1.5 text-sm'>
           {crumbs.map((crumb, i) => {
             const last = i === crumbs.length - 1
@@ -47,7 +49,7 @@ export function AppHeader({ crumbs }: { crumbs: Crumb[] }) {
           })}
         </ol>
       </nav>
-      <Search className='max-sm:hidden' placeholder='Jump to…' />
+      <Search className='max-sm:hidden' placeholder={t('header.jumpTo')} />
       <NotificationsBell />
       <ThemeSwitch />
     </Header>

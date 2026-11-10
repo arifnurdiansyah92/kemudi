@@ -1,10 +1,13 @@
+import { useFormat } from '@/i18n/format'
+import { Trans, useTranslation } from 'react-i18next'
 import { useProjectStats } from '@/lib/taiga/sprints'
 import type { Project } from '@/lib/taiga/types'
 
-const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
-
 /** Closed against total points, and the team's speed per sprint. */
 export function ProjectStats({ project }: { project: Project }) {
+  const { t } = useTranslation(['backlog', 'common'])
+  const { number } = useFormat()
+  const fmt = (n: number) => number(n, { maximumFractionDigits: 1 })
   const { data } = useProjectStats(project.id)
   if (!data) return null
   // Without a target set in admin, measure against estimated work.
@@ -15,20 +18,24 @@ export function ProjectStats({ project }: { project: Project }) {
     <div className='grid w-full max-w-md gap-1.5 text-sm'>
       <div className='flex items-baseline justify-between gap-4 tabular-nums'>
         <span>
-          <span className='font-medium'>{fmt(data.closed_points)}</span>
-          <span className='text-muted-foreground'>
-            {' '}
-            of {fmt(total)} points closed
-          </span>
+          <Trans
+            t={t}
+            i18nKey='backlog.stats.closed'
+            values={{ closed: fmt(data.closed_points), total: fmt(total) }}
+            components={{
+              strong: <span className='font-medium' />,
+              muted: <span className='text-muted-foreground' />,
+            }}
+          />
         </span>
         <span className='text-xs text-muted-foreground'>
-          Speed {fmt(data.speed)} pts per sprint
+          {t('backlog.stats.speed', { speed: fmt(data.speed) })}
         </span>
       </div>
       <div
         className='h-1.5 overflow-hidden rounded-full bg-muted'
         role='progressbar'
-        aria-label='Project progress'
+        aria-label={t('backlog.stats.progress')}
         aria-valuenow={Math.round(pct)}
         aria-valuemin={0}
         aria-valuemax={100}

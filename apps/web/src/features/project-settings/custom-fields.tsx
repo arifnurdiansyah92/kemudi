@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/taiga/client'
 import { onFail } from '@/lib/taiga/items'
 import type { CustomAttribute, ItemKind, Project } from '@/lib/taiga/types'
@@ -11,30 +12,35 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { useProject } from '@/features/project/use-project'
 import { SettingsSection } from './layout'
 
-const KIND_LABEL: [ItemKind, string][] = [
-  ['epic', 'Epics'],
-  ['userstory', 'Stories'],
-  ['task', 'Tasks'],
-  ['issue', 'Issues'],
-]
+/** Item kinds with custom fields, and their list name in the common namespace. */
+const KIND_LABEL = [
+  ['epic', 'common:terms.epic_other'],
+  ['userstory', 'common:terms.story_other'],
+  ['task', 'common:terms.task_other'],
+  ['issue', 'common:terms.issue_other'],
+] as const satisfies readonly (readonly [ItemKind, string])[]
 
-const TYPES: [CustomAttribute['type'], string][] = [
-  ['text', 'Short text'],
-  ['multiline', 'Long text'],
-  ['richtext', 'Formatted text'],
-  ['number', 'Number'],
-  ['date', 'Date'],
-  ['url', 'Link'],
-  ['checkbox', 'Checkbox'],
-  ['dropdown', 'List of choices'],
-]
+type FieldKind = (typeof KIND_LABEL)[number][0]
+
+/** Field types; each label is customFields.types.<type> in the admin namespace. */
+const TYPES = [
+  'text',
+  'multiline',
+  'richtext',
+  'number',
+  'date',
+  'url',
+  'checkbox',
+  'dropdown',
+] as const satisfies readonly CustomAttribute['type'][]
 
 export function CustomFieldsSettings() {
+  const { t } = useTranslation(['admin', 'common'])
   const project = useProject()
   return (
     <div className='grid gap-6'>
       {KIND_LABEL.map(([kind, label]) => (
-        <FieldList key={kind} project={project} kind={kind} label={label} />
+        <FieldList key={kind} project={project} kind={kind} label={t(label)} />
       ))}
     </div>
   )
@@ -106,9 +112,10 @@ function FieldList({
   label,
 }: {
   project: Project
-  kind: ItemKind
+  kind: FieldKind
   label: string
 }) {
+  const { t } = useTranslation(['admin', 'common'])
   const f = useFields(project, kind)
   const [name, setName] = useState('')
   const [type, setType] = useState<CustomAttribute['type']>('text')
@@ -124,12 +131,14 @@ function FieldList({
   return (
     <SettingsSection
       title={label}
-      description={`Extra fields on every ${label.toLowerCase().replace(/s$/, '').replace('storie', 'story')}.`}
+      description={t(`customFields.kinds.${kind}.description`)}
     >
       {f.list.isPending ? (
         <Skeleton className='h-12 w-full' />
       ) : fields.length === 0 ? (
-        <p className='text-sm text-muted-foreground'>No custom fields yet.</p>
+        <p className='text-sm text-muted-foreground'>
+          {t('customFields.empty')}
+        </p>
       ) : (
         <ul className='grid gap-3'>
           {fields.map((field, i) => (
@@ -140,7 +149,7 @@ function FieldList({
               <div className='flex flex-wrap items-center gap-2'>
                 <span className='flex flex-col'>
                   <button
-                    aria-label={`Move ${field.name} up`}
+                    aria-label={t('shared.moveUp', { name: field.name })}
                     disabled={i === 0}
                     onClick={() => move(i, -1)}
                     className='text-muted-foreground hover:text-foreground disabled:opacity-30'
@@ -148,7 +157,7 @@ function FieldList({
                     <ArrowUp className='size-3.5' />
                   </button>
                   <button
-                    aria-label={`Move ${field.name} down`}
+                    aria-label={t('shared.moveDown', { name: field.name })}
                     disabled={i === fields.length - 1}
                     onClick={() => move(i, 1)}
                     className='text-muted-foreground hover:text-foreground disabled:opacity-30'
@@ -157,7 +166,7 @@ function FieldList({
                   </button>
                 </span>
                 <Input
-                  aria-label='Field name'
+                  aria-label={t('customFields.fieldName')}
                   defaultValue={field.name}
                   onBlur={(e) => {
                     const v = e.target.value.trim()
@@ -167,7 +176,7 @@ function FieldList({
                   className='h-8 w-48'
                 />
                 <select
-                  aria-label={`Type of ${field.name}`}
+                  aria-label={t('customFields.typeOf', { name: field.name })}
                   value={field.type}
                   onChange={(e) =>
                     f.update.mutate({
@@ -179,15 +188,17 @@ function FieldList({
                   }
                   className='h-8 rounded-md border bg-transparent px-2 text-sm'
                 >
-                  {TYPES.map(([t, l]) => (
-                    <option key={t} value={t}>
-                      {l}
+                  {TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {t(`customFields.types.${type}`)}
                     </option>
                   ))}
                 </select>
                 <Input
-                  aria-label={`Help text for ${field.name}`}
-                  placeholder='Help text (optional)'
+                  aria-label={t('customFields.helpTextFor', {
+                    name: field.name,
+                  })}
+                  placeholder={t('customFields.helpText')}
                   defaultValue={field.description}
                   onBlur={(e) =>
                     e.target.value !== field.description &&
@@ -202,7 +213,7 @@ function FieldList({
                   variant='ghost'
                   size='icon'
                   className='size-8 text-muted-foreground'
-                  aria-label={`Delete ${field.name}`}
+                  aria-label={t('shared.deleteNamed', { name: field.name })}
                   onClick={() => setDeleting(field)}
                 >
                   <Trash2 />
@@ -210,8 +221,10 @@ function FieldList({
               </div>
               {field.type === 'dropdown' && (
                 <Input
-                  aria-label={`Choices for ${field.name}`}
-                  placeholder='Choices, separated by commas'
+                  aria-label={t('customFields.choicesFor', {
+                    name: field.name,
+                  })}
+                  placeholder={t('customFields.choices')}
                   defaultValue={(field.extra ?? []).join(', ')}
                   onBlur={(e) => {
                     const extra = e.target.value
@@ -246,33 +259,33 @@ function FieldList({
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder='New field name'
-          aria-label={`New ${label.toLowerCase()} field`}
+          placeholder={t('customFields.newName')}
+          aria-label={t(`customFields.kinds.${kind}.new`)}
           className='h-8 w-56'
         />
         <select
-          aria-label='New field type'
+          aria-label={t('customFields.newType')}
           value={type}
           onChange={(e) => setType(e.target.value as CustomAttribute['type'])}
           className='h-8 rounded-md border bg-transparent px-2 text-sm'
         >
-          {TYPES.map(([t, l]) => (
-            <option key={t} value={t}>
-              {l}
+          {TYPES.map((type) => (
+            <option key={type} value={type}>
+              {t(`customFields.types.${type}`)}
             </option>
           ))}
         </select>
         <Button size='sm' variant='outline' disabled={!name.trim()}>
           <Plus />
-          Add field
+          {t('customFields.add')}
         </Button>
       </form>
       <ConfirmDialog
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
-        title={`Delete the ${deleting?.name ?? ''} field?`}
-        desc='Its values are deleted from every item.'
-        confirmText='Delete field'
+        title={t('customFields.deleteTitle', { name: deleting?.name ?? '' })}
+        desc={t('customFields.deleteDescription')}
+        confirmText={t('customFields.confirm')}
         destructive
         isLoading={f.remove.isPending}
         handleConfirm={() =>

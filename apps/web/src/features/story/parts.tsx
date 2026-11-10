@@ -1,4 +1,6 @@
+import { useFormat } from '@/i18n/format'
 import { Check, ChevronDown, UserRound } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useUpdateStory } from '@/lib/taiga/queries'
 import type { Member, Project, UserStory } from '@/lib/taiga/types'
 import { cn } from '@/lib/utils'
@@ -40,6 +42,7 @@ export function StatusMenu({
   /** Dot only, for narrow rows. The name stays available to screen readers. */
   compact?: boolean
 }) {
+  const { t } = useTranslation(['backlog', 'common'])
   const update = useUpdateStory(project)
   const info = story.status_extra_info
   const editable = can(project, 'modify_us')
@@ -74,7 +77,7 @@ export function StatusMenu({
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger
         className='rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring'
-        aria-label={`Status: ${info.name}. Change status`}
+        aria-label={t('story.statusLabel', { name: info.name })}
       >
         {pill}
       </DropdownMenuTrigger>
@@ -100,15 +103,20 @@ export function StatusMenu({
 }
 
 export function Points({ value }: { value: number | null }) {
+  const { t } = useTranslation(['backlog', 'common'])
+  const { number } = useFormat()
   if (value === null)
     return (
-      <span className='text-muted-foreground' aria-label='Not estimated'>
+      <span
+        className='text-muted-foreground'
+        aria-label={t('story.notEstimated')}
+      >
         –
       </span>
     )
   return (
     <span className='tabular-nums'>
-      {Number.isInteger(value) ? value : value.toFixed(1)}
+      {number(value, { maximumFractionDigits: 1 })}
     </span>
   )
 }
@@ -123,6 +131,7 @@ export function AssigneeMenu({
   story: UserStory
   showName?: boolean
 }) {
+  const { t } = useTranslation(['backlog', 'common'])
   const update = useUpdateStory(project)
   const assignee = project.members.find((m) => m.id === story.assigned_to)
   const editable = can(project, 'modify_us')
@@ -138,14 +147,14 @@ export function AssigneeMenu({
       )}
       {showName && (
         <span className={cn('text-sm', !assignee && 'text-muted-foreground')}>
-          {assignee?.full_name_display ?? 'Unassigned'}
+          {assignee?.full_name_display ?? t('common:status.unassigned')}
         </span>
       )}
     </span>
   )
   const label = assignee
-    ? `Assigned to ${assignee.full_name_display}`
-    : 'Unassigned'
+    ? t('story.assignedTo', { name: assignee.full_name_display })
+    : t('common:status.unassigned')
 
   if (!editable)
     return showName ? (
@@ -169,7 +178,7 @@ export function AssigneeMenu({
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger
         className='rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring'
-        aria-label={`${label}. Change assignee`}
+        aria-label={t('story.changeAssignee', { label })}
       >
         {face}
       </DropdownMenuTrigger>
@@ -187,7 +196,7 @@ export function AssigneeMenu({
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => choose(null)}>
-              Unassign
+              {t('story.unassign')}
             </DropdownMenuItem>
           </>
         )}

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Columns3, ListOrdered, Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useCreateProject, useProjectTemplates } from '@/lib/taiga/projects'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -14,21 +15,17 @@ import { ImportDump } from './import-dump'
 
 const TEMPLATE_COPY: Record<
   string,
-  { icon: React.ElementType; blurb: string }
+  {
+    icon: React.ElementType
+    blurb: 'projects.new.templates.scrum' | 'projects.new.templates.kanban'
+  }
 > = {
-  scrum: {
-    icon: ListOrdered,
-    blurb:
-      'A prioritised backlog, planned into time-boxed sprints with a taskboard.',
-  },
-  kanban: {
-    icon: Columns3,
-    blurb:
-      'A board of columns that work flows through, with limits on work in progress.',
-  },
+  scrum: { icon: ListOrdered, blurb: 'projects.new.templates.scrum' },
+  kanban: { icon: Columns3, blurb: 'projects.new.templates.kanban' },
 }
 
 export function NewProject() {
+  const { t } = useTranslation(['home', 'common'])
   const navigate = useNavigate()
   const templates = useProjectTemplates()
   const create = useCreateProject()
@@ -42,12 +39,14 @@ export function NewProject() {
     <>
       <AppHeader
         crumbs={[
-          { label: 'Projects', to: '/projects' },
-          { label: 'New project' },
+          { label: t('common:terms.project_other'), to: '/projects' },
+          { label: t('projects.newProject') },
         ]}
       />
       <Main className='max-w-2xl'>
-        <h1 className='text-2xl font-semibold tracking-tight'>New project</h1>
+        <h1 className='text-2xl font-semibold tracking-tight'>
+          {t('projects.newProject')}
+        </h1>
         <form
           className='mt-8 grid gap-6'
           onSubmit={(e) => {
@@ -69,16 +68,16 @@ export function NewProject() {
         >
           <fieldset>
             <legend className='mb-2 text-sm font-medium'>
-              How the team works
+              {t('projects.new.templateLegend')}
             </legend>
             <div className='grid gap-3 sm:grid-cols-2'>
-              {(templates.data ?? []).map((t) => {
-                const copy = TEMPLATE_COPY[t.slug]
+              {(templates.data ?? []).map((tpl) => {
+                const copy = TEMPLATE_COPY[tpl.slug]
                 const Icon = copy?.icon ?? ListOrdered
-                const on = chosen === t.id
+                const on = chosen === tpl.id
                 return (
                   <label
-                    key={t.id}
+                    key={tpl.id}
                     className={cn(
                       'flex cursor-pointer gap-3 rounded-lg border bg-card p-4 has-focus-visible:ring-2 has-focus-visible:ring-ring',
                       on && 'border-primary ring-1 ring-primary'
@@ -89,13 +88,13 @@ export function NewProject() {
                       name='template'
                       className='sr-only'
                       checked={on}
-                      onChange={() => setTemplate(t.id)}
+                      onChange={() => setTemplate(tpl.id)}
                     />
                     <Icon className='mt-0.5 size-5 shrink-0 text-brass' />
                     <span>
-                      <span className='block font-medium'>{t.name}</span>
+                      <span className='block font-medium'>{tpl.name}</span>
                       <span className='mt-1 block text-sm text-muted-foreground'>
-                        {copy?.blurb ?? t.description}
+                        {copy ? t(copy.blurb) : tpl.description}
                       </span>
                     </span>
                   </label>
@@ -103,11 +102,11 @@ export function NewProject() {
               })}
             </div>
             <p className='mt-2 text-xs text-muted-foreground'>
-              Both can be switched on later in project settings.
+              {t('projects.new.templatesLater')}
             </p>
           </fieldset>
           <div className='grid gap-1.5'>
-            <Label htmlFor='project-name'>Name</Label>
+            <Label htmlFor='project-name'>{t('projects.new.name')}</Label>
             <Input
               id='project-name'
               autoFocus
@@ -117,24 +116,24 @@ export function NewProject() {
             />
           </div>
           <div className='grid gap-1.5'>
-            <Label htmlFor='project-description'>Description</Label>
+            <Label htmlFor='project-description'>
+              {t('common:terms.description')}
+            </Label>
             <Textarea
               id='project-description'
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder='What the project is for, in a sentence or two.'
+              placeholder={t('projects.new.descriptionPlaceholder')}
             />
           </div>
           <fieldset className='grid gap-2'>
-            <legend className='mb-1 text-sm font-medium'>Who can see it</legend>
+            <legend className='mb-1 text-sm font-medium'>
+              {t('projects.new.visibility')}
+            </legend>
             {[
-              [true, 'Private', 'Only members see the project.'],
-              [
-                false,
-                'Public',
-                'Anyone can view it and find it in Discover; only members can change it.',
-              ],
+              [true, t('projects.new.private'), t('projects.new.privateHint')],
+              [false, t('projects.new.public'), t('projects.new.publicHint')],
             ].map(([value, label, hint]) => (
               <label
                 key={String(value)}
@@ -162,7 +161,7 @@ export function NewProject() {
               disabled={!name.trim() || !chosen || create.isPending}
             >
               {create.isPending && <Loader2 className='animate-spin' />}
-              Create project
+              {t('projects.new.submit')}
             </Button>
           </div>
         </form>

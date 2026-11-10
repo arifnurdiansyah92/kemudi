@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Plus } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useCreateStory } from '@/lib/taiga/queries'
 import type { Id, Project } from '@/lib/taiga/types'
 import { cn } from '@/lib/utils'
@@ -20,10 +21,12 @@ export function QuickAdd({
   status,
   milestone,
   swimlane,
-  placeholder = 'Add a story',
+  placeholder,
   className,
   inputRef,
 }: QuickAddProps) {
+  const { t } = useTranslation(['backlog', 'common'])
+  const label = placeholder ?? t('story.quickAdd.placeholder')
   const [subject, setSubject] = useState('')
   const create = useCreateStory(project)
 
@@ -54,14 +57,14 @@ export function QuickAdd({
         ref={inputRef}
         value={subject}
         onChange={(e) => setSubject(e.target.value)}
-        placeholder={placeholder}
-        aria-label={placeholder}
+        placeholder={label}
+        aria-label={label}
         maxLength={500}
         className='h-10 min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground'
       />
       {subject && (
         <kbd className='shrink-0 rounded border px-1.5 text-[0.6875rem] text-muted-foreground'>
-          Enter
+          {t('story.quickAdd.enterKey')}
         </kbd>
       )}
     </form>

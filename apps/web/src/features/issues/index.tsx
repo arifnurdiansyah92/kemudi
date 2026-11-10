@@ -1,8 +1,11 @@
 import { useMemo, useState } from 'react'
+import i18n from '@/i18n'
+import { useFormat } from '@/i18n/format'
 import { ArrowDown, ArrowUp, Plus, ThumbsUp } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useIssues } from '@/lib/taiga/issues'
 import type { Attribute, Item, Project } from '@/lib/taiga/types'
-import { cn, timeAgo } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AppHeader } from '@/components/layout/app-header'
@@ -29,14 +32,22 @@ type SortKey =
   | 'modified'
   | 'votes'
 
+/** Facet labels, read at render so they follow the UI language. */
+const attributeLabels = {
+  type: () => i18n.t('common:terms.type'),
+  severity: () => i18n.t('common:terms.severity'),
+  priority: () => i18n.t('common:terms.priority'),
+}
+
 function attributeFacet(
   key: 'type' | 'severity' | 'priority',
-  label: string,
   options: Attribute[]
 ): Facet<Item> {
   return {
     key,
-    label,
+    get label() {
+      return attributeLabels[key]()
+    },
     options: [...options]
       .sort((a, b) => a.order - b.order)
       .map((o) => ({ value: o.id, label: o.name, color: o.color })),
@@ -49,6 +60,7 @@ function orderOf(list: { id: number; order: number }[], id?: number | null) {
 }
 
 export function Issues() {
+  const { t } = useTranslation(['board', 'common'])
   const project = useProject()
   const issues = useIssues(project.id)
   const { open } = useRefParam()
@@ -62,9 +74,9 @@ export function Issues() {
 
   const facets = useMemo(
     () => [
-      attributeFacet('type', 'Type', project.issue_types),
-      attributeFacet('severity', 'Severity', project.severities),
-      attributeFacet('priority', 'Priority', project.priorities),
+      attributeFacet('type', project.issue_types),
+      attributeFacet('severity', project.severities),
+      attributeFacet('priority', project.priorities),
       statusFacet<Item>(project.issue_statuses),
       assigneeFacet<Item>(project),
       tagFacet(project, list),
@@ -102,8 +114,21 @@ export function Issues() {
     })
   }, [list, facets, filters, sort, project])
 
+  const canAdd = can(project, 'add_issue')
+  const columns: [SortKey, string, string?][] = [
+    ['type', t('common:terms.type'), 'max-md:hidden'],
+    ['severity', t('common:terms.severity'), 'max-lg:hidden'],
+    ['priority', t('common:terms.priority'), 'max-lg:hidden'],
+    ['ref', t('common:terms.issue', { count: 1 })],
+    ['status', t('common:terms.status')],
+    ['assignee', t('common:terms.assignee'), 'max-md:hidden'],
+    ['votes', t('issues.columns.votes'), 'max-lg:hidden'],
+    ['modified', t('issues.columns.updated'), 'max-sm:hidden'],
+  ]
+
   const header = (key: SortKey, label: string, className?: string) => (
     <th
+      key={key}
       scope='col'
       aria-sort={
         sort.key === key ? (sort.desc ? 'descending' : 'ascending') : 'none'
@@ -139,24 +164,28 @@ export function Issues() {
             to: '/p/$slug',
             params: { slug: project.slug },
           },
-          { label: 'Issues' },
+          { label: t('common:terms.issue', { count: 2 }) },
         ]}
       />
       <Main fluid className='mx-auto w-full max-w-7xl'>
         <div className='flex flex-wrap items-end justify-between gap-3'>
           <div>
-            <h1 className='text-2xl font-semibold tracking-tight'>Issues</h1>
+            <h1 className='text-2xl font-semibold tracking-tight'>
+              {t('common:terms.issue', { count: 2 })}
+            </h1>
             {issues.data && (
               <p className='mt-1 text-sm text-muted-foreground tabular-nums'>
-                {list.filter((i) => !i.is_closed).length} open,{' '}
-                {list.filter((i) => i.is_closed).length} closed
+                {t('issues.summary', {
+                  open: list.filter((i) => !i.is_closed).length,
+                  closed: list.filter((i) => i.is_closed).length,
+                })}
               </p>
             )}
           </div>
-          {can(project, 'add_issue') && (
+          {canAdd && (
             <Button size='sm' onClick={() => setCreating(true)}>
               <Plus />
-              New issue
+              {t('issues.new')}
             </Button>
           )}
         </div>
@@ -179,26 +208,19 @@ export function Issues() {
             </div>
           ) : list.length === 0 ? (
             <p className='px-4 py-12 text-center text-sm text-muted-foreground'>
-              No issues yet.{' '}
-              {can(project, 'add_issue') &&
-                'Report the first one with New issue.'}
+              {t('issues.empty')} {canAdd && t('issues.emptyHint')}
             </p>
           ) : rows.length === 0 ? (
             <p className='px-4 py-12 text-center text-sm text-muted-foreground'>
-              No issues match these filters.
+              {t('issues.noMatch')}
             </p>
           ) : (
             <table className='w-full text-sm'>
               <thead className='border-b text-xs text-muted-foreground'>
                 <tr>
-                  {header('type', 'Type', 'max-md:hidden')}
-                  {header('severity', 'Severity', 'max-lg:hidden')}
-                  {header('priority', 'Priority', 'max-lg:hidden')}
-                  {header('ref', 'Issue')}
-                  {header('status', 'Status')}
-                  {header('assignee', 'Assignee', 'max-md:hidden')}
-                  {header('votes', 'Votes', 'max-lg:hidden')}
-                  {header('modified', 'Updated', 'max-sm:hidden')}
+                  {columns.map(([key, label, className]) =>
+                    header(key, label, className)
+                  )}
                 </tr>
               </thead>
               <tbody className='divide-y'>
@@ -247,6 +269,8 @@ function IssueRow({
   issue: Item
   onOpen: () => void
 }) {
+  const { t } = useTranslation(['board', 'common'])
+  const format = useFormat()
   const assignee = project.members.find((m) => m.id === issue.assigned_to)
   return (
     <tr
@@ -291,7 +315,9 @@ function IssueRow({
             {assignee.full_name_display}
           </span>
         ) : (
-          <span className='text-muted-foreground'>Unassigned</span>
+          <span className='text-muted-foreground'>
+            {t('common:status.unassigned')}
+          </span>
         )}
       </td>
       <td className='px-3 py-2 tabular-nums max-lg:hidden'>
@@ -301,7 +327,7 @@ function IssueRow({
         </span>
       </td>
       <td className='px-3 py-2 whitespace-nowrap text-muted-foreground max-sm:hidden'>
-        {timeAgo(issue.modified_date)}
+        {format.timeAgo(issue.modified_date)}
       </td>
     </tr>
   )

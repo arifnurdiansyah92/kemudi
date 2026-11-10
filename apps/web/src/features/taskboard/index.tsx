@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { format, parseISO } from 'date-fns'
+import { format } from 'date-fns'
 import { Link, useNavigate } from '@tanstack/react-router'
+import { useFormat } from '@/i18n/format'
 import {
   closestCorners,
   DndContext,
@@ -23,6 +24,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Ban, Check, ChevronDown, Flame, Plus } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useMilestones, useStories } from '@/lib/taiga/queries'
 import {
   useBulkCreateTasks,
@@ -58,6 +60,8 @@ const cellKey = (storyId: Id | null, statusId: Id) =>
   `${storyId ?? 0}:${statusId}`
 
 export function Taskboard({ sprintId }: { sprintId: Id }) {
+  const { t } = useTranslation(['backlog', 'common'])
+  const { dateRange, number } = useFormat()
   const project = useProject()
   const sprint = useSprint(sprintId)
   const tasks = useSprintTasks(project.id, sprintId)
@@ -158,16 +162,21 @@ export function Taskboard({ sprintId }: { sprintId: Id }) {
   if (sprint.isError)
     return (
       <>
-        <AppHeader crumbs={[{ label: project.name }, { label: 'Taskboard' }]} />
+        <AppHeader
+          crumbs={[
+            { label: project.name },
+            { label: t('common:terms.taskboard') },
+          ]}
+        />
         <Main>
           <p className='text-sm'>
-            This sprint does not exist.{' '}
+            {t('taskboard.notFound')}{' '}
             <Link
               to='/p/$slug/backlog'
               params={{ slug: project.slug }}
               className='underline underline-offset-4'
             >
-              Back to the backlog
+              {t('taskboard.backToBacklog')}
             </Link>
           </p>
         </Main>
@@ -185,7 +194,7 @@ export function Taskboard({ sprintId }: { sprintId: Id }) {
             to: '/p/$slug',
             params: { slug: project.slug },
           },
-          { label: 'Taskboard' },
+          { label: t('common:terms.taskboard') },
         ]}
       />
       <Main fluid className='pb-0'>
@@ -203,25 +212,43 @@ export function Taskboard({ sprintId }: { sprintId: Id }) {
             </div>
             {sprint.data && (
               <p className='mt-1 text-sm text-muted-foreground tabular-nums'>
-                {format(parseISO(sprint.data.estimated_start), 'd MMM')} –{' '}
-                {format(parseISO(sprint.data.estimated_finish), 'd MMM yyyy')}
-                {sprint.data.closed && ', closed'}
+                {dateRange(
+                  sprint.data.estimated_start,
+                  sprint.data.estimated_finish
+                )}
+                {sprint.data.closed && t('taskboard.closedSuffix')}
               </p>
             )}
             {stats.data && (
               <dl className='mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm'>
-                <Stat label='Points done' value={pointsDone(stats.data)} />
                 <Stat
-                  label='Stories closed'
-                  value={`${stats.data.completed_userstories} of ${stats.data.total_userstories}`}
+                  label={t('taskboard.stats.pointsDone')}
+                  value={t('taskboard.ofTotal', {
+                    done: number(pointsDone(stats.data).done, {
+                      maximumFractionDigits: 1,
+                    }),
+                    total: number(pointsDone(stats.data).total, {
+                      maximumFractionDigits: 1,
+                    }),
+                  })}
                 />
                 <Stat
-                  label='Tasks closed'
-                  value={`${stats.data.completed_tasks} of ${stats.data.total_tasks}`}
+                  label={t('taskboard.stats.storiesClosed')}
+                  value={t('taskboard.ofTotal', {
+                    done: number(stats.data.completed_userstories),
+                    total: number(stats.data.total_userstories),
+                  })}
                 />
                 <Stat
-                  label='Iocaine doses'
-                  value={String(stats.data.iocaine_doses)}
+                  label={t('taskboard.stats.tasksClosed')}
+                  value={t('taskboard.ofTotal', {
+                    done: number(stats.data.completed_tasks),
+                    total: number(stats.data.total_tasks),
+                  })}
+                />
+                <Stat
+                  label={t('taskboard.stats.iocaineDoses')}
+                  value={number(stats.data.iocaine_doses)}
                 />
               </dl>
             )}
@@ -250,7 +277,7 @@ export function Taskboard({ sprintId }: { sprintId: Id }) {
             <div className='-mx-4 mt-6 overflow-x-auto px-4 pb-6'>
               <div
                 role='table'
-                aria-label='Taskboard'
+                aria-label={t('common:terms.taskboard')}
                 className='grid min-w-max gap-px overflow-hidden rounded-lg border bg-border'
                 style={{
                   gridTemplateColumns: `16rem repeat(${statuses.length}, minmax(13rem, 1fr))`,
@@ -261,7 +288,7 @@ export function Taskboard({ sprintId }: { sprintId: Id }) {
                     role='columnheader'
                     className='sticky top-0 bg-muted px-3 py-2 text-sm font-semibold'
                   >
-                    Story
+                    {t('common:terms.story', { count: 1 })}
                   </div>
                   {statuses.map((s) => (
                     <div
@@ -308,15 +335,14 @@ export function Taskboard({ sprintId }: { sprintId: Id }) {
   )
 }
 
-/** "2 of 13": total minus what was still open on the latest past day. */
+/** Points done ("2 of 13"): total minus what was still open on the latest past day. */
 function pointsDone(stats: SprintStats) {
   const total = Object.values(stats.total_points).reduce((a, b) => a + b, 0)
   const today = format(new Date(), 'yyyy-MM-dd')
   const past = stats.days.filter((d) => d.day <= today)
   const open = past[past.length - 1]?.open_points
   const done = open === undefined ? 0 : total - open
-  const fmt = (n: number) => (Number.isInteger(n) ? n : n.toFixed(1))
-  return `${fmt(done)} of ${fmt(total)}`
+  return { done, total }
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -337,6 +363,7 @@ function SprintSwitcher({
   current?: Milestone
   sprintId: Id
 }) {
+  const { t } = useTranslation(['backlog', 'common'])
   const navigate = useNavigate()
   const open = useMilestones(project.id)
   const [showClosed, setShowClosed] = useState(false)
@@ -350,12 +377,12 @@ function SprintSwitcher({
   return (
     <DropdownMenu onOpenChange={(o) => o && setShowClosed(true)}>
       <DropdownMenuTrigger className='-mx-1 inline-flex items-center gap-1.5 rounded-md px-1 text-2xl font-semibold tracking-tight outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring'>
-        <h1>{current?.name ?? 'Sprint'}</h1>
+        <h1>{current?.name ?? t('common:terms.sprint', { count: 1 })}</h1>
         <ChevronDown className='size-5 text-muted-foreground' />
       </DropdownMenuTrigger>
       <DropdownMenuContent align='start' className='max-h-96 min-w-56'>
         <DropdownMenuLabel className='text-xs font-normal text-muted-foreground'>
-          Open sprints
+          {t('sprint.openSprints')}
         </DropdownMenuLabel>
         {(open.data ?? []).map((s) => (
           <DropdownMenuItem key={s.id} onSelect={() => go(s.id)}>
@@ -367,7 +394,7 @@ function SprintSwitcher({
           <>
             <DropdownMenuSeparator />
             <DropdownMenuLabel className='text-xs font-normal text-muted-foreground'>
-              Closed sprints
+              {t('sprint.closedSprints')}
             </DropdownMenuLabel>
             {closed.data!.map((s) => (
               <DropdownMenuItem key={s.id} onSelect={() => go(s.id)}>
@@ -399,7 +426,9 @@ function Row({
   byId: Map<Id, Task>
   editable: boolean
 }) {
+  const { t } = useTranslation(['backlog', 'common'])
   const { open } = useRefParam()
+  const canAddTask = can(project, 'add_task')
   const all = statuses.flatMap(
     (s) => cells[cellKey(story?.id ?? null, s.id)] ?? []
   )
@@ -429,19 +458,22 @@ function Row({
               <StatusDot color={story.status_extra_info.color} />
               {story.status_extra_info.name}
               <span className='ms-auto tabular-nums'>
-                <Points value={story.total_points} /> pts
+                <Points value={story.total_points} />{' '}
+                {t('taskboard.pointsUnit')}
               </span>
             </span>
           </>
         ) : (
-          <span className='text-muted-foreground'>Tasks without a story</span>
+          <span className='text-muted-foreground'>
+            {t('taskboard.noStoryRow')}
+          </span>
         )}
         {all.length > 0 && (
           <span className='text-xs text-muted-foreground tabular-nums'>
-            {done} of {all.length} tasks done
+            {t('taskboard.tasksDone', { done, count: all.length })}
           </span>
         )}
-        {can(project, 'add_task') && (
+        {canAddTask && (
           <AddTask
             project={project}
             sprintId={sprintId}
@@ -454,7 +486,10 @@ function Row({
           key={status.id}
           project={project}
           id={cellKey(story?.id ?? null, status.id)}
-          label={`${story ? `#${story.ref}` : 'No story'}, ${status.name}`}
+          label={t('taskboard.cell', {
+            row: story ? `#${story.ref}` : t('taskboard.noStory'),
+            status: status.name,
+          })}
           tasks={(cells[cellKey(story?.id ?? null, status.id)] ?? [])
             .map((id) => byId.get(id))
             .filter((t): t is Task => !!t)}
@@ -474,6 +509,7 @@ function AddTask({
   sprintId: Id
   storyId: Id | null
 }) {
+  const { t } = useTranslation(['backlog', 'common'])
   const create = useBulkCreateTasks(project, sprintId)
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
@@ -484,7 +520,7 @@ function AddTask({
         className='inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground'
       >
         <Plus className='size-3.5' />
-        Add tasks
+        {t('taskboard.addTasks.trigger')}
       </button>
     )
   return (
@@ -514,13 +550,13 @@ function AddTask({
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey))
             e.currentTarget.form?.requestSubmit()
         }}
-        aria-label='New tasks, one per line'
-        placeholder='One task per line'
+        aria-label={t('taskboard.addTasks.inputLabel')}
+        placeholder={t('taskboard.addTasks.placeholder')}
         className='w-full rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring'
       />
       <div className='flex gap-1.5'>
         <Button size='sm' className='h-7' disabled={create.isPending}>
-          Add
+          {t('common:actions.add')}
         </Button>
         <Button
           size='sm'
@@ -529,7 +565,7 @@ function AddTask({
           type='button'
           onClick={() => setOpen(false)}
         >
-          Cancel
+          {t('common:actions.cancel')}
         </Button>
       </div>
     </form>
@@ -585,6 +621,7 @@ function TaskCard({
   task: Task
   draggable: boolean
 }) {
+  const { t } = useTranslation(['backlog', 'common'])
   const { open } = useRefParam()
   const {
     attributes,
@@ -605,7 +642,9 @@ function TaskCard({
         task={task}
         {...attributes}
         {...listeners}
-        aria-roledescription={draggable ? 'Draggable task' : undefined}
+        aria-roledescription={
+          draggable ? t('taskboard.task.draggable') : undefined
+        }
         onClick={() => open(task.ref)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') open(task.ref)
@@ -627,15 +666,15 @@ function TaskFace({
   task: Task
   lifted?: boolean
 }) {
+  const { t } = useTranslation(['backlog', 'common'])
   const assignee = project.members.find((m) => m.id === task.assigned_to)
-  const t = task
   return (
     <div
       role='button'
       tabIndex={0}
       className={cn(
         'grid cursor-pointer gap-1.5 rounded-md border bg-background p-2 text-sm shadow-xs outline-none hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring',
-        t.is_blocked && 'border-s-4 border-s-destructive',
+        task.is_blocked && 'border-s-4 border-s-destructive',
         task.is_closed && 'text-muted-foreground',
         lifted && 'rotate-1 cursor-grabbing shadow-lg',
         className
@@ -652,11 +691,17 @@ function TaskFace({
       </p>
       <div className='flex items-center gap-1.5 text-xs text-muted-foreground'>
         <span className='tabular-nums'>#{task.ref}</span>
-        {t.is_blocked && (
-          <Ban className='size-3 text-destructive' aria-label='Blocked' />
+        {task.is_blocked && (
+          <Ban
+            className='size-3 text-destructive'
+            aria-label={t('taskboard.task.blocked')}
+          />
         )}
-        {t.is_iocaine && (
-          <Flame className='size-3 text-brass' aria-label='Iocaine' />
+        {task.is_iocaine && (
+          <Flame
+            className='size-3 text-brass'
+            aria-label={t('taskboard.task.iocaine')}
+          />
         )}
         {assignee && <UserAvatar user={assignee} className='ms-auto size-5' />}
       </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/taiga/client'
 import { onFail } from '@/lib/taiga/items'
 import type { Id, Project } from '@/lib/taiga/types'
@@ -15,9 +16,23 @@ import { SettingsSection } from './layout'
 
 type Field = 'color' | 'closed' | 'archived' | 'wip' | 'value' | 'days'
 
+type ListId =
+  | 'storyStatuses'
+  | 'points'
+  | 'swimlanes'
+  | 'storyDueDates'
+  | 'taskStatuses'
+  | 'taskDueDates'
+  | 'issueStatuses'
+  | 'issueTypes'
+  | 'priorities'
+  | 'severities'
+  | 'issueDueDates'
+  | 'epicStatuses'
+
 type ListConfig = {
-  title: string
-  description: string
+  /** Its title, description and placeholder live under values.lists.<id>. */
+  id: ListId
   endpoint: string
   /** Body key of the bulk order endpoint; absent means order is PATCHed. */
   bulkParam?: string
@@ -38,103 +53,99 @@ interface Row {
   days_to_due?: number | null
 }
 
-const LISTS: Record<string, ListConfig[]> = {
-  Stories: [
+type Tab = 'stories' | 'tasks' | 'issues' | 'epics'
+
+const TAB_LABEL = {
+  stories: 'common:terms.story_other',
+  tasks: 'common:terms.task_other',
+  issues: 'common:terms.issue_other',
+  epics: 'common:terms.epic_other',
+} as const
+
+const LISTS: Record<Tab, ListConfig[]> = {
+  stories: [
     {
-      title: 'Statuses',
-      description:
-        'The columns of the kanban and the steps a story goes through.',
+      id: 'storyStatuses',
       endpoint: 'userstory-statuses',
       bulkParam: 'bulk_userstory_statuses',
       fields: ['color', 'closed', 'archived', 'wip'],
       moveOnDelete: true,
     },
     {
-      title: 'Points',
-      description: 'The values people can estimate a story with.',
+      id: 'points',
       endpoint: 'points',
       bulkParam: 'bulk_points',
       fields: ['value'],
       moveOnDelete: true,
     },
     {
-      title: 'Swimlanes',
-      description: 'Rows on the kanban board.',
+      id: 'swimlanes',
       endpoint: 'swimlanes',
       bulkParam: 'bulk_swimlanes',
       fields: [],
       moveOnDelete: true,
     },
     {
-      title: 'Due date warnings',
-      description: 'Highlight stories this many days before they are due.',
+      id: 'storyDueDates',
       endpoint: 'userstory-due-dates',
       fields: ['color', 'days'],
       moveOnDelete: false,
     },
   ],
-  Tasks: [
+  tasks: [
     {
-      title: 'Statuses',
-      description: 'The columns of the taskboard.',
+      id: 'taskStatuses',
       endpoint: 'task-statuses',
       bulkParam: 'bulk_task_statuses',
       fields: ['color', 'closed'],
       moveOnDelete: true,
     },
     {
-      title: 'Due date warnings',
-      description: 'Highlight tasks this many days before they are due.',
+      id: 'taskDueDates',
       endpoint: 'task-due-dates',
       fields: ['color', 'days'],
       moveOnDelete: false,
     },
   ],
-  Issues: [
+  issues: [
     {
-      title: 'Statuses',
-      description: 'The steps an issue goes through.',
+      id: 'issueStatuses',
       endpoint: 'issue-statuses',
       bulkParam: 'bulk_issue_statuses',
       fields: ['color', 'closed'],
       moveOnDelete: true,
     },
     {
-      title: 'Types',
-      description: 'Kinds of issue, such as bug or question.',
+      id: 'issueTypes',
       endpoint: 'issue-types',
       bulkParam: 'bulk_issue_types',
       fields: ['color'],
       moveOnDelete: true,
     },
     {
-      title: 'Priorities',
-      description: 'How soon an issue should be dealt with.',
+      id: 'priorities',
       endpoint: 'priorities',
       bulkParam: 'bulk_priorities',
       fields: ['color'],
       moveOnDelete: true,
     },
     {
-      title: 'Severities',
-      description: 'How bad the effect of an issue is.',
+      id: 'severities',
       endpoint: 'severities',
       bulkParam: 'bulk_severities',
       fields: ['color'],
       moveOnDelete: true,
     },
     {
-      title: 'Due date warnings',
-      description: 'Highlight issues this many days before they are due.',
+      id: 'issueDueDates',
       endpoint: 'issue-due-dates',
       fields: ['color', 'days'],
       moveOnDelete: false,
     },
   ],
-  Epics: [
+  epics: [
     {
-      title: 'Statuses',
-      description: 'The steps an epic goes through.',
+      id: 'epicStatuses',
       endpoint: 'epic-statuses',
       bulkParam: 'bulk_epic_statuses',
       fields: ['color', 'closed'],
@@ -144,13 +155,14 @@ const LISTS: Record<string, ListConfig[]> = {
 }
 
 export function AttributesSettings() {
+  const { t } = useTranslation(['admin', 'common'])
   const project = useProject()
   return (
-    <Tabs defaultValue='Stories'>
+    <Tabs defaultValue='stories'>
       <TabsList>
-        {Object.keys(LISTS).map((k) => (
+        {(Object.keys(LISTS) as Tab[]).map((k) => (
           <TabsTrigger key={k} value={k}>
-            {k}
+            {t(TAB_LABEL[k])}
           </TabsTrigger>
         ))}
       </TabsList>
@@ -240,12 +252,15 @@ function AttributeList({
   project: Project
   cfg: ListConfig
 }) {
+  const { t } = useTranslation(['admin', 'common'])
   const a = useAttributeList(project, cfg)
   const [name, setName] = useState('')
   const [deleting, setDeleting] = useState<Row | null>(null)
   const [moveTo, setMoveTo] = useState<Id | ''>('')
   const rows = a.list.data ?? []
-  const has = (f: Field) => cfg.fields.includes(f)
+  const show = Object.fromEntries(cfg.fields.map((f) => [f, true])) as Partial<
+    Record<Field, boolean>
+  >
 
   const move = (i: number, dir: -1 | 1) => {
     const next = [...rows]
@@ -254,7 +269,10 @@ function AttributeList({
   }
 
   return (
-    <SettingsSection title={cfg.title} description={cfg.description}>
+    <SettingsSection
+      title={t(`values.lists.${cfg.id}.title`)}
+      description={t(`values.lists.${cfg.id}.description`)}
+    >
       {a.list.isPending ? (
         <Skeleton className='h-24 w-full' />
       ) : (
@@ -266,7 +284,7 @@ function AttributeList({
             >
               <span className='flex flex-col'>
                 <button
-                  aria-label={`Move ${row.name} up`}
+                  aria-label={t('shared.moveUp', { name: row.name })}
                   disabled={i === 0}
                   onClick={() => move(i, -1)}
                   className='rounded text-muted-foreground hover:text-foreground disabled:opacity-30'
@@ -274,7 +292,7 @@ function AttributeList({
                   <ArrowUp className='size-3.5' />
                 </button>
                 <button
-                  aria-label={`Move ${row.name} down`}
+                  aria-label={t('shared.moveDown', { name: row.name })}
                   disabled={i === rows.length - 1}
                   onClick={() => move(i, 1)}
                   className='rounded text-muted-foreground hover:text-foreground disabled:opacity-30'
@@ -282,10 +300,10 @@ function AttributeList({
                   <ArrowDown className='size-3.5' />
                 </button>
               </span>
-              {has('color') && (
+              {show.color && (
                 <input
                   type='color'
-                  aria-label={`Colour of ${row.name}`}
+                  aria-label={t('shared.colourOf', { name: row.name })}
                   defaultValue={row.color ?? '#999999'}
                   onBlur={(e) =>
                     e.target.value !== row.color &&
@@ -295,7 +313,7 @@ function AttributeList({
                 />
               )}
               <Input
-                aria-label='Name'
+                aria-label={t('shared.name')}
                 defaultValue={row.name}
                 onBlur={(e) => {
                   const v = e.target.value.trim()
@@ -305,12 +323,12 @@ function AttributeList({
                 onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
                 className='h-8 w-48'
               />
-              {has('value') && (
+              {show.value && (
                 <Input
                   type='number'
                   step='any'
-                  aria-label={`Value of ${row.name}`}
-                  placeholder='No value'
+                  aria-label={t('values.valueOf', { name: row.name })}
+                  placeholder={t('values.noValue')}
                   defaultValue={row.value ?? ''}
                   onBlur={(e) => {
                     const v =
@@ -321,11 +339,11 @@ function AttributeList({
                   className='h-8 w-24'
                 />
               )}
-              {has('days') && (
+              {show.days && (
                 <label className='flex items-center gap-1.5 text-xs text-muted-foreground'>
                   <Input
                     type='number'
-                    aria-label={`Days before due for ${row.name}`}
+                    aria-label={t('values.daysBeforeFor', { name: row.name })}
                     placeholder='–'
                     defaultValue={row.days_to_due ?? ''}
                     onBlur={(e) => {
@@ -336,17 +354,17 @@ function AttributeList({
                     }}
                     className='h-8 w-20'
                   />
-                  days before
+                  {t('values.daysBefore')}
                 </label>
               )}
-              {has('wip') && (
+              {show.wip && (
                 <label className='flex items-center gap-1.5 text-xs text-muted-foreground'>
-                  WIP
+                  {t('values.wip')}
                   <Input
                     type='number'
                     min={0}
-                    aria-label={`Work in progress limit of ${row.name}`}
-                    placeholder='none'
+                    aria-label={t('values.wipLimitOf', { name: row.name })}
+                    placeholder={t('values.wipNone')}
                     defaultValue={row.wip_limit ?? ''}
                     onBlur={(e) => {
                       const v =
@@ -358,11 +376,11 @@ function AttributeList({
                   />
                 </label>
               )}
-              {has('closed') && (
+              {show.closed && (
                 <Flag
                   on={!!row.is_closed}
-                  label='Closed'
-                  title='Items in this status count as done'
+                  label={t('values.closed')}
+                  title={t('values.closedHint')}
                   onClick={() =>
                     a.update.mutate({
                       row,
@@ -371,11 +389,11 @@ function AttributeList({
                   }
                 />
               )}
-              {has('archived') && (
+              {show.archived && (
                 <Flag
                   on={!!row.is_archived}
-                  label='Archived'
-                  title='Hidden from the kanban unless archived is shown'
+                  label={t('values.archived')}
+                  title={t('values.archivedHint')}
                   onClick={() =>
                     a.update.mutate({
                       row,
@@ -388,7 +406,7 @@ function AttributeList({
                 variant='ghost'
                 size='icon'
                 className='ms-auto size-8 text-muted-foreground'
-                aria-label={`Delete ${row.name}`}
+                aria-label={t('shared.deleteNamed', { name: row.name })}
                 disabled={
                   cfg.moveOnDelete &&
                   cfg.endpoint !== 'swimlanes' &&
@@ -413,7 +431,7 @@ function AttributeList({
           a.create.mutate(
             {
               name: name.trim(),
-              ...(has('color') ? { color: '#A9AABC' } : {}),
+              ...(show.color ? { color: '#A9AABC' } : {}),
             },
             { onSuccess: () => setName('') }
           )
@@ -422,26 +440,26 @@ function AttributeList({
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder={`New ${cfg.title.toLowerCase().replace(/s$/, '')}`}
-          aria-label={`New ${cfg.title.toLowerCase()}`}
+          placeholder={t(`values.lists.${cfg.id}.new`)}
+          aria-label={t(`values.lists.${cfg.id}.new`)}
           className='h-8 w-60'
         />
         <Button size='sm' variant='outline' disabled={!name.trim()}>
           <Plus />
-          Add
+          {t('common:actions.add')}
         </Button>
       </form>
 
       <ConfirmDialog
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
-        title={`Delete ${deleting?.name ?? ''}?`}
+        title={t('shared.deleteTitle', { name: deleting?.name ?? '' })}
         desc={
           cfg.moveOnDelete && rows.length > 1 ? (
             <span className='grid gap-2'>
-              <span>Everything using it moves to:</span>
+              <span>{t('values.moveTo')}</span>
               <select
-                aria-label='Move to'
+                aria-label={t('values.moveToLabel')}
                 value={moveTo}
                 onChange={(e) => setMoveTo(Number(e.target.value))}
                 className='h-9 rounded-md border bg-transparent px-2 text-sm text-foreground'
@@ -456,10 +474,10 @@ function AttributeList({
               </select>
             </span>
           ) : (
-            'It is removed from this project.'
+            t('values.removed')
           )
         }
-        confirmText='Delete'
+        confirmText={t('common:actions.delete')}
         destructive
         isLoading={a.remove.isPending}
         handleConfirm={() =>

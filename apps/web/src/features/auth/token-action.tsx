@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { api, apiErrorMessage } from '@/lib/taiga/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -26,6 +27,7 @@ export function TokenAction({
   failed,
   confirm,
 }: Props) {
+  const { t } = useTranslation('auth')
   const [state, setState] = useState<'idle' | 'working' | 'done' | 'failed'>(
     confirm ? 'idle' : 'working'
   )
@@ -62,7 +64,7 @@ export function TokenAction({
       )}
       {state === 'working' && (
         <p className='flex items-center gap-2 text-sm text-muted-foreground'>
-          <Loader2 className='size-4 animate-spin' /> Working on it…
+          <Loader2 className='size-4 animate-spin' /> {t('tokenAction.working')}
         </p>
       )}
       {state === 'done' && (
@@ -70,7 +72,7 @@ export function TokenAction({
           <AlertDescription>
             {done}{' '}
             <Link to='/' className='underline underline-offset-4'>
-              Go to Kemudi
+              {t('tokenAction.goHome')}
             </Link>
           </AlertDescription>
         </Alert>

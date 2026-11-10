@@ -1,5 +1,6 @@
 import { Link, useParams } from '@tanstack/react-router'
 import { Check, ChevronsUpDown } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Logo } from '@/assets/logo'
 import { useProjects } from '@/lib/taiga/queries'
 import {
@@ -18,6 +19,7 @@ import {
 } from '@/components/ui/sidebar'
 
 export function ProjectSwitcher() {
+  const { t } = useTranslation('shell')
   const { isMobile } = useSidebar()
   const { slug } = useParams({ strict: false }) as { slug?: string }
   const { data: projects = [] } = useProjects()
@@ -37,10 +39,10 @@ export function ProjectSwitcher() {
               </div>
               <div className='grid flex-1 text-start leading-tight'>
                 <span className='truncate text-sm font-semibold text-sidebar-accent-foreground'>
-                  Kemudi
+                  {t('brand')}
                 </span>
                 <span className='truncate text-xs'>
-                  {current?.name ?? 'Choose a project'}
+                  {current?.name ?? t('projectSwitcher.choose')}
                 </span>
               </div>
               <ChevronsUpDown className='ms-auto' />
@@ -53,7 +55,7 @@ export function ProjectSwitcher() {
             sideOffset={4}
           >
             <DropdownMenuLabel className='text-xs font-normal text-muted-foreground'>
-              Your projects
+              {t('projectSwitcher.yours')}
             </DropdownMenuLabel>
             {projects.map((project) => (
               <DropdownMenuItem key={project.id} asChild>
@@ -65,12 +67,12 @@ export function ProjectSwitcher() {
             ))}
             {projects.length === 0 && (
               <p className='px-2 py-1.5 text-sm text-muted-foreground'>
-                You are not a member of any project yet.
+                {t('projectSwitcher.none')}
               </p>
             )}
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link to='/projects'>All projects</Link>
+              <Link to='/projects'>{t('projectSwitcher.all')}</Link>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

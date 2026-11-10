@@ -9,6 +9,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query'
+import i18n from '@/i18n'
 import { toast } from 'sonner'
 import { api, apiErrorMessage } from './client'
 import type {
@@ -26,7 +27,8 @@ import type {
 } from './types'
 
 type KindConfig = {
-  label: string
+  /** Translated on each read, so it follows the current language. */
+  readonly label: string
   endpoint: string
   history: string
   resolverKey: keyof ResolvedRef
@@ -37,7 +39,9 @@ type KindConfig = {
 
 export const KINDS: Record<ItemKind, KindConfig> = {
   userstory: {
-    label: 'Story',
+    get label() {
+      return i18n.t('common:terms.story_one')
+    },
     endpoint: 'userstories',
     history: 'userstory',
     resolverKey: 'us',
@@ -51,7 +55,9 @@ export const KINDS: Record<ItemKind, KindConfig> = {
     voting: false,
   },
   task: {
-    label: 'Task',
+    get label() {
+      return i18n.t('common:terms.task_one')
+    },
     endpoint: 'tasks',
     history: 'task',
     resolverKey: 'task',
@@ -65,7 +71,9 @@ export const KINDS: Record<ItemKind, KindConfig> = {
     voting: false,
   },
   issue: {
-    label: 'Issue',
+    get label() {
+      return i18n.t('common:terms.issue_one')
+    },
     endpoint: 'issues',
     history: 'issue',
     resolverKey: 'issue',
@@ -79,7 +87,9 @@ export const KINDS: Record<ItemKind, KindConfig> = {
     voting: true,
   },
   epic: {
-    label: 'Epic',
+    get label() {
+      return i18n.t('common:terms.epic_one')
+    },
     endpoint: 'epics',
     history: 'epic',
     resolverKey: 'epic',
@@ -118,7 +128,7 @@ export function refreshLists(qc: QueryClient) {
 }
 
 export function onFail(error: unknown) {
-  toast.error(apiErrorMessage(error, 'The change was not saved.'))
+  toast.error(apiErrorMessage(error, i18n.t('shell:toast.notSaved')))
 }
 
 /* ---------- loading ---------- */
@@ -217,7 +227,12 @@ export function useDeleteItem(project: Project, kind: ItemKind) {
       api.delete(`/${KINDS[kind].endpoint}/${item.id}`),
     onSuccess: (_d, item) => {
       qc.removeQueries({ queryKey: itemKey(project.id, item.ref) })
-      toast.success(`${KINDS[kind].label} #${item.ref} deleted`)
+      toast.success(
+        i18n.t('shell:toast.itemDeleted', {
+          kind: KINDS[kind].label,
+          ref: item.ref,
+        })
+      )
     },
     onError: onFail,
     onSettled: () => refreshLists(qc),
@@ -297,7 +312,10 @@ export function useUploadAttachment(
     },
     onError: (error, file) =>
       toast.error(
-        apiErrorMessage(error, `${file.name} could not be uploaded.`)
+        apiErrorMessage(
+          error,
+          i18n.t('shell:toast.uploadFailed', { file: file.name })
+        )
       ),
     onSettled: () =>
       qc.invalidateQueries({ queryKey: attachmentsKey(kind, id) }),

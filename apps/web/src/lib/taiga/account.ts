@@ -1,5 +1,6 @@
 /** The signed-in user's own account: profile, password, email, notifications. */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import i18n from '@/i18n'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { api, apiErrorMessage } from './client'
@@ -44,8 +45,8 @@ export function useUpdateMe() {
     onSuccess: (_d, patch) =>
       toast.success(
         'email' in patch
-          ? 'Check your new address for a link to confirm the change.'
-          : 'Profile saved'
+          ? i18n.t('shell:toast.emailChangePending')
+          : i18n.t('shell:toast.profileSaved')
       ),
     onError: onFail,
     onSettled: settle,
@@ -63,7 +64,7 @@ export function useAvatar() {
       })
     },
     onError: (e) =>
-      toast.error(apiErrorMessage(e, 'That image could not be used.')),
+      toast.error(apiErrorMessage(e, i18n.t('shell:toast.imageInvalid'))),
     onSettled: settle,
   })
   const remove = useMutation({
@@ -78,7 +79,7 @@ export function useChangePassword() {
   return useMutation({
     mutationFn: (input: { current_password: string; password: string }) =>
       api.post('/users/change_password', input),
-    onSuccess: () => toast.success('Password changed'),
+    onSuccess: () => toast.success(i18n.t('shell:toast.passwordChanged')),
     onError: onFail,
   })
 }

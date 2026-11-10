@@ -1,1 +1,96 @@
-{}
+{
+  "wiki": {
+    "missing": {
+      "title": "This page does not exist yet",
+      "hint": "Links to it work as soon as someone writes it.",
+      "write": "Write this page"
+    },
+    "view": {
+      "edited_one": "Edited {{when}}, {{count}} edit",
+      "edited_other": "Edited {{when}}, {{count}} edits",
+      "editedBy_one": "Edited {{when}} by {{name}}, {{count}} edit",
+      "editedBy_other": "Edited {{when}} by {{name}}, {{count}} edits",
+      "watch": "Watch",
+      "watching": "Watching",
+      "editPage": "Edit page",
+      "moreActions": "More page actions",
+      "bookmark": "Bookmark in the sidebar",
+      "removeBookmark": "Remove bookmark",
+      "deletePage": "Delete page",
+      "empty": "This page is empty."
+    },
+    "deleteDialog": {
+      "title": "Delete \"{{title}}\"?",
+      "desc": "The page, its history and its attachments are deleted. Links to it will offer to write it again."
+    },
+    "editor": {
+      "titleEdit": "Edit {{title}}",
+      "titleWrite": "Write {{title}}",
+      "write": "Write",
+      "preview": "Preview",
+      "contentLabel": "Page content",
+      "placeholder": "# Heading\n\nLink to another page with [[page-name]], to a story with #12.",
+      "help": "Markdown. [[page-name]] links to a wiki page; #12 links to story, task or issue 12.",
+      "nothingToPreview": "Nothing to preview.",
+      "save": "Save page"
+    },
+    "nav": {
+      "bookmarks": "Bookmarks",
+      "bookmarksEmpty": "Bookmark pages from their menu.",
+      "allPages": "All pages",
+      "newPage": "New page"
+    },
+    "newPage": {
+      "desc": "Name it, then write it. Link to it elsewhere with [[{{slug}}]].",
+      "slugFallback": "page-name",
+      "nameLabel": "Page name",
+      "namePlaceholder": "Release checklist",
+      "create": "Create page"
+    },
+    "history": {
+      "title": "History",
+      "empty": "No edits recorded since the page was written.",
+      "edited": "edited {{when}}"
+    }
+  },
+  "importers": {
+    "title": "Import from {{service}}",
+    "notSetUp": "The {{service}} importer is not set up on this server. An administrator enables it by setting <code>{{env}}=True</code> with {{service}} API credentials in the kemudi-back environment.",
+    "connecting": "Connecting to {{service}}…",
+    "signInHint": "Sign in to {{service}} and allow Kemudi to read your projects. You come back here to choose what to import.",
+    "jiraUrl": "Jira address",
+    "jiraUrlPlaceholder": "https://your-team.atlassian.net",
+    "connect": "Connect to {{service}}",
+    "connectAgain": "Connect again",
+    "started": "Import from {{service}} started. You get an email when it is done.",
+    "errors": {
+      "connect": "Could not reach {{service}}.",
+      "authorize": "{{service}} did not accept the sign-in. Try again.",
+      "start": "The import could not start.",
+      "listProjects": "Could not list your {{service}} projects."
+    },
+    "steps": {
+      "project": "1. Choose a {{service}} project",
+      "people": "2. Match people",
+      "newProject": "3. The new project"
+    },
+    "peopleHint": "Enter the Kemudi email of each {{service}} user to keep their work attributed to them. Leave blank to import it without an owner.",
+    "matchedTo": "Matched to {{name}}",
+    "matchedToUnknown": "Matched to a Kemudi user",
+    "emailFor": "Kemudi email for {{name}}",
+    "emailPlaceholder": "name@example.com",
+    "name": "Name",
+    "templates": {
+      "scrum": "Scrum (backlog and sprints)",
+      "kanban": "Kanban (board)"
+    },
+    "private": "Private project",
+    "keepReference": "Keep a link to each original {{service}} item",
+    "importProject": "Import project",
+    "useAnotherAccount": "Use another {{service}} account",
+    "links": {
+      "title": "Bring a project from another tool",
+      "desc": "Copies its items, people and history into a new Kemudi project."
+    }
+  }
+}

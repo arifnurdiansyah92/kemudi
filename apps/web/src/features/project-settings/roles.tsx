@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Plus } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useUpdateProject } from '@/lib/taiga/admin'
 import { api } from '@/lib/taiga/client'
 import { onFail } from '@/lib/taiga/items'
@@ -28,10 +29,22 @@ interface Role {
 type Action = 'view' | 'add' | 'modify' | 'comment' | 'delete'
 const ACTIONS: Action[] = ['view', 'add', 'modify', 'comment', 'delete']
 
-/** Permission codes per area and action, as kemudi-back names them. */
-const AREAS: { label: string; perms: Partial<Record<Action, string>> }[] = [
+type Area =
+  | 'epics'
+  | 'sprints'
+  | 'stories'
+  | 'tasks'
+  | 'issues'
+  | 'wikiPages'
+  | 'wikiLinks'
+
+/**
+ * Permission codes per area and action, as kemudi-back names them. The
+ * area's label is permissions.areas.<area> in the admin namespace.
+ */
+const AREAS: { area: Area; perms: Partial<Record<Action, string>> }[] = [
   {
-    label: 'Epics',
+    area: 'epics',
     perms: {
       view: 'view_epics',
       add: 'add_epic',
@@ -41,7 +54,7 @@ const AREAS: { label: string; perms: Partial<Record<Action, string>> }[] = [
     },
   },
   {
-    label: 'Sprints',
+    area: 'sprints',
     perms: {
       view: 'view_milestones',
       add: 'add_milestone',
@@ -50,7 +63,7 @@ const AREAS: { label: string; perms: Partial<Record<Action, string>> }[] = [
     },
   },
   {
-    label: 'Stories',
+    area: 'stories',
     perms: {
       view: 'view_us',
       add: 'add_us',
@@ -60,7 +73,7 @@ const AREAS: { label: string; perms: Partial<Record<Action, string>> }[] = [
     },
   },
   {
-    label: 'Tasks',
+    area: 'tasks',
     perms: {
       view: 'view_tasks',
       add: 'add_task',
@@ -70,7 +83,7 @@ const AREAS: { label: string; perms: Partial<Record<Action, string>> }[] = [
     },
   },
   {
-    label: 'Issues',
+    area: 'issues',
     perms: {
       view: 'view_issues',
       add: 'add_issue',
@@ -80,7 +93,7 @@ const AREAS: { label: string; perms: Partial<Record<Action, string>> }[] = [
     },
   },
   {
-    label: 'Wiki pages',
+    area: 'wikiPages',
     perms: {
       view: 'view_wiki_pages',
       add: 'add_wiki_page',
@@ -90,7 +103,7 @@ const AREAS: { label: string; perms: Partial<Record<Action, string>> }[] = [
     },
   },
   {
-    label: 'Wiki links',
+    area: 'wikiLinks',
     perms: {
       view: 'view_wiki_links',
       add: 'add_wiki_link',
@@ -144,6 +157,7 @@ function useRoles(project: Project) {
 }
 
 export function RolesSettings() {
+  const { t } = useTranslation(['admin', 'common'])
   const project = useProject()
   const roles = useRoles(project)
   const [selected, setSelected] = useState<Id | null>(null)
@@ -154,8 +168,8 @@ export function RolesSettings() {
   return (
     <div className='grid gap-6'>
       <SettingsSection
-        title='Roles'
-        description='Every member has one role. Roles that count for points get their own estimate on each story.'
+        title={t('roles.title')}
+        description={t('roles.description')}
       >
         {roles.list.isPending ? (
           <Skeleton className='h-48 w-full' />
@@ -193,15 +207,15 @@ export function RolesSettings() {
                 <Input
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  placeholder='New role'
-                  aria-label='New role name'
+                  placeholder={t('roles.new')}
+                  aria-label={t('roles.newLabel')}
                   className='h-8'
                 />
                 <Button
                   size='icon'
                   variant='outline'
                   className='size-8 shrink-0'
-                  aria-label='Add role'
+                  aria-label={t('roles.add')}
                 >
                   <Plus />
                 </Button>
@@ -232,6 +246,7 @@ function RoleEditor({
   others: Role[]
   roles: ReturnType<typeof useRoles>
 }) {
+  const { t } = useTranslation(['admin', 'common'])
   const [name, setName] = useState(role.name)
   const [deleting, setDeleting] = useState(false)
   const [moveTo, setMoveTo] = useState<Id | ''>(others[0]?.id ?? '')
@@ -247,7 +262,7 @@ function RoleEditor({
     <div className='grid gap-5'>
       <div className='flex flex-wrap items-end gap-3'>
         <div className='grid flex-1 gap-1.5'>
-          <Label htmlFor='role-name'>Name</Label>
+          <Label htmlFor='role-name'>{t('shared.name')}</Label>
           <Input
             id='role-name'
             value={name}
@@ -266,7 +281,7 @@ function RoleEditor({
               roles.update.mutate({ role, patch: { computable: v } })
             }
           />
-          Counts for points
+          {t('roles.computable')}
         </label>
       </div>
 
@@ -275,7 +290,7 @@ function RoleEditor({
           <thead>
             <tr className='text-xs text-muted-foreground'>
               <th scope='col' className='py-2 text-start font-medium'>
-                Area
+                {t('roles.area')}
               </th>
               {ACTIONS.map((a) => (
                 <th
@@ -283,16 +298,16 @@ function RoleEditor({
                   scope='col'
                   className='px-2 py-2 font-medium capitalize'
                 >
-                  {a}
+                  {t(`permissions.actions.${a}`)}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody className='divide-y'>
             {AREAS.map((area) => (
-              <tr key={area.label}>
+              <tr key={area.area}>
                 <th scope='row' className='py-2 text-start font-medium'>
-                  {area.label}
+                  {t(`permissions.areas.${area.area}`)}
                 </th>
                 {ACTIONS.map((a) => {
                   const perm = area.perms[a]
@@ -300,7 +315,13 @@ function RoleEditor({
                     <td key={a} className='px-2 py-2 text-center'>
                       {perm ? (
                         <Checkbox
-                          aria-label={`${role.name}: ${a} ${area.label.toLowerCase()}`}
+                          aria-label={t('roles.permissionLabel', {
+                            role: role.name,
+                            action: t(`permissions.actions.${a}`),
+                            area: t(
+                              `permissions.areas.${area.area}`
+                            ).toLowerCase(),
+                          })}
                           checked={has(perm)}
                           onCheckedChange={(v) => toggle(perm, v === true)}
                         />
@@ -319,17 +340,17 @@ function RoleEditor({
       {others.length > 0 && (
         <div>
           <Button variant='outline' size='sm' onClick={() => setDeleting(true)}>
-            Delete role
+            {t('roles.delete')}
           </Button>
           <ConfirmDialog
             open={deleting}
             onOpenChange={setDeleting}
-            title={`Delete the ${role.name} role?`}
+            title={t('roles.deleteTitle', { name: role.name })}
             desc={
               <span className='grid gap-2'>
-                <span>Members with this role move to:</span>
+                <span>{t('roles.moveMembers')}</span>
                 <select
-                  aria-label='Move members to'
+                  aria-label={t('roles.moveMembersLabel')}
                   value={moveTo}
                   onChange={(e) => setMoveTo(Number(e.target.value))}
                   className='h-9 rounded-md border bg-transparent px-2 text-sm text-foreground'
@@ -342,7 +363,7 @@ function RoleEditor({
                 </select>
               </span>
             }
-            confirmText='Delete role'
+            confirmText={t('roles.delete')}
             destructive
             disabled={!moveTo}
             isLoading={roles.remove.isPending}
@@ -358,7 +379,8 @@ function RoleEditor({
       )}
       {roles.update.isPending && (
         <p className='flex items-center gap-2 text-xs text-muted-foreground'>
-          <Loader2 className='size-3 animate-spin' /> Saving
+          <Loader2 className='size-3 animate-spin' />{' '}
+          {t('common:status.saving')}
         </p>
       )}
     </div>
@@ -367,6 +389,7 @@ function RoleEditor({
 
 /** What signed-in non-members and anonymous visitors may do on a public project. */
 function PublicPermissions({ project }: { project: Project }) {
+  const { t } = useTranslation(['admin', 'common'])
   const update = useUpdateProject(project)
   const p = project as Project & {
     public_permissions: string[]
@@ -375,19 +398,19 @@ function PublicPermissions({ project }: { project: Project }) {
   const groups = [
     [
       'public_permissions',
-      'Signed-in people who are not members',
+      t('permissions.public.signedIn'),
       p.public_permissions ?? [],
     ],
     [
       'anon_permissions',
-      'Visitors who are not signed in',
+      t('permissions.public.anonymous'),
       p.anon_permissions ?? [],
     ],
   ] as const
   return (
     <SettingsSection
-      title='Outside the team'
-      description='This project is public. Choose what people outside it can see and do.'
+      title={t('permissions.public.title')}
+      description={t('permissions.public.description')}
     >
       <div className='grid gap-6'>
         {groups.map(([key, label, perms]) => (
@@ -408,7 +431,9 @@ function PublicPermissions({ project }: { project: Project }) {
                         })
                       }
                     />
-                    See {area.label.toLowerCase()}
+                    {t('permissions.public.see', {
+                      area: t(`permissions.areas.${area.area}`).toLowerCase(),
+                    })}
                   </label>
                 )
               })}

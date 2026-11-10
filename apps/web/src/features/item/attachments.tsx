@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
+import { useFormat } from '@/i18n/format'
 import { FileText, Loader2, Paperclip, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import {
   KINDS,
   type AttachableKind,
@@ -8,7 +10,7 @@ import {
   useUploadAttachment,
 } from '@/lib/taiga/items'
 import type { Project } from '@/lib/taiga/types'
-import { cn, formatBytes } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { can } from '@/features/project/use-project'
@@ -20,6 +22,8 @@ type AttachmentsProps = {
 }
 
 export function Attachments({ project, kind, item }: AttachmentsProps) {
+  const { t } = useTranslation('item')
+  const fmt = useFormat()
   const list = useAttachments(project, kind, item.id)
   const upload = useUploadAttachment(project, kind, item.id)
   const remove = useDeleteAttachment(kind, item.id)
@@ -83,14 +87,14 @@ export function Attachments({ project, kind, item }: AttachmentsProps) {
                 {file.name}
               </a>
               <span className='shrink-0 text-xs text-muted-foreground tabular-nums'>
-                {formatBytes(file.size)}
+                {fmt.bytes(file.size)}
               </span>
               {editable && (
                 <Button
                   variant='ghost'
                   size='icon'
                   className='size-7 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
-                  aria-label={`Delete ${file.name}`}
+                  aria-label={t('attachments.delete', { name: file.name })}
                   onClick={() => remove.mutate(file)}
                 >
                   <Trash2 />
@@ -121,12 +125,16 @@ export function Attachments({ project, kind, item }: AttachmentsProps) {
             ) : (
               <Paperclip className='size-4' />
             )}
-            {upload.isPending ? 'Uploading…' : 'Attach files or drop them here'}
+            {upload.isPending
+              ? t('attachments.uploading')
+              : t('attachments.attach')}
           </button>
         </>
       ) : (
         files.length === 0 && (
-          <p className='text-sm text-muted-foreground'>No attachments.</p>
+          <p className='text-sm text-muted-foreground'>
+            {t('attachments.empty')}
+          </p>
         )
       )}
     </div>

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useFormat } from '@/i18n/format'
 import {
   closestCorners,
   DndContext,
@@ -20,6 +21,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { ChevronsLeftRight, ChevronsRightLeft } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/taiga/client'
 import { useKanbanMove, useStories } from '@/lib/taiga/queries'
 import type {
@@ -49,6 +51,8 @@ import { useDensity, useFolded } from './use-folded'
 type Cells = Record<string, Id[]>
 const cellKey = (lane: Id | null, status: Id) => `${lane ?? 0}:${status}`
 
+const densities: Density[] = ['compact', 'standard', 'detailed']
+
 function useSwimlanes(projectId: Id) {
   return useQuery({
     queryKey: ['swimlanes', projectId],
@@ -76,6 +80,7 @@ function useArchivedStories(projectId: Id, enabled: boolean) {
 }
 
 export function Kanban() {
+  const { t } = useTranslation(['board', 'common'])
   const project = useProject()
   const stories = useStories(project.id)
   const lanes = useSwimlanes(project.id)
@@ -125,9 +130,9 @@ export function Kanban() {
       })
     )
     if (list.length === 0 || all.some((s) => s.swimlane === null))
-      list.push({ id: null, name: list.length ? 'No swimlane' : '' })
+      list.push({ id: null, name: list.length ? t('kanban.noSwimlane') : '' })
     return list
-  }, [lanes.data, all])
+  }, [lanes.data, all, t])
 
   const cells = useMemo(() => {
     const c: Cells = {}
@@ -226,11 +231,11 @@ export function Kanban() {
             to: '/p/$slug',
             params: { slug: project.slug },
           },
-          { label: 'Kanban' },
+          { label: t('common:terms.kanban') },
         ]}
       />
       <Main fixed fluid className='pb-0'>
-        <h1 className='sr-only'>Kanban</h1>
+        <h1 className='sr-only'>{t('common:terms.kanban')}</h1>
         <div className='mb-3 flex flex-wrap items-start justify-between gap-3'>
           <FilterBar
             savedKey={`${project.id}:kemudi-filters-kanban`}
@@ -242,10 +247,10 @@ export function Kanban() {
           />
           <div
             role='radiogroup'
-            aria-label='Card detail'
+            aria-label={t('kanban.density.label')}
             className='flex h-8 items-center rounded-md border p-0.5 text-xs'
           >
-            {(['compact', 'standard', 'detailed'] as const).map((d) => (
+            {densities.map((d) => (
               <button
                 key={d}
                 role='radio'
@@ -258,7 +263,7 @@ export function Kanban() {
                     : 'text-muted-foreground hover:text-foreground'
                 )}
               >
-                {d}
+                {t(`kanban.density.${d}`)}
               </button>
             ))}
           </div>
@@ -268,19 +273,19 @@ export function Kanban() {
                 checked={showArchived}
                 onCheckedChange={setShowArchived}
               />
-              Show archived
+              {t('kanban.showArchived')}
             </label>
           )}
         </div>
 
         {stories.isError ? (
           <p className='text-sm'>
-            Stories could not be loaded.{' '}
+            {t('kanban.loadError')}{' '}
             <button
               className='underline underline-offset-4'
               onClick={() => stories.refetch()}
             >
-              Try again
+              {t('common:actions.retry')}
             </button>
           </p>
         ) : (
@@ -395,15 +400,20 @@ function Column({
   const { setNodeRef, isOver } = useDroppable({
     id: `cell:${cellKey(lane, status.id)}`,
   })
+  const { t } = useTranslation(['board', 'common'])
+  const format = useFormat()
+  const canAdd = can(project, 'add_us')
   const count = stories?.length ?? 0
   const overWip = !!status.wip_limit && count > status.wip_limit
-  const label = laneName ? `${status.name} in ${laneName}` : status.name
+  const label = laneName
+    ? t('kanban.column.inLane', { status: status.name, lane: laneName })
+    : status.name
 
   if (folded)
     return (
       <section
         ref={setNodeRef}
-        aria-label={`${label} (folded)`}
+        aria-label={t('kanban.column.folded', { label })}
         className={cn(
           'flex w-10 shrink-0 flex-col items-center gap-2 rounded-lg bg-muted/70 py-3',
           isOver && 'bg-accent'
@@ -413,7 +423,7 @@ function Column({
           variant='ghost'
           size='icon'
           className='size-7'
-          aria-label={`Unfold ${status.name}`}
+          aria-label={t('kanban.column.unfold', { status: status.name })}
           onClick={onToggleFold}
         >
           <ChevronsLeftRight />
@@ -444,21 +454,24 @@ function Column({
             'text-xs text-muted-foreground tabular-nums',
             overWip && 'font-semibold text-destructive'
           )}
-          title={overWip ? 'Over the work-in-progress limit' : undefined}
+          title={overWip ? t('kanban.column.overWip') : undefined}
         >
           {count}
           {status.wip_limit ? ` / ${status.wip_limit}` : ''}
         </span>
         {stories && sumPoints(stories) > 0 && (
           <span className='text-xs text-muted-foreground tabular-nums'>
-            {sumPoints(stories)} pts
+            {t('kanban.column.points', {
+              count: sumPoints(stories),
+              points: format.number(sumPoints(stories)),
+            })}
           </span>
         )}
         <Button
           variant='ghost'
           size='icon'
           className='ms-auto size-6 text-muted-foreground'
-          aria-label={`Fold ${status.name}`}
+          aria-label={t('kanban.column.fold', { status: status.name })}
           onClick={onToggleFold}
         >
           <ChevronsRightLeft />
@@ -498,12 +511,12 @@ function Column({
         )}
       </div>
 
-      {can(project, 'add_us') && !status.is_archived && (
+      {canAdd && !status.is_archived && (
         <QuickAdd
           project={project}
           status={status.id}
           swimlane={lane}
-          placeholder={`Add to ${status.name}`}
+          placeholder={t('kanban.column.addTo', { status: status.name })}
           className='mx-2 mb-2'
         />
       )}

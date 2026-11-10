@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Check, ListFilter, Search, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -54,9 +55,10 @@ export function FilterBar<T>({
   facets,
   value,
   onChange,
-  placeholder = 'Search by subject or #ref',
+  placeholder,
   className,
 }: FilterBarProps<T>) {
+  const { t } = useTranslation(['board', 'common'])
   const active = facets.flatMap((facet) =>
     (value.facets[facet.key] ?? []).map((v) => ({
       facet,
@@ -88,8 +90,8 @@ export function FilterBar<T>({
           <Input
             value={value.q}
             onChange={(e) => onChange({ ...value, q: e.target.value })}
-            placeholder={placeholder}
-            aria-label='Search'
+            placeholder={placeholder ?? t('filters.searchPlaceholder')}
+            aria-label={t('common:actions.search')}
             className='h-8 ps-8'
           />
         </div>
@@ -116,17 +118,20 @@ export function FilterBar<T>({
             className='h-8 text-muted-foreground'
             onClick={() => onChange(emptyFilters)}
           >
-            Clear filters
+            {t('filters.clear')}
           </Button>
         )}
       </div>
       {active.length > 0 && (
-        <ul className='flex flex-wrap gap-1.5' aria-label='Active filters'>
+        <ul className='flex flex-wrap gap-1.5' aria-label={t('filters.active')}>
           {active.map(({ facet, option, v }) => (
             <li key={`${facet.key}-${v}`}>
               <button
                 onClick={() => toggle(facet.key, v)}
-                aria-label={`Remove filter ${facet.label}: ${option?.label ?? v}`}
+                aria-label={t('filters.remove', {
+                  facet: facet.label,
+                  value: option?.label ?? v,
+                })}
                 className='inline-flex h-6 items-center gap-1.5 rounded-full border bg-background px-2 text-xs hover:bg-accent'
               >
                 <span className='text-muted-foreground'>{facet.label}</span>
@@ -153,6 +158,7 @@ function FacetMenu<T>({
   selected: FacetValue[]
   onToggle: (v: FacetValue) => void
 }) {
+  const { t } = useTranslation(['board', 'common'])
   const [open, setOpen] = useState(false)
   const counts = useCounts(items, facet)
   return (
@@ -161,7 +167,16 @@ function FacetMenu<T>({
         <Button
           variant='outline'
           size='sm'
-          aria-label={`Filter by ${facet.label.toLowerCase()}${selected.length ? `, ${selected.length} selected` : ''}`}
+          aria-label={
+            selected.length
+              ? t('filters.filterBySelected', {
+                  facet: facet.label.toLocaleLowerCase(),
+                  count: selected.length,
+                })
+              : t('filters.filterBy', {
+                  facet: facet.label.toLocaleLowerCase(),
+                })
+          }
           className={cn('h-8 border-dashed', selected.length && 'border-solid')}
         >
           <ListFilter className='size-3.5' />
@@ -176,10 +191,14 @@ function FacetMenu<T>({
       <PopoverContent className='w-60 p-0' align='start'>
         <Command>
           {facet.options.length > 7 && (
-            <CommandInput placeholder={`Find ${facet.label.toLowerCase()}`} />
+            <CommandInput
+              placeholder={t('filters.find', {
+                facet: facet.label.toLocaleLowerCase(),
+              })}
+            />
           )}
           <CommandList>
-            <CommandEmpty>Nothing matches.</CommandEmpty>
+            <CommandEmpty>{t('filters.nothingMatches')}</CommandEmpty>
             <CommandGroup>
               {facet.options.map((option) => {
                 const on = selected.includes(option.value)

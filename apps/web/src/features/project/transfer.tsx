@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { api, apiErrorMessage } from '@/lib/taiga/client'
 import { onFail } from '@/lib/taiga/items'
@@ -15,6 +16,7 @@ import { useProject } from './use-project'
 
 /** Landing page of a "become the owner" email: accept or decline. */
 export function TransferOwnership({ token }: { token: string }) {
+  const { t } = useTranslation(['shell', 'common'])
   const project = useProject()
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -36,7 +38,9 @@ export function TransferOwnership({ token }: { token: string }) {
       ),
     onSuccess: (_d, accept) => {
       toast.success(
-        accept ? `You now own ${project.name}` : 'Ownership declined'
+        accept
+          ? t('transfer.accepted', { project: project.name })
+          : t('transfer.declined')
       )
       qc.invalidateQueries({ queryKey: ['project'] })
       navigate({ to: '/p/$slug', params: { slug: project.slug } })
@@ -46,28 +50,28 @@ export function TransferOwnership({ token }: { token: string }) {
 
   return (
     <>
-      <AppHeader crumbs={[{ label: project.name }, { label: 'Ownership' }]} />
+      <AppHeader
+        crumbs={[{ label: project.name }, { label: t('transfer.crumb') }]}
+      />
       <Main className='max-w-xl'>
         <h1 className='text-2xl font-semibold tracking-tight'>
-          Become the owner of {project.name}?
+          {t('transfer.title', { project: project.name })}
         </h1>
         {valid.isPending ? (
           <Skeleton className='mt-6 h-32 w-full' />
         ) : valid.isError ? (
           <p className='mt-4 text-sm text-muted-foreground'>
-            {apiErrorMessage(valid.error, 'This link is no longer valid.')} Ask
-            the current owner to offer it again.
+            {t('transfer.invalid', {
+              error: apiErrorMessage(valid.error, t('transfer.invalidLink')),
+            })}
           </p>
         ) : (
           <div className='mt-6 grid gap-4'>
             <p className='text-sm text-muted-foreground'>
-              The owner can change every setting, delete the project, and pass
-              ownership on. The current owner stays a member.
+              {t('transfer.explain')}
             </p>
             <div className='grid gap-1.5'>
-              <Label htmlFor='tr-reason'>
-                Message to the current owner (optional)
-              </Label>
+              <Label htmlFor='tr-reason'>{t('transfer.message')}</Label>
               <Textarea
                 id='tr-reason'
                 rows={3}
@@ -81,14 +85,14 @@ export function TransferOwnership({ token }: { token: string }) {
                 disabled={answer.isPending}
               >
                 {answer.isPending && <Loader2 className='animate-spin' />}
-                Accept ownership
+                {t('transfer.accept')}
               </Button>
               <Button
                 variant='outline'
                 onClick={() => answer.mutate(false)}
                 disabled={answer.isPending}
               >
-                Decline
+                {t('transfer.decline')}
               </Button>
             </div>
           </div>

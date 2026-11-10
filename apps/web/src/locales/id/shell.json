@@ -1,1 +1,207 @@
-{}
+{
+  "brand": "Kemudi",
+  "skipToMain": "Langsung ke konten utama",
+  "nav": {
+    "workspace": "Ruang kerja",
+    "home": "Beranda",
+    "discover": "Jelajahi",
+    "you": "Anda"
+  },
+  "header": {
+    "breadcrumb": "Jejak navigasi",
+    "jumpTo": "Buka…"
+  },
+  "userMenu": {
+    "profile": "Profil Anda",
+    "settings": "Pengaturan Anda",
+    "appearance": "Tampilan",
+    "signOut": "Keluar"
+  },
+  "projectSwitcher": {
+    "choose": "Pilih proyek",
+    "yours": "Proyek Anda",
+    "none": "Anda belum menjadi anggota proyek mana pun.",
+    "all": "Semua proyek"
+  },
+  "signOut": {
+    "title": "Keluar dari Kemudi?",
+    "description": "Anda memerlukan nama pengguna dan kata sandi untuk masuk kembali.",
+    "confirm": "Keluar"
+  },
+  "sidebar": {
+    "title": "Sidebar",
+    "description": "Menampilkan sidebar versi seluler.",
+    "toggle": "Tampilkan/sembunyikan sidebar"
+  },
+  "theme": {
+    "label": "Tema",
+    "toggle": "Ganti tema",
+    "light": "Terang",
+    "dark": "Gelap",
+    "system": "Sistem",
+    "matchSystem": "Ikuti sistem"
+  },
+  "commandMenu": {
+    "title": "Palet perintah",
+    "description": "Buka tampilan atau proyek, atau cari di proyek ini.",
+    "placeholder": "Buka tampilan atau proyek",
+    "placeholderProject": "Cari di {{project}}, atau buka tampilan",
+    "empty": "Tidak ada yang cocok.",
+    "resultsIn": {
+      "userstories": "Story di {{project}}",
+      "tasks": "Tugas di {{project}}",
+      "issues": "Isu di {{project}}",
+      "epics": "Epic di {{project}}",
+      "wikipages": "Halaman wiki di {{project}}"
+    }
+  },
+  "configDrawer": {
+    "open": "Buka pengaturan tema",
+    "title": "Pengaturan tema",
+    "description": "Sesuaikan tampilan dan tata letak dengan preferensi Anda.",
+    "resetAll": "Kembalikan semua pengaturan ke bawaan",
+    "selectOption": "Pilih {{label}}",
+    "optionPreview": "Pratinjau opsi {{label}}",
+    "theme": {
+      "reset": "Kembalikan tema ke bawaan",
+      "select": "Pilih tema",
+      "help": "Pilih antara mengikuti sistem, mode terang, atau mode gelap"
+    },
+    "sidebar": {
+      "label": "Sidebar",
+      "reset": "Kembalikan gaya sidebar ke bawaan",
+      "select": "Pilih gaya sidebar",
+      "inset": "Menjorok",
+      "floating": "Mengambang",
+      "standard": "Standar",
+      "help": "Pilih antara sidebar menjorok, mengambang, atau standar"
+    },
+    "layout": {
+      "label": "Tata letak",
+      "reset": "Kembalikan tata letak ke bawaan",
+      "select": "Pilih gaya tata letak",
+      "default": "Bawaan",
+      "compact": "Ringkas",
+      "full": "Layar penuh",
+      "help": "Pilih antara tata letak bawaan, ringkas (ikon saja), atau layar penuh"
+    },
+    "direction": {
+      "label": "Arah teks",
+      "reset": "Kembalikan arah teks ke bawaan",
+      "select": "Pilih arah teks",
+      "ltr": "Kiri ke kanan",
+      "rtl": "Kanan ke kiri",
+      "help": "Pilih arah teks kiri ke kanan atau kanan ke kiri"
+    }
+  },
+  "password": {
+    "show": "Tampilkan kata sandi",
+    "hide": "Sembunyikan kata sandi"
+  },
+  "mention": {
+    "people": "Orang",
+    "items": "Item"
+  },
+  "dataTable": {
+    "filterPlaceholder": "Filter…",
+    "view": "Tampilan",
+    "toggleColumns": "Atur kolom",
+    "sortAsc": "Naik",
+    "sortDesc": "Turun",
+    "hideColumn": "Sembunyikan",
+    "clearFilters": "Hapus filter",
+    "selectedCount": "{{count}} dipilih",
+    "pageOf": "Halaman {{page}} dari {{total}}",
+    "rowsPerPage": "Baris per halaman",
+    "firstPage": "Ke halaman pertama",
+    "previousPage": "Ke halaman sebelumnya",
+    "goToPage": "Ke halaman {{page}}",
+    "nextPage": "Ke halaman berikutnya",
+    "lastPage": "Ke halaman terakhir",
+    "bulk": {
+      "announce_other": "{{count}} {{entity}} dipilih. Bilah aksi massal tersedia.",
+      "toolbar_other": "Aksi massal untuk {{count}} {{entity}} yang dipilih",
+      "entity_other": "{{entity}}",
+      "selected": "dipilih",
+      "clear": "Batalkan pilihan",
+      "clearHint": "Batalkan pilihan (Escape)"
+    }
+  },
+  "errorPage": {
+    "goBack": "Kembali",
+    "home": "Ke beranda",
+    "forbidden": {
+      "title": "Akses ditolak",
+      "description": "Anda tidak memiliki izin <br/>untuk melihat halaman ini."
+    },
+    "notFound": {
+      "title": "Halaman tidak ditemukan",
+      "description": "Halaman yang Anda cari <br/>tidak ada atau sudah dihapus."
+    },
+    "unauthorized": {
+      "title": "Perlu masuk",
+      "description": "Silakan masuk dengan akun yang sesuai <br/>untuk melihat halaman ini."
+    },
+    "general": {
+      "title": "Terjadi kesalahan",
+      "description": "Mohon maaf atas ketidaknyamanannya. <br/>Silakan coba lagi nanti."
+    },
+    "maintenance": {
+      "title": "Kemudi sedang dalam pemeliharaan",
+      "description": "Situs belum dapat diakses saat ini. <br/>Kami akan segera kembali.",
+      "learnMore": "Selengkapnya"
+    }
+  },
+  "projectError": {
+    "notFound": "Proyek tidak ditemukan",
+    "notFoundHelp": "Tautannya mungkin salah, atau Anda bukan anggota proyek ini.",
+    "loadFailed": "Proyek ini tidak dapat dimuat",
+    "loadFailedHelp": "Pastikan server Kemudi berjalan, lalu coba lagi."
+  },
+  "transfer": {
+    "crumb": "Kepemilikan",
+    "title": "Jadi pemilik {{project}}?",
+    "invalidLink": "Tautan ini sudah tidak berlaku.",
+    "invalid": "{{error}} Mintalah pemilik saat ini untuk menawarkannya kembali.",
+    "explain": "Pemilik dapat mengubah semua pengaturan, menghapus proyek, dan mengalihkan kepemilikan. Pemilik saat ini tetap menjadi anggota.",
+    "message": "Pesan untuk pemilik saat ini (opsional)",
+    "accept": "Terima kepemilikan",
+    "decline": "Tolak",
+    "accepted": "Anda sekarang pemilik {{project}}",
+    "declined": "Kepemilikan ditolak"
+  },
+  "tokenLinks": {
+    "cancelAccount": {
+      "title": "Hapus akun Anda",
+      "done": "Akun Anda sudah dihapus.",
+      "failed": "Tautan ini tidak valid atau sudah kedaluwarsa.",
+      "confirm": "Hapus akun saya",
+      "confirmText": "Anda akan dikeluarkan dari semua proyek dan tidak dapat masuk lagi. Pekerjaan Anda sebelumnya tetap tersimpan, tanpa nama Anda."
+    },
+    "email": {
+      "title": "Konfirmasi email Anda",
+      "done": "Alamat email Anda sudah dikonfirmasi.",
+      "failed": "Tautan ini tidak valid atau sudah pernah digunakan."
+    }
+  },
+  "serverError": {
+    "generic": "Terjadi kesalahan!",
+    "noContent": "Tidak ada konten."
+  },
+  "toast": {
+    "notSaved": "Perubahan tidak tersimpan.",
+    "profileSaved": "Profil tersimpan",
+    "emailChangePending": "Periksa alamat email baru Anda untuk tautan konfirmasi perubahan.",
+    "imageInvalid": "Gambar tersebut tidak dapat digunakan.",
+    "passwordChanged": "Kata sandi diubah",
+    "projectSaved": "Pengaturan proyek tersimpan",
+    "logoInvalid": "Gambar tersebut tidak dapat digunakan sebagai logo.",
+    "deleted": "{{name}} dihapus",
+    "ownershipOffered": "Kepemilikan sudah ditawarkan. Penerima akan mendapat email untuk menerima atau menolaknya.",
+    "epicCreated": "Epic #{{ref}} dibuat",
+    "issueCreated": "Isu #{{ref}} dibuat",
+    "itemDeleted": "{{kind}} #{{ref}} dihapus",
+    "uploadFailed": "{{file}} gagal diunggah.",
+    "wikiPageDeleted": "Halaman \"{{page}}\" dihapus"
+  }
+}

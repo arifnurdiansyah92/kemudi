@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import {
   useBulkCreateIssues,
   useCreateIssue,
@@ -68,6 +69,7 @@ export function CreateIssueDialog({
   onOpenChange: (open: boolean) => void
   onCreated: (ref: number) => void
 }) {
+  const { t } = useTranslation(['board', 'common'])
   const create = useCreateIssue(project)
   const bulk = useBulkCreateIssues(project)
   const [form, setForm] = useState<NewIssue>(() => ({
@@ -87,15 +89,15 @@ export function CreateIssueDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-lg'>
         <DialogHeader>
-          <DialogTitle>New issue</DialogTitle>
+          <DialogTitle>{t('issues.create.title')}</DialogTitle>
           <DialogDescription>
-            Report a bug, a question or an improvement.
+            {t('issues.create.description')}
           </DialogDescription>
         </DialogHeader>
         <Tabs defaultValue='one'>
           <TabsList>
-            <TabsTrigger value='one'>One issue</TabsTrigger>
-            <TabsTrigger value='many'>Several at once</TabsTrigger>
+            <TabsTrigger value='one'>{t('issues.create.tabOne')}</TabsTrigger>
+            <TabsTrigger value='many'>{t('issues.create.tabMany')}</TabsTrigger>
           </TabsList>
           <TabsContent value='one'>
             <form
@@ -115,7 +117,9 @@ export function CreateIssueDialog({
               }}
             >
               <div className='grid gap-1.5'>
-                <Label htmlFor='issue-subject'>Subject</Label>
+                <Label htmlFor='issue-subject'>
+                  {t('issues.create.subject')}
+                </Label>
                 <Input
                   id='issue-subject'
                   autoFocus
@@ -128,21 +132,21 @@ export function CreateIssueDialog({
               <div className='grid grid-cols-3 gap-3'>
                 <Select
                   id='issue-type'
-                  label='Type'
+                  label={t('common:terms.type')}
                   value={form.type}
                   onChange={(type) => setForm({ ...form, type })}
                   options={sorted(project.issue_types)}
                 />
                 <Select
                   id='issue-severity'
-                  label='Severity'
+                  label={t('common:terms.severity')}
                   value={form.severity}
                   onChange={(severity) => setForm({ ...form, severity })}
                   options={sorted(project.severities)}
                 />
                 <Select
                   id='issue-priority'
-                  label='Priority'
+                  label={t('common:terms.priority')}
                   value={form.priority}
                   onChange={(priority) => setForm({ ...form, priority })}
                   options={sorted(project.priorities)}
@@ -150,16 +154,18 @@ export function CreateIssueDialog({
               </div>
               <Select
                 id='issue-assignee'
-                label='Assignee'
+                label={t('common:terms.assignee')}
                 value={form.assigned_to}
                 onChange={(assigned_to) => setForm({ ...form, assigned_to })}
                 options={project.members
                   .filter((m) => m.is_active)
                   .map((m) => ({ id: m.id, name: m.full_name_display }))}
-                empty='Unassigned'
+                empty={t('common:status.unassigned')}
               />
               <div className='grid gap-1.5'>
-                <Label htmlFor='issue-description'>Description</Label>
+                <Label htmlFor='issue-description'>
+                  {t('common:terms.description')}
+                </Label>
                 <Textarea
                   id='issue-description'
                   rows={5}
@@ -167,7 +173,7 @@ export function CreateIssueDialog({
                   onChange={(e) =>
                     setForm({ ...form, description: e.target.value })
                   }
-                  placeholder='Steps to reproduce, what you expected, what happened.'
+                  placeholder={t('issues.create.descriptionPlaceholder')}
                 />
               </div>
               <DialogFooter>
@@ -176,7 +182,7 @@ export function CreateIssueDialog({
                   disabled={!form.subject.trim() || create.isPending}
                 >
                   {create.isPending && <Loader2 className='animate-spin' />}
-                  Create issue
+                  {t('issues.create.submit')}
                 </Button>
               </DialogFooter>
             </form>
@@ -199,17 +205,18 @@ export function CreateIssueDialog({
                 rows={8}
                 value={lines}
                 onChange={(e) => setLines(e.target.value)}
-                aria-label='Issues, one per line'
-                placeholder={'Login fails on Safari\nTypo on the pricing page'}
+                aria-label={t('issues.create.bulkLabel')}
+                placeholder={t('issues.create.bulkPlaceholder')}
               />
               <p className='text-xs text-muted-foreground'>
-                One issue per line, with the project's default type, severity
-                and priority.
+                {t('issues.create.bulkHelp')}
               </p>
               <DialogFooter>
                 <Button type='submit' disabled={!count || bulk.isPending}>
                   {bulk.isPending && <Loader2 className='animate-spin' />}
-                  {count > 1 ? `Create ${count} issues` : 'Create issue'}
+                  {count > 1
+                    ? t('issues.create.submitMany', { count })
+                    : t('issues.create.submit')}
                 </Button>
               </DialogFooter>
             </form>

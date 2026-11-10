@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useDuplicateProject } from '@/lib/taiga/projects'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -33,9 +34,12 @@ export function DuplicateProjectDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const { t } = useTranslation('home')
   const navigate = useNavigate()
   const duplicate = useDuplicateProject()
-  const [name, setName] = useState(`${project.name} (copy)`)
+  const [name, setName] = useState(() =>
+    t('projects.duplicate.copyName', { name: project.name })
+  )
   const members = (project.members ?? []).filter((m) => m.is_active !== false)
   const [users, setUsers] = useState<number[]>(members.map((m) => m.id))
 
@@ -65,14 +69,17 @@ export function DuplicateProjectDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Duplicate {project.name}</DialogTitle>
+            <DialogTitle>
+              {t('projects.duplicate.title', { name: project.name })}
+            </DialogTitle>
             <DialogDescription>
-              The copy keeps settings, statuses, roles and custom fields, but no
-              stories, tasks or issues.
+              {t('projects.duplicate.description')}
             </DialogDescription>
           </DialogHeader>
           <div className='grid gap-1.5'>
-            <Label htmlFor='dup-name'>Name of the copy</Label>
+            <Label htmlFor='dup-name'>
+              {t('projects.duplicate.nameLabel')}
+            </Label>
             <Input
               id='dup-name'
               value={name}
@@ -82,7 +89,7 @@ export function DuplicateProjectDialog({
           {members.length > 0 && (
             <fieldset className='grid gap-2'>
               <legend className='mb-1 text-sm font-medium'>
-                Members to bring along
+                {t('projects.duplicate.membersLegend')}
               </legend>
               {members.map((m) => (
                 <label key={m.id} className='flex items-center gap-2 text-sm'>
@@ -105,7 +112,7 @@ export function DuplicateProjectDialog({
               disabled={!name.trim() || duplicate.isPending}
             >
               {duplicate.isPending && <Loader2 className='animate-spin' />}
-              Duplicate project
+              {t('projects.duplicate.submit')}
             </Button>
           </DialogFooter>
         </form>

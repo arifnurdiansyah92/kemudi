@@ -48,7 +48,7 @@ export function AppearanceForm() {
     if (data.font != font) setFont(data.font)
     if (data.theme != theme) setTheme(data.theme)
 
-    toast.success('Appearance saved')
+    toast.success(t('appearance.saved'))
   }
 
   return (
@@ -68,7 +68,7 @@ export function AppearanceForm() {
           name='font'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Font</FormLabel>
+              <FormLabel>{t('appearance.font')}</FormLabel>
               <div className='relative w-max'>
                 <FormControl>
                   <select
@@ -88,9 +88,7 @@ export function AppearanceForm() {
                 </FormControl>
                 <ChevronDownIcon className='absolute inset-e-3 top-2.5 h-4 w-4 opacity-50' />
               </div>
-              <FormDescription>
-                The font Kemudi uses for all text.
-              </FormDescription>
+              <FormDescription>{t('appearance.fontHelp')}</FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -100,8 +98,8 @@ export function AppearanceForm() {
           name='theme'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Theme</FormLabel>
-              <FormDescription>Light or dark.</FormDescription>
+              <FormLabel>{t('appearance.theme')}</FormLabel>
+              <FormDescription>{t('appearance.themeHelp')}</FormDescription>
               <FormMessage />
               <RadioGroup
                 onValueChange={field.onChange}
@@ -130,7 +128,7 @@ export function AppearanceForm() {
                       </div>
                     </div>
                     <span className='block w-full p-2 text-center font-normal'>
-                      Light
+                      {t('appearance.light')}
                     </span>
                   </FormLabel>
                 </FormItem>
@@ -156,7 +154,7 @@ export function AppearanceForm() {
                       </div>
                     </div>
                     <span className='block w-full p-2 text-center font-normal'>
-                      Dark
+                      {t('appearance.dark')}
                     </span>
                   </FormLabel>
                 </FormItem>
@@ -165,7 +163,7 @@ export function AppearanceForm() {
           )}
         />
 
-        <Button type='submit'>Save appearance</Button>
+        <Button type='submit'>{t('appearance.save')}</Button>
       </form>
     </Form>
   )

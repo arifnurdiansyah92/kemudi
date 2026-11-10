@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, MoreHorizontal, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { api } from '@/lib/taiga/client'
 import { onFail } from '@/lib/taiga/items'
@@ -40,6 +41,7 @@ interface Membership {
 }
 
 function useMemberships(project: Project) {
+  const { t } = useTranslation(['admin', 'common'])
   const qc = useQueryClient()
   const key = ['memberships', project.id]
   const list = useQuery({
@@ -80,8 +82,8 @@ function useMemberships(project: Project) {
     onSuccess: (_d, input) =>
       toast.success(
         input.emails.length === 1
-          ? `Invitation sent to ${input.emails[0]}`
-          : `${input.emails.length} invitations sent`
+          ? t('members.inviteSent', { email: input.emails[0] })
+          : t('members.invitesSent', { count: input.emails.length })
       ),
     onError: onFail,
     onSettled: settle,
@@ -89,13 +91,15 @@ function useMemberships(project: Project) {
   const resend = useMutation({
     mutationFn: (m: Membership) =>
       api.post(`/memberships/${m.id}/resend_invitation`),
-    onSuccess: (_d, m) => toast.success(`Invitation sent again to ${m.email}`),
+    onSuccess: (_d, m) =>
+      toast.success(t('members.resent', { email: m.email })),
     onError: onFail,
   })
   return { list, update, remove, invite, resend }
 }
 
 export function MembersSettings() {
+  const { t } = useTranslation(['admin', 'common'])
   const project = useProject()
   const m = useMemberships(project)
   const [removing, setRemoving] = useState<Membership | null>(null)
@@ -108,8 +112,8 @@ export function MembersSettings() {
     <div className='grid gap-6'>
       <Invite project={project} invite={m.invite} />
       <SettingsSection
-        title={`Members (${active.length})`}
-        description='Roles decide what members can see and change. Admins can also change these settings.'
+        title={t('members.title', { total: active.length })}
+        description={t('members.description')}
       >
         {m.list.isPending ? (
           <Skeleton className='h-24 w-full' />
@@ -133,12 +137,12 @@ export function MembersSettings() {
                     {x.full_name}
                     {x.is_owner && (
                       <span className='ms-2 text-xs font-normal text-muted-foreground'>
-                        owner
+                        {t('members.owner')}
                       </span>
                     )}
                     {!x.is_user_active && (
                       <span className='ms-2 text-xs font-normal text-muted-foreground'>
-                        deactivated
+                        {t('members.deactivated')}
                       </span>
                     )}
                   </p>
@@ -147,7 +151,7 @@ export function MembersSettings() {
                   </p>
                 </div>
                 <select
-                  aria-label={`Role of ${x.full_name}`}
+                  aria-label={t('members.roleOf', { name: x.full_name })}
                   value={x.role}
                   onChange={(e) =>
                     m.update.mutate({
@@ -177,14 +181,14 @@ export function MembersSettings() {
                     x.is_owner && 'cursor-default opacity-70'
                   )}
                 >
-                  Admin
+                  {t('members.admin')}
                 </button>
                 {!x.is_owner && (
                   <Button
                     variant='ghost'
                     size='icon'
                     className='size-8 text-muted-foreground'
-                    aria-label={`Remove ${x.full_name}`}
+                    aria-label={t('members.removeNamed', { name: x.full_name })}
                     onClick={() => setRemoving(x)}
                   >
                     <X />
@@ -198,8 +202,8 @@ export function MembersSettings() {
 
       {pending.length > 0 && (
         <SettingsSection
-          title={`Invitations waiting (${pending.length})`}
-          description='These people have not accepted yet.'
+          title={t('members.pending.title', { total: pending.length })}
+          description={t('members.pending.description')}
         >
           <ul className='-mx-2 divide-y'>
             {pending.map((x) => (
@@ -217,21 +221,23 @@ export function MembersSettings() {
                       variant='ghost'
                       size='icon'
                       className='size-8'
-                      aria-label={`Actions for ${x.email}`}
+                      aria-label={t('members.pending.actionsFor', {
+                        email: x.email,
+                      })}
                     >
                       <MoreHorizontal />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align='end'>
                     <DropdownMenuItem onSelect={() => m.resend.mutate(x)}>
-                      Send the invitation again
+                      {t('members.pending.resend')}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       variant='destructive'
                       onSelect={() => m.remove.mutate(x)}
                     >
-                      Cancel invitation
+                      {t('members.pending.cancel')}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -244,9 +250,9 @@ export function MembersSettings() {
       <ConfirmDialog
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
-        title={`Remove ${removing?.full_name ?? ''}?`}
-        desc='They lose access to the project. Their stories, tasks and comments stay.'
-        confirmText='Remove member'
+        title={t('members.remove.title', { name: removing?.full_name ?? '' })}
+        desc={t('members.remove.description')}
+        confirmText={t('members.remove.confirm')}
         destructive
         isLoading={m.remove.isPending}
         handleConfirm={() =>
@@ -265,6 +271,7 @@ function Invite({
   project: Project
   invite: ReturnType<typeof useMemberships>['invite']
 }) {
+  const { t } = useTranslation(['admin', 'common'])
   const roles = [...project.roles].sort((a, b) => a.order - b.order)
   const [emails, setEmails] = useState('')
   const [role, setRole] = useState<Id>(roles[0]?.id ?? 0)
@@ -276,8 +283,8 @@ function Invite({
 
   return (
     <SettingsSection
-      title='Invite people'
-      description='People with an account join at once; others get an email to sign up.'
+      title={t('members.invite.title')}
+      description={t('members.invite.description')}
     >
       <form
         className='grid gap-3'
@@ -297,16 +304,16 @@ function Invite({
       >
         <div className='grid gap-3 sm:grid-cols-[1fr_12rem]'>
           <div className='grid gap-1.5'>
-            <Label htmlFor='inv-emails'>Emails or usernames</Label>
+            <Label htmlFor='inv-emails'>{t('members.invite.emails')}</Label>
             <Input
               id='inv-emails'
               value={emails}
               onChange={(e) => setEmails(e.target.value)}
-              placeholder='ana@example.com, budi@example.com'
+              placeholder={t('members.invite.emailsPlaceholder')}
             />
           </div>
           <div className='grid gap-1.5'>
-            <Label htmlFor='inv-role'>Role</Label>
+            <Label htmlFor='inv-role'>{t('common:terms.role')}</Label>
             <select
               id='inv-role'
               value={role}
@@ -322,7 +329,7 @@ function Invite({
           </div>
         </div>
         <div className='grid gap-1.5'>
-          <Label htmlFor='inv-text'>Personal note (optional)</Label>
+          <Label htmlFor='inv-text'>{t('members.invite.note')}</Label>
           <Textarea
             id='inv-text'
             rows={2}
@@ -335,8 +342,8 @@ function Invite({
           <Button type='submit' disabled={!list.length || invite.isPending}>
             {invite.isPending && <Loader2 className='animate-spin' />}
             {list.length > 1
-              ? `Invite ${list.length} people`
-              : 'Send invitation'}
+              ? t('members.invite.inviteMany', { count: list.length })
+              : t('members.invite.send')}
           </Button>
         </div>
       </form>

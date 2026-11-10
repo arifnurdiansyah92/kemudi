@@ -1,6 +1,8 @@
 import { AxiosError } from 'axios'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
+import { useFormat } from '@/i18n/format'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
 import { api } from '@/lib/taiga/client'
 import type { Id } from '@/lib/taiga/types'
@@ -52,7 +54,21 @@ const PAGE: Record<string, string> = {
   epic: '/p/$slug/epics',
 }
 
+const LISTS = ['watched', 'liked', 'voted'] as const
+
+const KIND_LABEL: Record<
+  string,
+  `common:terms.${'story' | 'task' | 'issue' | 'epic'}_one`
+> = {
+  userstory: 'common:terms.story_one',
+  task: 'common:terms.task_one',
+  issue: 'common:terms.issue_one',
+  epic: 'common:terms.epic_one',
+}
+
 export function Profile({ username }: { username: string }) {
+  const { t } = useTranslation(['home', 'common'])
+  const format = useFormat()
   const me = useAuthStore((s) => s.session?.user.username)
   const user = useQuery({
     queryKey: ['profile', username],
@@ -75,12 +91,14 @@ export function Profile({ username }: { username: string }) {
       user.error instanceof AxiosError && user.error.response?.status === 404
     return (
       <>
-        <AppHeader crumbs={[{ label: 'People' }, { label: username }]} />
+        <AppHeader
+          crumbs={[{ label: t('profile.people') }, { label: username }]}
+        />
         <Main>
           <p className='text-sm'>
             {missing
-              ? `Nobody here is called @${username}.`
-              : 'This profile could not be loaded.'}
+              ? t('profile.notFound', { username })
+              : t('profile.loadFailed')}
           </p>
         </Main>
       </>
@@ -92,7 +110,7 @@ export function Profile({ username }: { username: string }) {
     <>
       <AppHeader
         crumbs={[
-          { label: 'People' },
+          { label: t('profile.people') },
           { label: u?.full_name_display ?? username },
         ]}
       />
@@ -117,7 +135,7 @@ export function Profile({ username }: { username: string }) {
             </div>
             {me === u.username && (
               <Button variant='outline' size='sm' asChild>
-                <Link to='/settings/profile'>Edit profile</Link>
+                <Link to='/settings/profile'>{t('profile.edit')}</Link>
               </Button>
             )}
           </header>
@@ -125,13 +143,18 @@ export function Profile({ username }: { username: string }) {
         {stats.data && (
           <dl className='mt-6 flex flex-wrap gap-x-8 gap-y-2 text-sm'>
             {[
-              ['Projects', stats.data.total_num_projects],
-              ['Stories closed', stats.data.total_num_closed_userstories],
-              ['Contacts', stats.data.total_num_contacts],
+              [t('common:terms.project_other'), stats.data.total_num_projects],
+              [
+                t('profile.stats.storiesClosed'),
+                stats.data.total_num_closed_userstories,
+              ],
+              [t('profile.stats.contacts'), stats.data.total_num_contacts],
             ].map(([label, n]) => (
               <div key={label as string}>
                 <dt className='text-xs text-muted-foreground'>{label}</dt>
-                <dd className='text-lg font-semibold tabular-nums'>{n}</dd>
+                <dd className='text-lg font-semibold tabular-nums'>
+                  {format.number(n as number)}
+                </dd>
               </div>
             ))}
           </dl>
@@ -139,16 +162,22 @@ export function Profile({ username }: { username: string }) {
         {u && (
           <Tabs defaultValue='activity' className='mt-8'>
             <TabsList className='flex-wrap'>
-              <TabsTrigger value='activity'>Activity</TabsTrigger>
-              <TabsTrigger value='watched'>Watching</TabsTrigger>
-              <TabsTrigger value='liked'>Liked projects</TabsTrigger>
-              <TabsTrigger value='voted'>Votes</TabsTrigger>
-              <TabsTrigger value='contacts'>Contacts</TabsTrigger>
+              <TabsTrigger value='activity'>
+                {t('profile.tabs.activity')}
+              </TabsTrigger>
+              <TabsTrigger value='watched'>
+                {t('profile.tabs.watching')}
+              </TabsTrigger>
+              <TabsTrigger value='liked'>{t('profile.tabs.liked')}</TabsTrigger>
+              <TabsTrigger value='voted'>{t('profile.tabs.votes')}</TabsTrigger>
+              <TabsTrigger value='contacts'>
+                {t('profile.tabs.contacts')}
+              </TabsTrigger>
             </TabsList>
             <TabsContent value='activity' className='mt-6'>
               <Timeline source={`user/${u.id}`} showProject />
             </TabsContent>
-            {(['watched', 'liked', 'voted'] as const).map((list) => (
+            {LISTS.map((list) => (
               <TabsContent key={list} value={list} className='mt-6'>
                 <ListedItems userId={u.id} list={list} />
               </TabsContent>
@@ -170,6 +199,7 @@ function ListedItems({
   userId: Id
   list: 'watched' | 'liked' | 'voted'
 }) {
+  const { t } = useTranslation(['home', 'common'])
   const items = useQuery({
     queryKey: ['profile-list', userId, list],
     queryFn: async () =>
@@ -177,7 +207,7 @@ function ListedItems({
   })
   if (items.isPending) return <Skeleton className='h-24 w-full' />
   if (!items.data?.length)
-    return <p className='text-sm text-muted-foreground'>Nothing here yet.</p>
+    return <p className='text-sm text-muted-foreground'>{t('profile.empty')}</p>
   return (
     <ul className='divide-y rounded-lg border bg-card'>
       {items.data.map((x) => (
@@ -189,7 +219,7 @@ function ListedItems({
               className='flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-accent/50'
             >
               <span className='w-14 text-xs text-muted-foreground'>
-                Project
+                {t('common:terms.project_one')}
               </span>
               <span className='font-medium'>{x.name}</span>
             </Link>
@@ -201,7 +231,7 @@ function ListedItems({
               className='flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-accent/50'
             >
               <span className='w-14 text-xs text-muted-foreground capitalize'>
-                {x.type === 'userstory' ? 'Story' : x.type}
+                {KIND_LABEL[x.type] ? t(KIND_LABEL[x.type]) : x.type}
               </span>
               <span className='min-w-0 flex-1 truncate'>
                 <span className='me-1.5 text-xs text-muted-foreground tabular-nums'>
@@ -227,6 +257,7 @@ function ListedItems({
 }
 
 function Contacts({ userId }: { userId: Id }) {
+  const { t } = useTranslation('home')
   const contacts = useQuery({
     queryKey: ['profile-contacts', userId],
     queryFn: async () =>
@@ -234,7 +265,9 @@ function Contacts({ userId }: { userId: Id }) {
   })
   if (contacts.isPending) return <Skeleton className='h-24 w-full' />
   if (!contacts.data?.length)
-    return <p className='text-sm text-muted-foreground'>No contacts yet.</p>
+    return (
+      <p className='text-sm text-muted-foreground'>{t('profile.noContacts')}</p>
+    )
   return (
     <ul className='grid gap-2 sm:grid-cols-2'>
       {contacts.data.map((c) => (

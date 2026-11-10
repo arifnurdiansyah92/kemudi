@@ -1,5 +1,6 @@
 /** Project settings: details, logo, modules, ownership, deletion. */
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import i18n from '@/i18n'
 import { toast } from 'sonner'
 import { api, apiErrorMessage } from './client'
 import { onFail } from './items'
@@ -19,7 +20,7 @@ export function useUpdateProject(project: Project) {
   return useMutation({
     mutationFn: async (patch: Record<string, unknown>) =>
       (await api.patch<Project>(`/projects/${project.id}`, patch)).data,
-    onSuccess: () => toast.success('Project settings saved'),
+    onSuccess: () => toast.success(i18n.t('shell:toast.projectSaved')),
     onError: onFail,
     onSettled: refresh,
   })
@@ -36,9 +37,7 @@ export function useProjectLogo(project: Project) {
       })
     },
     onError: (e) =>
-      toast.error(
-        apiErrorMessage(e, 'That image could not be used as a logo.')
-      ),
+      toast.error(apiErrorMessage(e, i18n.t('shell:toast.logoInvalid'))),
     onSettled: refresh,
   })
   const remove = useMutation({
@@ -54,7 +53,7 @@ export function useDeleteProject(project: Project) {
   return useMutation({
     mutationFn: () => api.delete(`/projects/${project.id}`),
     onSuccess: () => {
-      toast.success(`${project.name} deleted`)
+      toast.success(i18n.t('shell:toast.deleted', { name: project.name }))
       qc.removeQueries({ queryKey: ['project', project.slug] })
       qc.invalidateQueries({ queryKey: ['projects'] })
     },
@@ -67,10 +66,7 @@ export function useStartTransfer(project: Project) {
   return useMutation({
     mutationFn: (input: { user: Id; reason: string }) =>
       api.post(`/projects/${project.id}/transfer_start`, input),
-    onSuccess: () =>
-      toast.success(
-        'Ownership offered. They get an email to accept or decline.'
-      ),
+    onSuccess: () => toast.success(i18n.t('shell:toast.ownershipOffered')),
     onError: onFail,
   })
 }

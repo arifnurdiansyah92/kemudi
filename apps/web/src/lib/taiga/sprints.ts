@@ -1,5 +1,6 @@
 /** Sprints (milestones), their taskboard, stats and bulk creation. */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import i18n from '@/i18n'
 import { toast } from 'sonner'
 import { api } from './client'
 import { onFail, refreshLists } from './items'
@@ -93,7 +94,8 @@ export function useDeleteSprint() {
   const refresh = useRefreshSprint()
   return useMutation({
     mutationFn: (sprint: Milestone) => api.delete(`/milestones/${sprint.id}`),
-    onSuccess: (_d, sprint) => toast.success(`${sprint.name} deleted`),
+    onSuccess: (_d, sprint) =>
+      toast.success(i18n.t('shell:toast.deleted', { name: sprint.name })),
     onError: onFail,
     onSettled: refresh,
   })

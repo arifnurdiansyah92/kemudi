@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Eye, Link2, MoreHorizontal, ThumbsUp } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { usePromote } from '@/lib/taiga/issues'
 import {
@@ -39,6 +40,7 @@ type Props = {
 
 /** Watch and vote buttons, and a menu for the rest. */
 export function ItemActions({ project, kind, item, onDeleted }: Props) {
+  const { t } = useTranslation(['item', 'common'])
   const watch = useToggle(project, kind, 'watch')
   const vote = useToggle(project, kind, 'vote')
   const update = useUpdateItem(project, kind)
@@ -47,7 +49,7 @@ export function ItemActions({ project, kind, item, onDeleted }: Props) {
   const { open } = useRefParam()
   const [blocking, setBlocking] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const label = KINDS[kind].label
+  const noun = t(`kind.${kind}`)
   const editable = can(project, KINDS[kind].perm.modify)
 
   return (
@@ -58,10 +60,12 @@ export function ItemActions({ project, kind, item, onDeleted }: Props) {
         className='h-7 gap-1.5 px-2 text-xs'
         aria-pressed={item.is_watcher}
         onClick={() => watch.mutate(item)}
-        title={item.is_watcher ? 'Stop watching' : 'Watch for changes'}
+        title={
+          item.is_watcher ? t('actions.stopWatching') : t('actions.watchHint')
+        }
       >
         <Eye className={cn(item.is_watcher && 'text-brass')} />
-        {item.is_watcher ? 'Watching' : 'Watch'}
+        {item.is_watcher ? t('actions.watching') : t('actions.watch')}
         <span className='text-muted-foreground tabular-nums'>
           {item.total_watchers}
         </span>
@@ -76,7 +80,7 @@ export function ItemActions({ project, kind, item, onDeleted }: Props) {
           )}
           aria-pressed={item.is_voter}
           onClick={() => vote.mutate(item)}
-          title={item.is_voter ? 'Remove your vote' : 'Vote for this'}
+          title={item.is_voter ? t('actions.removeVote') : t('actions.vote')}
         >
           <ThumbsUp />
           <span className='tabular-nums'>{item.total_voters ?? 0}</span>
@@ -89,7 +93,7 @@ export function ItemActions({ project, kind, item, onDeleted }: Props) {
             variant='ghost'
             size='icon'
             className='size-7'
-            aria-label={`More actions for ${label.toLowerCase()} #${item.ref}`}
+            aria-label={t('actions.more', { kind: noun, ref: item.ref })}
           >
             <MoreHorizontal />
           </Button>
@@ -99,11 +103,11 @@ export function ItemActions({ project, kind, item, onDeleted }: Props) {
             onSelect={() => {
               navigator.clipboard
                 ?.writeText(window.location.href)
-                .then(() => toast.success('Link copied'))
+                .then(() => toast.success(t('actions.linkCopied')))
             }}
           >
             <Link2 />
-            Copy link
+            {t('common:actions.copyLink')}
           </DropdownMenuItem>
           {editable &&
             (item.is_blocked ? (
@@ -115,11 +119,11 @@ export function ItemActions({ project, kind, item, onDeleted }: Props) {
                   })
                 }
               >
-                Unblock
+                {t('actions.unblock')}
               </DropdownMenuItem>
             ) : (
               <DropdownMenuItem onSelect={() => setBlocking(true)}>
-                Mark as blocked
+                {t('actions.markBlocked')}
               </DropdownMenuItem>
             ))}
           {(kind === 'issue' || kind === 'task') && can(project, 'add_us') && (
@@ -129,15 +133,15 @@ export function ItemActions({ project, kind, item, onDeleted }: Props) {
                   onSuccess: (refs) => {
                     toast.success(
                       kind === 'task'
-                        ? `Task turned into story #${refs[0]}`
-                        : `Story #${refs[0]} created from this issue`
+                        ? t('actions.taskPromoted', { ref: refs[0] })
+                        : t('actions.issuePromoted', { ref: refs[0] })
                     )
                     if (refs[0]) open(refs[0])
                   },
                 })
               }
             >
-              Promote to story
+              {t('actions.promote')}
             </DropdownMenuItem>
           )}
           {can(project, KINDS[kind].perm.delete) && (
@@ -147,7 +151,7 @@ export function ItemActions({ project, kind, item, onDeleted }: Props) {
                 variant='destructive'
                 onSelect={() => setDeleting(true)}
               >
-                Delete {label.toLowerCase()}
+                {t('actions.delete', { kind: noun })}
               </DropdownMenuItem>
             </>
           )}
@@ -167,9 +171,9 @@ export function ItemActions({ project, kind, item, onDeleted }: Props) {
       <ConfirmDialog
         open={deleting}
         onOpenChange={setDeleting}
-        title={`Delete ${label.toLowerCase()} #${item.ref}?`}
-        desc={`"${item.subject}" and its comments and attachments are deleted for everyone. This cannot be undone.`}
-        confirmText={`Delete ${label.toLowerCase()}`}
+        title={t('actions.deleteTitle', { kind: noun, ref: item.ref })}
+        desc={t('actions.deleteDesc', { subject: item.subject })}
+        confirmText={t('actions.delete', { kind: noun })}
         destructive
         isLoading={remove.isPending}
         handleConfirm={() =>
@@ -194,6 +198,7 @@ function BlockDialog({
   onOpenChange: (open: boolean) => void
   onBlock: (note: string) => void
 }) {
+  const { t } = useTranslation('item')
   const [note, setNote] = useState('')
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -207,21 +212,19 @@ function BlockDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Mark as blocked</DialogTitle>
-            <DialogDescription>
-              Say what is in the way, so whoever can unblock it knows.
-            </DialogDescription>
+            <DialogTitle>{t('actions.markBlocked')}</DialogTitle>
+            <DialogDescription>{t('actions.blockDesc')}</DialogDescription>
           </DialogHeader>
           <Textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={3}
             autoFocus
-            aria-label='What is blocking it'
-            placeholder='Waiting for the API change in #42'
+            aria-label={t('actions.blockReason')}
+            placeholder={t('actions.blockPlaceholder')}
           />
           <DialogFooter>
-            <Button type='submit'>Mark as blocked</Button>
+            <Button type='submit'>{t('actions.markBlocked')}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

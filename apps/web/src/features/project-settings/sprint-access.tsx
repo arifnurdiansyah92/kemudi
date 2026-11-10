@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/taiga/client'
 import { onFail } from '@/lib/taiga/items'
 import { useMilestones } from '@/lib/taiga/queries'
@@ -30,6 +31,7 @@ const sprintIds = (perms: string[]) =>
  * never hidden; project admins are never limited.
  */
 export function SprintAccessSettings() {
+  const { t } = useTranslation(['admin', 'common'])
   const project = useProject()
   const qc = useQueryClient()
   const roles = useQuery({
@@ -69,14 +71,14 @@ export function SprintAccessSettings() {
 
   return (
     <SettingsSection
-      title='Sprint access'
-      description='Limit a role to some sprints. Its members then see only those sprints, and the stories, tasks and issues in them; the backlog stays visible. Project admins always see everything.'
+      title={t('sprintAccess.title')}
+      description={t('sprintAccess.description')}
     >
       {roles.isPending || open.isPending ? (
         <Skeleton className='h-32 w-full' />
       ) : sprints.length === 0 ? (
         <p className='text-sm text-muted-foreground'>
-          This project has no sprints yet.
+          {t('sprintAccess.empty')}
         </p>
       ) : (
         <ul className='grid gap-4'>
@@ -105,6 +107,7 @@ function RoleAccess({
   sprints: Milestone[]
   onSave: (ids: Id[]) => void
 }) {
+  const { t } = useTranslation(['admin', 'common'])
   const ids = sprintIds(role.permissions)
   const limited = ids.length > 0
   return (
@@ -113,8 +116,7 @@ function RoleAccess({
         <p className='text-sm font-medium'>
           {role.name}
           <span className='ms-2 text-xs font-normal text-muted-foreground'>
-            {role.members_count}{' '}
-            {role.members_count === 1 ? 'member' : 'members'}
+            {t('sprintAccess.members', { count: role.members_count })}
           </span>
         </p>
         <label className='flex items-center gap-2 text-sm'>
@@ -123,8 +125,8 @@ function RoleAccess({
             onCheckedChange={(on) => onSave(on ? [sprints[0].id] : [])}
           />
           {limited
-            ? `Only ${ids.length} ${ids.length === 1 ? 'sprint' : 'sprints'}`
-            : 'All sprints'}
+            ? t('sprintAccess.only', { count: ids.length })
+            : t('sprintAccess.all')}
         </label>
       </div>
       {limited && (
@@ -143,7 +145,9 @@ function RoleAccess({
               />
               {s.name}
               {s.closed && (
-                <span className='text-xs text-muted-foreground'>closed</span>
+                <span className='text-xs text-muted-foreground'>
+                  {t('sprintAccess.closed')}
+                </span>
               )}
             </label>
           ))}

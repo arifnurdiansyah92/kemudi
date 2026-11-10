@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useParams } from '@tanstack/react-router'
+import type { TFunction } from 'i18next'
 import { Loader2 } from 'lucide-react'
+import { Trans, useTranslation } from 'react-i18next'
 import { api, apiErrorMessage } from '@/lib/taiga/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -18,27 +20,32 @@ import {
 import { PasswordInput } from '@/components/password-input'
 import { AuthLayout } from '../auth-layout'
 
-const formSchema = z
-  .object({
-    password: z.string().min(6, 'Use at least 6 characters.'),
-    confirm: z.string(),
-  })
-  .refine((v) => v.password === v.confirm, {
-    path: ['confirm'],
-    message: 'The passwords do not match.',
-  })
+const makeSchema = (t: TFunction<'auth'>) =>
+  z
+    .object({
+      password: z.string().min(6, t('validation.passwordMin', { min: 6 })),
+      confirm: z.string(),
+    })
+    .refine((v) => v.password === v.confirm, {
+      path: ['confirm'],
+      message: t('validation.passwordMismatch'),
+    })
+
+type FormValues = z.infer<ReturnType<typeof makeSchema>>
 
 /** Landing page for the reset link taiga-back emails: /change-password/<token>. */
 export function ChangePassword() {
+  const { t } = useTranslation('auth')
   const { token } = useParams({ from: '/(auth)/change-password/$token' })
   const [done, setDone] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const form = useForm<z.infer<typeof formSchema>>({
+  const formSchema = useMemo(() => makeSchema(t), [t])
+  const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: { password: '', confirm: '' },
   })
 
-  async function onSubmit({ password }: z.infer<typeof formSchema>) {
+  async function onSubmit({ password }: FormValues) {
     setError(null)
     try {
       await api.post('/users/change_password_from_recovery', {
@@ -47,25 +54,27 @@ export function ChangePassword() {
       })
       setDone(true)
     } catch (err) {
-      setError(
-        apiErrorMessage(
-          err,
-          'This reset link is invalid or has expired. Request a new one.'
-        )
-      )
+      setError(apiErrorMessage(err, t('changePassword.invalidLink')))
     }
   }
 
   return (
-    <AuthLayout title='Choose a new password'>
+    <AuthLayout title={t('changePassword.title')}>
       {done ? (
         <Alert>
           <AlertDescription>
-            Your password is changed.{' '}
-            <Link to='/sign-in' className='underline underline-offset-4'>
-              Sign in
-            </Link>{' '}
-            with the new one.
+            <Trans
+              t={t}
+              i18nKey='changePassword.done'
+              components={{
+                link: (
+                  <Link
+                    to='/sign-in'
+                    className='underline underline-offset-4'
+                  />
+                ),
+              }}
+            />
           </AlertDescription>
         </Alert>
       ) : (
@@ -81,7 +90,7 @@ export function ChangePassword() {
               name='password'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>New password</FormLabel>
+                  <FormLabel>{t('changePassword.newPassword')}</FormLabel>
                   <FormControl>
                     <PasswordInput autoComplete='new-password' {...field} />
                   </FormControl>
@@ -94,7 +103,7 @@ export function ChangePassword() {
               name='confirm'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Repeat it</FormLabel>
+                  <FormLabel>{t('changePassword.confirm')}</FormLabel>
                   <FormControl>
                     <PasswordInput autoComplete='new-password' {...field} />
                   </FormControl>
@@ -106,7 +115,7 @@ export function ChangePassword() {
               {form.formState.isSubmitting && (
                 <Loader2 className='animate-spin' />
               )}
-              Change password
+              {t('changePassword.submit')}
             </Button>
           </form>
         </Form>

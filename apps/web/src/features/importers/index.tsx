@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
+import { Trans, useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { api, apiErrorMessage } from '@/lib/taiga/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -27,6 +28,8 @@ type ExternalProject = {
   name: string
   description?: string
 }
+const templates = ['scrum', 'kanban'] as const
+
 type ExternalUser = {
   id: string | number
   full_name: string
@@ -42,6 +45,7 @@ export function Importer({
   /** Query parameters the service added when it sent the browser back. */
   callback: Record<string, string | undefined>
 }) {
+  const { t } = useTranslation(['pages', 'common'])
   const label = SERVICES[service].name
   const available = useImporterAvailable(service)
   const [token, setToken] = useState<string | null>(() => readToken(service))
@@ -62,7 +66,9 @@ export function Importer({
       ).data.url,
     onSuccess: (url) => window.location.assign(url),
     onError: (e) =>
-      toast.error(apiErrorMessage(e, `Could not reach ${label}.`)),
+      toast.error(
+        apiErrorMessage(e, t('importers.errors.connect', { service: label }))
+      ),
   })
 
   const authorize = useMutation({
@@ -80,7 +86,7 @@ export function Importer({
     },
     onError: (e) =>
       toast.error(
-        apiErrorMessage(e, `${label} did not accept the sign-in. Try again.`)
+        apiErrorMessage(e, t('importers.errors.authorize', { service: label }))
       ),
   })
 
@@ -98,41 +104,41 @@ export function Importer({
     <>
       <AppHeader
         crumbs={[
-          { label: 'Projects', to: '/projects' },
-          { label: `Import from ${label}` },
+          { label: t('common:terms.project_other'), to: '/projects' },
+          { label: t('importers.title', { service: label }) },
         ]}
       />
       <Main className='max-w-2xl'>
         <h1 className='text-2xl font-semibold tracking-tight'>
-          Import from {label}
+          {t('importers.title', { service: label })}
         </h1>
         {available.isPending ? (
           <Skeleton className='mt-6 h-24 w-full' />
         ) : !available.data ? (
           <p className='mt-4 text-sm text-muted-foreground'>
-            The {label} importer is not set up on this server. An administrator
-            enables it by setting{' '}
-            <code className='rounded bg-muted px-1'>
-              {SERVICES[service].env}=True
-            </code>{' '}
-            with {label} API credentials in the kemudi-back environment.
+            <Trans
+              t={t}
+              i18nKey='importers.notSetUp'
+              values={{ service: label, env: SERVICES[service].env }}
+              components={{ code: <code className='rounded bg-muted px-1' /> }}
+            />
           </p>
         ) : authorize.isPending ? (
           <p className='mt-6 flex items-center gap-2 text-sm text-muted-foreground'>
-            <Loader2 className='size-4 animate-spin' /> Connecting to {label}…
+            <Loader2 className='size-4 animate-spin' />
+            {t('importers.connecting', { service: label })}
           </p>
         ) : !token ? (
           <div className='mt-6 grid max-w-md gap-4'>
             <p className='text-sm text-muted-foreground'>
-              Sign in to {label} and allow Kemudi to read your projects. You
-              come back here to choose what to import.
+              {t('importers.signInHint', { service: label })}
             </p>
             {service === 'jira' && (
               <div className='grid gap-1.5'>
-                <Label htmlFor='jira-url'>Jira address</Label>
+                <Label htmlFor='jira-url'>{t('importers.jiraUrl')}</Label>
                 <Input
                   id='jira-url'
-                  placeholder='https://your-team.atlassian.net'
+                  placeholder={t('importers.jiraUrlPlaceholder')}
                   value={jiraUrl}
                   onChange={(e) => setJiraUrl(e.target.value)}
                 />
@@ -147,7 +153,7 @@ export function Importer({
                 }
               >
                 {connect.isPending && <Loader2 className='animate-spin' />}
-                Connect to {label}
+                {t('importers.connect', { service: label })}
               </Button>
             </div>
           </div>
@@ -175,6 +181,7 @@ function Wizard({
   token: string
   onSignOut: () => void
 }) {
+  const { t } = useTranslation(['pages', 'common'])
   const navigate = useNavigate()
   const label = SERVICES[service].name
   const base = `/importers/${service}`
@@ -233,14 +240,12 @@ function Wizard({
     onSuccess: (data) => {
       if (data.slug) navigate({ to: '/p/$slug', params: { slug: data.slug } })
       else {
-        toast.success(
-          `Import from ${label} started. You get an email when it is done.`
-        )
+        toast.success(t('importers.started', { service: label }))
         navigate({ to: '/projects' })
       }
     },
     onError: (e) =>
-      toast.error(apiErrorMessage(e, 'The import could not start.')),
+      toast.error(apiErrorMessage(e, t('importers.errors.start'))),
   })
 
   if (projects.isError)
@@ -249,10 +254,10 @@ function Wizard({
         <AlertDescription>
           {apiErrorMessage(
             projects.error,
-            `Could not list your ${label} projects.`
+            t('importers.errors.listProjects', { service: label })
           )}{' '}
           <button className='underline' onClick={onSignOut}>
-            Connect again
+            {t('importers.connectAgain')}
           </button>
         </AlertDescription>
       </Alert>
@@ -261,7 +266,9 @@ function Wizard({
   return (
     <div className='mt-6 grid gap-6'>
       <section>
-        <h2 className='mb-2 font-semibold'>1. Choose a {label} project</h2>
+        <h2 className='mb-2 font-semibold'>
+          {t('importers.steps.project', { service: label })}
+        </h2>
         {projects.isPending ? (
           <Skeleton className='h-24 w-full' />
         ) : (
@@ -293,10 +300,9 @@ function Wizard({
 
       {picked && (
         <section>
-          <h2 className='mb-2 font-semibold'>2. Match people</h2>
+          <h2 className='mb-2 font-semibold'>{t('importers.steps.people')}</h2>
           <p className='mb-3 text-sm text-muted-foreground'>
-            Enter the Kemudi email of each {label} user to keep their work
-            attributed to them. Leave blank to import it without an owner.
+            {t('importers.peopleHint', { service: label })}
           </p>
           {users.isPending ? (
             <Skeleton className='h-16 w-full' />
@@ -310,13 +316,19 @@ function Wizard({
                   <span className='truncate text-sm'>{u.full_name}</span>
                   {u.user || u.detected_user ? (
                     <span className='text-sm text-muted-foreground'>
-                      Matched to {u.user?.full_name_display ?? 'a Kemudi user'}
+                      {u.user?.full_name_display
+                        ? t('importers.matchedTo', {
+                            name: u.user.full_name_display,
+                          })
+                        : t('importers.matchedToUnknown')}
                     </span>
                   ) : (
                     <Input
                       type='email'
-                      aria-label={`Kemudi email for ${u.full_name}`}
-                      placeholder='name@example.com'
+                      aria-label={t('importers.emailFor', {
+                        name: u.full_name,
+                      })}
+                      placeholder={t('importers.emailPlaceholder')}
                       value={bindings[String(u.id)] ?? ''}
                       onChange={(e) =>
                         setBindings({
@@ -336,9 +348,9 @@ function Wizard({
 
       {picked && (
         <section className='grid gap-3'>
-          <h2 className='font-semibold'>3. The new project</h2>
+          <h2 className='font-semibold'>{t('importers.steps.newProject')}</h2>
           <div className='grid gap-1.5'>
-            <Label htmlFor='imp-name'>Name</Label>
+            <Label htmlFor='imp-name'>{t('importers.name')}</Label>
             <Input
               id='imp-name'
               value={form.name}
@@ -346,7 +358,7 @@ function Wizard({
             />
           </div>
           <div className='grid gap-1.5'>
-            <Label htmlFor='imp-desc'>Description</Label>
+            <Label htmlFor='imp-desc'>{t('common:terms.description')}</Label>
             <Textarea
               id='imp-desc'
               rows={2}
@@ -357,17 +369,15 @@ function Wizard({
             />
           </div>
           <div className='flex flex-wrap gap-4 text-sm'>
-            {(['scrum', 'kanban'] as const).map((t) => (
-              <label key={t} className='flex items-center gap-2'>
+            {templates.map((tpl) => (
+              <label key={tpl} className='flex items-center gap-2'>
                 <input
                   type='radio'
                   name='imp-template'
-                  checked={form.template === t}
-                  onChange={() => setForm({ ...form, template: t })}
+                  checked={form.template === tpl}
+                  onChange={() => setForm({ ...form, template: tpl })}
                 />
-                {t === 'scrum'
-                  ? 'Scrum (backlog and sprints)'
-                  : 'Kanban (board)'}
+                {t(`importers.templates.${tpl}`)}
               </label>
             ))}
           </div>
@@ -378,7 +388,7 @@ function Wizard({
                 setForm({ ...form, is_private: v === true })
               }
             />
-            Private project
+            {t('importers.private')}
           </label>
           <label className='flex items-center gap-2 text-sm'>
             <Checkbox
@@ -387,7 +397,7 @@ function Wizard({
                 setForm({ ...form, keep_external_reference: v === true })
               }
             />
-            Keep a link to each original {label} item
+            {t('importers.keepReference', { service: label })}
           </label>
           <div className='flex gap-2'>
             <Button
@@ -395,10 +405,10 @@ function Wizard({
               disabled={run.isPending || !form.name.trim()}
             >
               {run.isPending && <Loader2 className='animate-spin' />}
-              Import project
+              {t('importers.importProject')}
             </Button>
             <Button variant='ghost' onClick={onSignOut}>
-              Use another {label} account
+              {t('importers.useAnotherAccount', { service: label })}
             </Button>
           </div>
         </section>
@@ -409,11 +419,12 @@ function Wizard({
 
 /** Shown on the new project page: one entry per importer. */
 export function ImporterLinks() {
+  const { t } = useTranslation(['pages', 'common'])
   return (
     <section className='mt-12 border-t pt-8'>
-      <h2 className='font-semibold'>Bring a project from another tool</h2>
+      <h2 className='font-semibold'>{t('importers.links.title')}</h2>
       <p className='mt-1 text-sm text-muted-foreground'>
-        Copies its items, people and history into a new Kemudi project.
+        {t('importers.links.desc')}
       </p>
       <ul className='mt-4 flex flex-wrap gap-2'>
         {(Object.keys(SERVICES) as Service[]).map((s) => (

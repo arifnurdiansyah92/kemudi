@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Eye, Heart, Search } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import {
   useDiscover,
   useProjectToggle,
@@ -16,11 +17,12 @@ import { ContactDialog } from './contact-dialog'
 
 /** Public projects on this Kemudi server. */
 export function Discover() {
+  const { t } = useTranslation('home')
   const [q, setQ] = useState('')
   const [debounced, setDebounced] = useState('')
   useEffect(() => {
-    const t = window.setTimeout(() => setDebounced(q.trim()), 300)
-    return () => window.clearTimeout(t)
+    const timer = window.setTimeout(() => setDebounced(q.trim()), 300)
+    return () => window.clearTimeout(timer)
   }, [q])
   const projects = useDiscover(debounced)
   const [contacting, setContacting] = useState<DiscoverProject | null>(null)
@@ -29,11 +31,13 @@ export function Discover() {
 
   return (
     <>
-      <AppHeader crumbs={[{ label: 'Discover' }]} />
+      <AppHeader crumbs={[{ label: t('projects.discover.title') }]} />
       <Main className='max-w-4xl'>
-        <h1 className='text-2xl font-semibold tracking-tight'>Discover</h1>
+        <h1 className='text-2xl font-semibold tracking-tight'>
+          {t('projects.discover.title')}
+        </h1>
         <p className='mt-1 text-sm text-muted-foreground'>
-          Public projects on this server, most liked first.
+          {t('projects.discover.intro')}
         </p>
         <div className='relative mt-6 max-w-md'>
           <Search
@@ -43,8 +47,8 @@ export function Discover() {
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder='Search public projects'
-            aria-label='Search public projects'
+            placeholder={t('projects.discover.search')}
+            aria-label={t('projects.discover.search')}
             className='ps-8'
           />
         </div>
@@ -54,8 +58,8 @@ export function Discover() {
           ) : (projects.data ?? []).length === 0 ? (
             <p className='rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground'>
               {debounced
-                ? 'No public project matches.'
-                : 'No public projects yet. Make a project public in its settings to list it here.'}
+                ? t('projects.discover.noMatch')
+                : t('projects.discover.empty')}
             </p>
           ) : (
             <ul className='divide-y rounded-lg border bg-card'>
@@ -83,14 +87,19 @@ export function Discover() {
                         size='sm'
                         onClick={() => setContacting(p)}
                       >
-                        Contact
+                        {t('projects.discover.contact')}
                       </Button>
                     )}
                     <Button
                       variant='ghost'
                       size='sm'
                       aria-pressed={p.is_fan}
-                      aria-label={`${p.is_fan ? 'Unlike' : 'Like'} ${p.name}`}
+                      aria-label={t(
+                        p.is_fan
+                          ? 'projects.discover.unlike'
+                          : 'projects.discover.like',
+                        { name: p.name }
+                      )}
                       onClick={() => like.mutate(p)}
                     >
                       <Heart
@@ -102,7 +111,12 @@ export function Discover() {
                       variant='ghost'
                       size='sm'
                       aria-pressed={p.is_watcher}
-                      aria-label={`${p.is_watcher ? 'Stop watching' : 'Watch'} ${p.name}`}
+                      aria-label={t(
+                        p.is_watcher
+                          ? 'projects.discover.unwatch'
+                          : 'projects.discover.watch',
+                        { name: p.name }
+                      )}
                       onClick={() => watch.mutate(p)}
                     >
                       <Eye className={cn(p.is_watcher && 'text-brass')} />

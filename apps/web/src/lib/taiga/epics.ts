@@ -1,5 +1,6 @@
 /** Epics and the stories related to them. */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import i18n from '@/i18n'
 import { toast } from 'sonner'
 import { api } from './client'
 import { onFail, refreshLists } from './items'
@@ -49,7 +50,8 @@ export function useCreateEpic(project: Project) {
       description?: string
     }) =>
       (await api.post<Epic>('/epics', { project: project.id, ...input })).data,
-    onSuccess: (epic) => toast.success(`Epic #${epic.ref} created`),
+    onSuccess: (epic) =>
+      toast.success(i18n.t('shell:toast.epicCreated', { ref: epic.ref })),
     onError: onFail,
     onSettled: () => refreshLists(qc),
   })

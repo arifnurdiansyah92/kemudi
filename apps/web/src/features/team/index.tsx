@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
+import { useFormat } from '@/i18n/format'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
 import { api } from '@/lib/taiga/client'
 import { onFail } from '@/lib/taiga/items'
@@ -24,15 +26,16 @@ type MemberStats = Record<
   Record<string, number>
 >
 
-const STATS: [keyof MemberStats, string][] = [
-  ['closed_tasks', 'tasks closed'],
-  ['created_bugs', 'issues reported'],
-  ['closed_bugs', 'issues closed'],
-  ['iocaine_tasks', 'iocaine tasks'],
-  ['wiki_changes', 'wiki edits'],
-]
+const STATS = [
+  ['closed_tasks', 'team.stats.closedTasks'],
+  ['created_bugs', 'team.stats.createdBugs'],
+  ['closed_bugs', 'team.stats.closedBugs'],
+  ['iocaine_tasks', 'team.stats.iocaineTasks'],
+  ['wiki_changes', 'team.stats.wikiChanges'],
+] as const satisfies readonly (readonly [keyof MemberStats, string])[]
 
 export function Team({ tab = 'members' }: { tab?: 'members' | 'activity' }) {
+  const { t } = useTranslation(['home', 'common'])
   const project = useProject()
   const navigate = useNavigate()
   return (
@@ -44,11 +47,16 @@ export function Team({ tab = 'members' }: { tab?: 'members' | 'activity' }) {
             to: '/p/$slug',
             params: { slug: project.slug },
           },
-          { label: tab === 'activity' ? 'Activity' : 'Team' },
+          {
+            label:
+              tab === 'activity' ? t('team.activity') : t('common:terms.team'),
+          },
         ]}
       />
       <Main fluid className='mx-auto w-full max-w-4xl'>
-        <h1 className='text-2xl font-semibold tracking-tight'>Team</h1>
+        <h1 className='text-2xl font-semibold tracking-tight'>
+          {t('common:terms.team')}
+        </h1>
         <Tabs
           value={tab}
           onValueChange={(v) =>
@@ -61,9 +69,11 @@ export function Team({ tab = 'members' }: { tab?: 'members' | 'activity' }) {
         >
           <TabsList>
             <TabsTrigger value='members'>
-              Members ({project.members.filter((m) => m.is_active).length})
+              {t('team.membersTab', {
+                total: project.members.filter((m) => m.is_active).length,
+              })}
             </TabsTrigger>
-            <TabsTrigger value='activity'>Activity</TabsTrigger>
+            <TabsTrigger value='activity'>{t('team.activity')}</TabsTrigger>
           </TabsList>
           <TabsContent value='members' className='mt-6'>
             <Members project={project} />
@@ -78,6 +88,8 @@ export function Team({ tab = 'members' }: { tab?: 'members' | 'activity' }) {
 }
 
 function Members({ project }: { project: Project }) {
+  const { t } = useTranslation('home')
+  const format = useFormat()
   const me = useAuthStore((s) => s.session?.user.id)
   const stats = useQuery({
     queryKey: ['member-stats', project.id],
@@ -113,7 +125,7 @@ function Members({ project }: { project: Project }) {
                       </Link>
                       {m.id === me && (
                         <span className='ms-2 text-xs font-normal text-muted-foreground'>
-                          you
+                          {t('team.you')}
                         </span>
                       )}
                     </p>
@@ -131,9 +143,9 @@ function Members({ project }: { project: Project }) {
                         return (
                           <div key={key} className='flex gap-1'>
                             <dd className='font-medium text-foreground tabular-nums'>
-                              {n}
+                              {format.number(n)}
                             </dd>
-                            <dt>{label}</dt>
+                            <dt>{t(label, { count: n })}</dt>
                           </div>
                         )
                       })}
@@ -151,6 +163,7 @@ function Members({ project }: { project: Project }) {
 }
 
 function LeaveProject({ project }: { project: Project }) {
+  const { t } = useTranslation('home')
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -165,14 +178,14 @@ function LeaveProject({ project }: { project: Project }) {
   return (
     <div className='border-t pt-6'>
       <Button variant='outline' onClick={() => setOpen(true)}>
-        Leave this project
+        {t('team.leave.button')}
       </Button>
       <ConfirmDialog
         open={open}
         onOpenChange={setOpen}
-        title={`Leave ${project.name}?`}
-        desc='You lose access until an admin invites you again.'
-        confirmText='Leave project'
+        title={t('team.leave.title', { name: project.name })}
+        desc={t('team.leave.description')}
+        confirmText={t('team.leave.confirm')}
         destructive
         isLoading={leave.isPending}
         handleConfirm={() => leave.mutate()}

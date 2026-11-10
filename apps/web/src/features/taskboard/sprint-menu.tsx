@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { MoreHorizontal } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useDeleteSprint, useUpdateSprint } from '@/lib/taiga/sprints'
 import type { Milestone, Project } from '@/lib/taiga/types'
 import { Button } from '@/components/ui/button'
@@ -25,14 +26,16 @@ export function SprintMenu({
   sprint: Milestone
   className?: string
 }) {
+  const { t } = useTranslation(['backlog', 'common'])
   const navigate = useNavigate()
   const update = useUpdateSprint(sprint.id)
   const remove = useDeleteSprint()
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
-  if (!can(project, 'modify_milestone') && !can(project, 'delete_milestone'))
-    return null
+  const canEdit = can(project, 'modify_milestone')
+  const canDelete = can(project, 'delete_milestone')
+  if (!canEdit && !canDelete) return null
 
   return (
     <>
@@ -42,32 +45,34 @@ export function SprintMenu({
             variant='ghost'
             size='icon'
             className={className ?? 'size-8'}
-            aria-label={`Actions for ${sprint.name}`}
+            aria-label={t('sprint.menu.actions', { name: sprint.name })}
           >
             <MoreHorizontal />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align='end' className='min-w-44'>
-          {can(project, 'modify_milestone') && (
+          {canEdit && (
             <>
               <DropdownMenuItem onSelect={() => setEditing(true)}>
-                Edit sprint
+                {t('sprint.menu.edit')}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => update.mutate({ closed: !sprint.closed })}
               >
-                {sprint.closed ? 'Reopen sprint' : 'Close sprint'}
+                {sprint.closed
+                  ? t('sprint.menu.reopen')
+                  : t('sprint.menu.close')}
               </DropdownMenuItem>
             </>
           )}
-          {can(project, 'delete_milestone') && (
+          {canDelete && (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant='destructive'
                 onSelect={() => setDeleting(true)}
               >
-                Delete sprint
+                {t('sprint.menu.delete')}
               </DropdownMenuItem>
             </>
           )}
@@ -81,9 +86,9 @@ export function SprintMenu({
       <ConfirmDialog
         open={deleting}
         onOpenChange={setDeleting}
-        title={`Delete ${sprint.name}?`}
-        desc='Its stories go back to the backlog. Its tasks stay with their stories. This cannot be undone.'
-        confirmText='Delete sprint'
+        title={t('sprint.menu.deleteTitle', { name: sprint.name })}
+        desc={t('sprint.menu.deleteDescription')}
+        confirmText={t('sprint.menu.delete')}
         destructive
         isLoading={remove.isPending}
         handleConfirm={() =>

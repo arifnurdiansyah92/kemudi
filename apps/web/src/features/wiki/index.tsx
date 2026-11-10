@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
+import { useFormat } from '@/i18n/format'
 import {
   Bookmark,
   BookmarkMinus,
@@ -8,6 +9,7 @@ import {
   Loader2,
   MoreHorizontal,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { Project } from '@/lib/taiga/types'
 import {
   pageTitle,
@@ -22,7 +24,7 @@ import {
   useWikiPages,
   type WikiPage,
 } from '@/lib/taiga/wiki'
-import { cn, timeAgo } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -51,8 +53,10 @@ import { can, useProject } from '@/features/project/use-project'
 import { WikiHistory } from './history'
 
 export function Wiki({ slug, edit = false }: { slug: string; edit?: boolean }) {
+  const { t } = useTranslation(['pages', 'common'])
   const project = useProject()
   const page = useWikiPage(project.id, slug)
+  const canAddPage = can(project, 'add_wiki_page')
   const [editing, setEditing] = useState(edit)
 
   return (
@@ -65,7 +69,7 @@ export function Wiki({ slug, edit = false }: { slug: string; edit?: boolean }) {
             params: { slug: project.slug },
           },
           {
-            label: 'Wiki',
+            label: t('common:terms.wiki'),
             to: '/p/$slug/wiki',
             params: { slug: project.slug },
           },
@@ -100,13 +104,13 @@ export function Wiki({ slug, edit = false }: { slug: string; edit?: boolean }) {
                   {pageTitle(slug)}
                 </h1>
                 <div className='mt-6 rounded-lg border border-dashed p-10 text-center'>
-                  <p className='font-medium'>This page does not exist yet</p>
+                  <p className='font-medium'>{t('wiki.missing.title')}</p>
                   <p className='mt-1 text-sm text-muted-foreground'>
-                    Links to it work as soon as someone writes it.
+                    {t('wiki.missing.hint')}
                   </p>
-                  {can(project, 'add_wiki_page') && (
+                  {canAddPage && (
                     <Button className='mt-4' onClick={() => setEditing(true)}>
-                      Write this page
+                      {t('wiki.missing.write')}
                     </Button>
                   )}
                 </div>
@@ -128,6 +132,8 @@ function PageView({
   page: WikiPage
   onEdit: () => void
 }) {
+  const { t } = useTranslation(['pages', 'common'])
+  const { timeAgo } = useFormat()
   const navigate = useNavigate()
   const watch = useWatchWikiPage(project)
   const remove = useDeleteWikiPage(project)
@@ -136,6 +142,12 @@ function PageView({
   const [deleting, setDeleting] = useState(false)
   const bookmark = links.data?.find((l) => l.href === page.slug)
   const editor = project.members.find((m) => m.id === page.last_modifier)
+  const allowed = {
+    edit: can(project, 'modify_wiki_page'),
+    bookmark: can(project, 'add_wiki_link'),
+    unbookmark: can(project, 'delete_wiki_link'),
+    delete: can(project, 'delete_wiki_page'),
+  }
 
   return (
     <>
@@ -145,9 +157,16 @@ function PageView({
             {pageTitle(page.slug)}
           </h1>
           <p className='mt-1 text-sm text-muted-foreground'>
-            Edited {timeAgo(page.modified_date)}
-            {editor && ` by ${editor.full_name_display}`}, {page.editions}{' '}
-            {page.editions === 1 ? 'edit' : 'edits'}
+            {editor
+              ? t('wiki.view.editedBy', {
+                  when: timeAgo(page.modified_date),
+                  name: editor.full_name_display,
+                  count: page.editions,
+                })
+              : t('wiki.view.edited', {
+                  when: timeAgo(page.modified_date),
+                  count: page.editions,
+                })}
           </p>
         </div>
         <div className='flex items-center gap-1'>
@@ -158,11 +177,11 @@ function PageView({
             onClick={() => watch.mutate(page)}
           >
             <Eye className={cn(page.is_watcher && 'text-brass')} />
-            {page.is_watcher ? 'Watching' : 'Watch'}
+            {page.is_watcher ? t('wiki.view.watching') : t('wiki.view.watch')}
           </Button>
-          {can(project, 'modify_wiki_page') && (
+          {allowed.edit && (
             <Button size='sm' variant='outline' onClick={onEdit}>
-              Edit page
+              {t('wiki.view.editPage')}
             </Button>
           )}
           <DropdownMenu modal={false}>
@@ -171,34 +190,34 @@ function PageView({
                 variant='ghost'
                 size='icon'
                 className='size-8'
-                aria-label='More page actions'
+                aria-label={t('wiki.view.moreActions')}
               >
                 <MoreHorizontal />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align='end'>
-              {can(project, 'add_wiki_link') && !bookmark && (
+              {allowed.bookmark && !bookmark && (
                 <DropdownMenuItem
                   onSelect={() =>
                     add.mutate({ title: pageTitle(page.slug), href: page.slug })
                   }
                 >
                   <Bookmark />
-                  Bookmark in the sidebar
+                  {t('wiki.view.bookmark')}
                 </DropdownMenuItem>
               )}
-              {can(project, 'delete_wiki_link') && bookmark && (
+              {allowed.unbookmark && bookmark && (
                 <DropdownMenuItem onSelect={() => unbookmark.mutate(bookmark)}>
                   <BookmarkMinus />
-                  Remove bookmark
+                  {t('wiki.view.removeBookmark')}
                 </DropdownMenuItem>
               )}
-              {can(project, 'delete_wiki_page') && (
+              {allowed.delete && (
                 <DropdownMenuItem
                   variant='destructive'
                   onSelect={() => setDeleting(true)}
                 >
-                  Delete page
+                  {t('wiki.view.deletePage')}
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -213,12 +232,14 @@ function PageView({
         />
       ) : (
         <p className='mt-6 text-sm text-muted-foreground'>
-          This page is empty.
+          {t('wiki.view.empty')}
         </p>
       )}
 
       <section className='mt-10 border-t pt-6'>
-        <h2 className='mb-3 text-sm font-semibold'>Attachments</h2>
+        <h2 className='mb-3 text-sm font-semibold'>
+          {t('common:terms.attachments')}
+        </h2>
         <Attachments project={project} kind='wiki' item={page} />
       </section>
       <WikiHistory key={page.version} pageId={page.id} />
@@ -226,9 +247,9 @@ function PageView({
       <ConfirmDialog
         open={deleting}
         onOpenChange={setDeleting}
-        title={`Delete "${pageTitle(page.slug)}"?`}
-        desc='The page, its history and its attachments are deleted. Links to it will offer to write it again.'
-        confirmText='Delete page'
+        title={t('wiki.deleteDialog.title', { title: pageTitle(page.slug) })}
+        desc={t('wiki.deleteDialog.desc')}
+        confirmText={t('wiki.view.deletePage')}
         destructive
         isLoading={remove.isPending}
         handleConfirm={() =>
@@ -256,6 +277,7 @@ function Editor({
   page: WikiPage | null
   onDone: () => void
 }) {
+  const { t } = useTranslation(['pages', 'common'])
   const save = useSaveWikiPage(project, slug)
   const render = useRenderMarkdown(project)
   const [content, setContent] = useState(page?.content ?? '')
@@ -269,15 +291,17 @@ function Editor({
       }}
     >
       <h1 className='text-2xl font-semibold tracking-tight'>
-        {page ? 'Edit' : 'Write'} {pageTitle(slug)}
+        {page
+          ? t('wiki.editor.titleEdit', { title: pageTitle(slug) })
+          : t('wiki.editor.titleWrite', { title: pageTitle(slug) })}
       </h1>
       <Tabs
         defaultValue='write'
         onValueChange={(v) => v === 'preview' && render.mutate(content)}
       >
         <TabsList>
-          <TabsTrigger value='write'>Write</TabsTrigger>
-          <TabsTrigger value='preview'>Preview</TabsTrigger>
+          <TabsTrigger value='write'>{t('wiki.editor.write')}</TabsTrigger>
+          <TabsTrigger value='preview'>{t('wiki.editor.preview')}</TabsTrigger>
         </TabsList>
         <TabsContent value='write' className='mt-3'>
           <MentionTextarea
@@ -286,15 +310,12 @@ function Editor({
             onChange={setContent}
             rows={20}
             autoFocus
-            aria-label='Page content'
+            aria-label={t('wiki.editor.contentLabel')}
             className='font-mono text-sm'
-            placeholder={
-              '# Heading\n\nLink to another page with [[page-name]], to a story with #12.'
-            }
+            placeholder={t('wiki.editor.placeholder')}
           />
           <p className='mt-2 text-xs text-muted-foreground'>
-            Markdown. [[page-name]] links to a wiki page; #12 links to story,
-            task or issue 12.
+            {t('wiki.editor.help')}
           </p>
         </TabsContent>
         <TabsContent
@@ -309,17 +330,19 @@ function Editor({
               dangerouslySetInnerHTML={{ __html: render.data }}
             />
           ) : (
-            <p className='text-sm text-muted-foreground'>Nothing to preview.</p>
+            <p className='text-sm text-muted-foreground'>
+              {t('wiki.editor.nothingToPreview')}
+            </p>
           )}
         </TabsContent>
       </Tabs>
       <div className='flex gap-2'>
         <Button type='submit' disabled={save.isPending}>
           {save.isPending && <Loader2 className='animate-spin' />}
-          Save page
+          {t('wiki.editor.save')}
         </Button>
         <Button type='button' variant='ghost' onClick={onDone}>
-          Cancel
+          {t('common:actions.cancel')}
         </Button>
       </div>
     </form>
@@ -327,8 +350,10 @@ function Editor({
 }
 
 function WikiNav({ project, current }: { project: Project; current: string }) {
+  const { t } = useTranslation(['pages', 'common'])
   const links = useWikiLinks(project.id)
   const pages = useWikiPages(project.id)
+  const canAddPage = can(project, 'add_wiki_page')
   const [creating, setCreating] = useState(false)
 
   const item = (slug: string, label: string) => (
@@ -348,29 +373,29 @@ function WikiNav({ project, current }: { project: Project; current: string }) {
 
   return (
     <nav
-      aria-label='Wiki'
+      aria-label={t('common:terms.wiki')}
       className='space-y-6 lg:sticky lg:top-20 lg:self-start'
     >
       <div>
         <h2 className='mb-1.5 px-2 text-xs font-medium text-muted-foreground'>
-          Bookmarks
+          {t('wiki.nav.bookmarks')}
         </h2>
         {links.data?.length ? (
           <ul>{links.data.map((l) => item(l.href, l.title))}</ul>
         ) : (
           <p className='px-2 text-sm text-muted-foreground'>
-            Bookmark pages from their menu.
+            {t('wiki.nav.bookmarksEmpty')}
           </p>
         )}
       </div>
       <div>
         <h2 className='mb-1.5 px-2 text-xs font-medium text-muted-foreground'>
-          All pages
+          {t('wiki.nav.allPages')}
         </h2>
         <ul>
           {(pages.data ?? []).map((p) => item(p.slug, pageTitle(p.slug)))}
         </ul>
-        {can(project, 'add_wiki_page') && (
+        {canAddPage && (
           <Button
             variant='ghost'
             size='sm'
@@ -378,7 +403,7 @@ function WikiNav({ project, current }: { project: Project; current: string }) {
             onClick={() => setCreating(true)}
           >
             <FilePlus />
-            New page
+            {t('wiki.nav.newPage')}
           </Button>
         )}
       </div>
@@ -400,6 +425,7 @@ function NewPageDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const { t } = useTranslation(['pages', 'common'])
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const slug = slugify(name)
@@ -421,25 +447,26 @@ function NewPageDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>New page</DialogTitle>
+            <DialogTitle>{t('wiki.nav.newPage')}</DialogTitle>
             <DialogDescription>
-              Name it, then write it. Link to it elsewhere with [[
-              {slug || 'page-name'}]].
+              {t('wiki.newPage.desc', {
+                slug: slug || t('wiki.newPage.slugFallback'),
+              })}
             </DialogDescription>
           </DialogHeader>
           <div className='grid gap-1.5'>
-            <Label htmlFor='wiki-name'>Page name</Label>
+            <Label htmlFor='wiki-name'>{t('wiki.newPage.nameLabel')}</Label>
             <Input
               id='wiki-name'
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder='Release checklist'
+              placeholder={t('wiki.newPage.namePlaceholder')}
             />
           </div>
           <DialogFooter>
             <Button type='submit' disabled={!slug}>
-              Create page
+              {t('wiki.newPage.create')}
             </Button>
           </DialogFooter>
         </form>

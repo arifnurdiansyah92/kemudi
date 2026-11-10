@@ -1,9 +1,10 @@
 import { Link } from '@tanstack/react-router'
+import { useFormat } from '@/i18n/format'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
-import { KINDS } from '@/lib/taiga/items'
 import { useMyItems, type MyItem } from '@/lib/taiga/me'
 import { useProjects } from '@/lib/taiga/queries'
-import { cn, timeAgo } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AppHeader } from '@/components/layout/app-header'
 import { Main } from '@/components/layout/main'
@@ -16,7 +17,15 @@ const PAGE: Record<MyItem['kind'], string> = {
   epic: '/p/$slug/epics',
 }
 
+const KIND_LABEL = {
+  userstory: 'common:terms.story_one',
+  task: 'common:terms.task_one',
+  issue: 'common:terms.issue_one',
+  epic: 'common:terms.epic_one',
+} as const satisfies Record<MyItem['kind'], string>
+
 export function Home() {
+  const { t } = useTranslation(['home', 'common'])
   const user = useAuthStore((s) => s.session?.user)
   const working = useMyItems('assigned')
   const watching = useMyItems('watching')
@@ -24,34 +33,36 @@ export function Home() {
 
   return (
     <>
-      <AppHeader crumbs={[{ label: 'Home' }]} />
+      <AppHeader crumbs={[{ label: t('home.title') }]} />
       <Main fluid className='mx-auto w-full max-w-6xl'>
         <h1 className='text-2xl font-semibold tracking-tight'>
-          {user ? `Hello, ${user.full_name_display}` : 'Home'}
+          {user
+            ? t('home.greeting', { name: user.full_name_display })
+            : t('home.title')}
         </h1>
         <div className='mt-8 grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]'>
           <div className='grid gap-8'>
             <ItemList
-              title='Working on'
-              empty='Nothing is assigned to you. Pick something up from a backlog.'
+              title={t('home.workingOn')}
+              empty={t('home.workingOnEmpty')}
               query={working}
             />
             <ItemList
-              title='Watching'
-              empty='Watch a story, task or issue to follow its changes here.'
+              title={t('home.watching')}
+              empty={t('home.watchingEmpty')}
               query={watching}
             />
           </div>
           <section aria-labelledby='home-projects'>
             <div className='mb-2 flex items-baseline justify-between'>
               <h2 id='home-projects' className='font-semibold'>
-                Projects
+                {t('common:terms.project_other')}
               </h2>
               <Link
                 to='/projects'
                 className='text-sm text-muted-foreground hover:text-foreground'
               >
-                All projects
+                {t('home.allProjects')}
               </Link>
             </div>
             {projects.isPending ? (
@@ -93,6 +104,8 @@ function ItemList({
   empty: string
   query: ReturnType<typeof useMyItems>
 }) {
+  const { t } = useTranslation(['home', 'common'])
+  const format = useFormat()
   const items = query.data ?? []
   return (
     <section>
@@ -126,7 +139,7 @@ function ItemList({
                     item.kind === 'issue' && 'text-destructive/80'
                   )}
                 >
-                  {KINDS[item.kind].label}
+                  {t(KIND_LABEL[item.kind])}
                 </span>
                 <span className='min-w-0 flex-1 truncate'>
                   <span className='me-1.5 text-xs text-muted-foreground tabular-nums'>
@@ -139,7 +152,10 @@ function ItemList({
                   {item.status_extra_info.name}
                 </span>
                 <span className='hidden w-36 truncate text-end text-xs text-muted-foreground md:block'>
-                  {item.project_extra_info.name}, {timeAgo(item.modified_date)}
+                  {t('home.itemMeta', {
+                    project: item.project_extra_info.name,
+                    time: format.timeAgo(item.modified_date),
+                  })}
                 </span>
               </Link>
             </li>

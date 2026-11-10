@@ -1,6 +1,8 @@
+import { useFormat } from '@/i18n/format'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Ban } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { Project, UserStory } from '@/lib/taiga/types'
 import { cn } from '@/lib/utils'
 import { UserAvatar } from '@/components/user-avatar'
@@ -20,6 +22,7 @@ export function StoryCard({
   draggable,
   density,
 }: StoryCardProps) {
+  const { t } = useTranslation(['board', 'common'])
   const { open } = useRefParam()
   const {
     attributes,
@@ -42,7 +45,9 @@ export function StoryCard({
         density={density}
         {...attributes}
         {...listeners}
-        aria-roledescription={draggable ? 'Draggable story' : undefined}
+        aria-roledescription={
+          draggable ? t('kanban.card.draggable') : undefined
+        }
         onClick={() => open(story.ref)}
         onKeyDown={(e) => {
           // Space picks the card up (dnd-kit); Enter opens it.
@@ -71,6 +76,8 @@ export function CardFace({
   className,
   ...props
 }: CardFaceProps) {
+  const { t } = useTranslation(['board', 'common'])
+  const format = useFormat()
   const assignee = project.members.find((m) => m.id === story.assigned_to)
   const tasks = story.tasks ?? []
   const done = tasks.filter((t) => t.is_closed).length
@@ -132,10 +139,14 @@ export function CardFace({
                       style={{ width: `${(done / tasks.length) * 100}%` }}
                     />
                   </span>
-                  {done} of {tasks.length} tasks
+                  {t('kanban.card.tasksDone', { done, count: tasks.length })}
                 </span>
               )}
-              {story.due_date && <span>Due {story.due_date}</span>}
+              {story.due_date && (
+                <span>
+                  {t('kanban.card.due', { date: format.date(story.due_date) })}
+                </span>
+              )}
               {assignee && <span>{assignee.full_name_display}</span>}
             </div>
           )}
@@ -144,14 +155,14 @@ export function CardFace({
             {story.is_blocked && (
               <span className='inline-flex items-center gap-1 text-destructive'>
                 <Ban className='size-3' />
-                Blocked
+                {t('kanban.card.blocked')}
               </span>
             )}
             <span className='ms-auto inline-flex items-center gap-2'>
               {story.total_points !== null && (
                 <span className='rounded bg-muted px-1.5 py-0.5 font-medium text-foreground'>
                   <Points value={story.total_points} />
-                  <span className='sr-only'> points</span>
+                  <span className='sr-only'> {t('kanban.card.points')}</span>
                 </span>
               )}
               {assignee && <UserAvatar user={assignee} className='size-5' />}

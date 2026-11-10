@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { Loader2, Upload } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { api, apiErrorMessage } from '@/lib/taiga/client'
 import type { Project } from '@/lib/taiga/types'
@@ -9,6 +10,7 @@ import { Button } from '@/components/ui/button'
 
 /** Restores a project from a Taiga or Kemudi export file (.json or .json.gz). */
 export function ImportDump() {
+  const { t } = useTranslation('home')
   const qc = useQueryClient()
   const navigate = useNavigate()
   const input = useRef<HTMLInputElement>(null)
@@ -27,21 +29,17 @@ export function ImportDump() {
       qc.invalidateQueries({ queryKey: ['projects'] })
       if ('slug' in data)
         navigate({ to: '/p/$slug', params: { slug: data.slug } })
-      else
-        toast.success(
-          'Import started. You get an email when the project is ready.'
-        )
+      else toast.success(t('projects.import.started'))
     },
     onError: (e) =>
-      toast.error(apiErrorMessage(e, 'That file could not be imported.')),
+      toast.error(apiErrorMessage(e, t('projects.import.failed'))),
   })
 
   return (
     <section className='mt-12 border-t pt-8'>
-      <h2 className='font-semibold'>Import a project</h2>
+      <h2 className='font-semibold'>{t('projects.import.title')}</h2>
       <p className='mt-1 text-sm text-muted-foreground'>
-        Restore a project from an export file made by Kemudi or Taiga (Settings,
-        Import and export).
+        {t('projects.import.intro')}
       </p>
       <input
         ref={input}
@@ -61,7 +59,7 @@ export function ImportDump() {
         disabled={load.isPending}
       >
         {load.isPending ? <Loader2 className='animate-spin' /> : <Upload />}
-        Choose export file
+        {t('projects.import.choose')}
       </Button>
     </section>
   )

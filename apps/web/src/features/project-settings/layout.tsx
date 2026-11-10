@@ -1,23 +1,26 @@
 import { Link, Outlet, useLocation } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { AppHeader } from '@/components/layout/app-header'
 import { Main } from '@/components/layout/main'
 import { useProject } from '@/features/project/use-project'
 
+/** Route segment and its nav label key in the admin namespace. */
 const SECTIONS = [
-  ['general', 'General'],
-  ['members', 'Members'],
-  ['roles', 'Roles and permissions'],
-  ['attributes', 'Statuses and values'],
-  ['custom-fields', 'Custom fields'],
-  ['tags', 'Tags'],
-  ['webhooks', 'Webhooks'],
-  ['integrations', 'Integrations'],
-  ['data', 'Import and export'],
-  ['sprint-access', 'Sprint access'],
+  ['general', 'nav.general'],
+  ['members', 'nav.members'],
+  ['roles', 'nav.roles'],
+  ['attributes', 'nav.values'],
+  ['custom-fields', 'nav.customFields'],
+  ['tags', 'nav.tags'],
+  ['webhooks', 'nav.webhooks'],
+  ['integrations', 'nav.integrations'],
+  ['data', 'nav.exportImport'],
+  ['sprint-access', 'nav.sprintAccess'],
 ] as const
 
 export function ProjectSettingsLayout() {
+  const { t } = useTranslation(['admin', 'common'])
   const project = useProject()
   const path = useLocation({ select: (l) => l.pathname })
   const current = SECTIONS.find(([key]) => path.includes(`/settings/${key}`))
@@ -31,23 +34,22 @@ export function ProjectSettingsLayout() {
             to: '/p/$slug',
             params: { slug: project.slug },
           },
-          { label: 'Settings' },
-          ...(current ? [{ label: current[1] }] : []),
+          { label: t('common:terms.settings') },
+          ...(current ? [{ label: t(current[1]) }] : []),
         ]}
       />
       <Main fluid className='mx-auto w-full max-w-6xl'>
         <h1 className='text-2xl font-semibold tracking-tight'>
-          Project settings
+          {t('nav.title')}
         </h1>
         {!project.i_am_admin ? (
           <p className='mt-4 text-sm text-muted-foreground'>
-            Only project admins can change settings. Ask an admin of{' '}
-            {project.name} if something needs changing.
+            {t('nav.notAdmin', { project: project.name })}
           </p>
         ) : (
           <div className='mt-6 grid gap-8 lg:grid-cols-[13rem_minmax(0,1fr)]'>
             <nav
-              aria-label='Settings sections'
+              aria-label={t('nav.sectionsLabel')}
               className='lg:sticky lg:top-20 lg:self-start'
             >
               <ul className='flex gap-1 overflow-x-auto lg:flex-col'>
@@ -63,7 +65,7 @@ export function ProjectSettingsLayout() {
                         current?.[0] === key && 'bg-accent font-medium'
                       )}
                     >
-                      {label}
+                      {t(label)}
                     </Link>
                   </li>
                 ))}

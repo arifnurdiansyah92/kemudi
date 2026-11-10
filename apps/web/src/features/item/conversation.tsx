@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { useFormat } from '@/i18n/format'
 import { Loader2, MoreHorizontal } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
 import {
   KINDS,
@@ -9,7 +11,6 @@ import {
   useHistory,
 } from '@/lib/taiga/items'
 import type { HistoryChange, Item, ItemKind, Project } from '@/lib/taiga/types'
-import { timeAgo } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -28,6 +29,7 @@ type Props = { project: Project; kind: ItemKind; item: Item }
 
 /** Comments and the change log, as two tabs. */
 export function Conversation(props: Props) {
+  const { t } = useTranslation(['item', 'common'])
   const history = useHistory(props.kind, props.item.id)
   const entries = history.data ?? []
   const comments = entries.filter((e) => e.comment && !e.delete_comment_date)
@@ -39,9 +41,11 @@ export function Conversation(props: Props) {
     <Tabs defaultValue='comments'>
       <TabsList>
         <TabsTrigger value='comments'>
-          Comments{comments.length > 0 && ` (${comments.length})`}
+          {comments.length > 0
+            ? t('conversation.commentsCount', { count: comments.length })
+            : t('common:terms.comments')}
         </TabsTrigger>
-        <TabsTrigger value='activity'>Activity</TabsTrigger>
+        <TabsTrigger value='activity'>{t('conversation.activity')}</TabsTrigger>
       </TabsList>
       <TabsContent value='comments' className='mt-4'>
         {history.isPending ? (
@@ -67,6 +71,7 @@ function Comments({
   item,
   comments,
 }: Props & { comments: HistoryChange[] }) {
+  const { t } = useTranslation('item')
   const me = useAuthStore((s) => s.session?.user.id)
   const add = useAddComment(project, kind)
   const [text, setText] = useState('')
@@ -87,7 +92,9 @@ function Comments({
           ))}
         </ol>
       ) : (
-        <p className='text-sm text-muted-foreground'>No comments yet.</p>
+        <p className='text-sm text-muted-foreground'>
+          {t('conversation.noComments')}
+        </p>
       )}
 
       {can(project, KINDS[kind].perm.comment) && (
@@ -105,8 +112,8 @@ function Comments({
             value={text}
             onChange={setText}
             rows={3}
-            placeholder='Write a comment. Markdown works.'
-            aria-label='New comment'
+            placeholder={t('conversation.placeholder')}
+            aria-label={t('conversation.newComment')}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey))
                 e.currentTarget.form?.requestSubmit()
@@ -114,7 +121,7 @@ function Comments({
           />
           <div className='flex items-center justify-between'>
             <span className='text-xs text-muted-foreground'>
-              Ctrl+Enter to send
+              {t('conversation.sendHint')}
             </span>
             <Button
               size='sm'
@@ -122,7 +129,7 @@ function Comments({
               disabled={!text.trim() || add.isPending}
             >
               {add.isPending && <Loader2 className='animate-spin' />}
-              Comment
+              {t('conversation.comment')}
             </Button>
           </div>
         </form>
@@ -138,6 +145,8 @@ function CommentEntry({
   entry,
   mine,
 }: Props & { entry: HistoryChange; mine: boolean }) {
+  const { t } = useTranslation(['item', 'common'])
+  const fmt = useFormat()
   const edit = useEditComment(kind, item.id)
   const remove = useDeleteComment(kind, item.id)
   const [editing, setEditing] = useState(false)
@@ -160,8 +169,11 @@ function CommentEntry({
             dateTime={entry.created_at}
             className='text-xs text-muted-foreground'
           >
-            {timeAgo(entry.created_at)}
-            {entry.edit_comment_date && ', edited'}
+            {entry.edit_comment_date
+              ? t('conversation.edited', {
+                  time: fmt.timeAgo(entry.created_at),
+                })
+              : fmt.timeAgo(entry.created_at)}
           </time>
           {mine && !editing && (
             <DropdownMenu modal={false}>
@@ -170,20 +182,20 @@ function CommentEntry({
                   variant='ghost'
                   size='icon'
                   className='ms-auto size-6 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100'
-                  aria-label='Comment actions'
+                  aria-label={t('conversation.commentActions')}
                 >
                   <MoreHorizontal />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align='end'>
                 <DropdownMenuItem onSelect={() => setEditing(true)}>
-                  Edit
+                  {t('common:actions.edit')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   variant='destructive'
                   onSelect={() => remove.mutate(entry.id)}
                 >
-                  Delete
+                  {t('common:actions.delete')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -206,11 +218,11 @@ function CommentEntry({
               onChange={setDraft}
               rows={3}
               autoFocus
-              aria-label='Edit comment'
+              aria-label={t('conversation.editComment')}
             />
             <div className='flex gap-2'>
               <Button size='sm' disabled={!draft.trim() || edit.isPending}>
-                Save comment
+                {t('conversation.saveComment')}
               </Button>
               <Button
                 size='sm'
@@ -221,7 +233,7 @@ function CommentEntry({
                   setEditing(false)
                 }}
               >
-                Cancel
+                {t('common:actions.cancel')}
               </Button>
             </div>
           </form>
@@ -245,16 +257,22 @@ function Activity({
   project: Project
   entries: HistoryChange[]
 }) {
+  const { t } = useTranslation('item')
+  const fmt = useFormat()
   if (entries.length === 0)
-    return <p className='text-sm text-muted-foreground'>No changes yet.</p>
+    return (
+      <p className='text-sm text-muted-foreground'>
+        {t('conversation.noChanges')}
+      </p>
+    )
   return (
     <ol className='grid gap-3'>
       {entries.map((entry) => {
         const lines =
           entry.type === 2
-            ? ['created this']
+            ? [t('conversation.created')]
             : entry.type === 3
-              ? ['deleted this']
+              ? [t('conversation.deleted')]
               : Object.entries(entry.values_diff ?? {})
                   .filter(([k]) => visibleKey(k))
                   .map(([k, v]) => describe(k, v))
@@ -273,7 +291,7 @@ function Activity({
             <div className='min-w-0'>
               <span className='font-medium'>{entry.user.name}</span>{' '}
               <span className='text-muted-foreground'>
-                {timeAgo(entry.created_at)}
+                {fmt.timeAgo(entry.created_at)}
               </span>
               <ul className='mt-0.5 text-muted-foreground'>
                 {lines.map((line, i) => (

@@ -1,6 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, MoreHorizontal } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useMoveToSprint } from '@/lib/taiga/queries'
 import type { Milestone, Project, UserStory } from '@/lib/taiga/types'
 import { cn } from '@/lib/utils'
@@ -37,6 +38,7 @@ export function StoryRow({
   sortable = false,
   compact = false,
 }: StoryRowProps) {
+  const { t } = useTranslation(['backlog', 'common'])
   const { open } = useRefParam()
   const move = useMoveToSprint(project)
   const editable = can(project, 'modify_us')
@@ -65,7 +67,7 @@ export function StoryRow({
           ref={setActivatorNodeRef}
           {...attributes}
           {...listeners}
-          aria-label={`Reorder #${story.ref}`}
+          aria-label={t('story.reorder', { ref: story.ref })}
           className='-ms-1 cursor-grab rounded p-0.5 text-muted-foreground/50 outline-none group-hover:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing'
         >
           <GripVertical className='size-4' />
@@ -111,21 +113,21 @@ export function StoryRow({
               variant='ghost'
               size='icon'
               className='size-7 text-muted-foreground'
-              aria-label={`More actions for #${story.ref}`}
+              aria-label={t('story.moreActions', { ref: story.ref })}
             >
               <MoreHorizontal />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align='end' className='min-w-48'>
             <DropdownMenuItem onSelect={() => open(story.ref)}>
-              Open story
+              {t('story.open')}
             </DropdownMenuItem>
             {(sprints.length > 0 || story.milestone) && (
               <DropdownMenuSeparator />
             )}
             {sprints.length > 0 && (
               <DropdownMenuLabel className='text-xs font-normal text-muted-foreground'>
-                Move to
+                {t('story.moveTo')}
               </DropdownMenuLabel>
             )}
             {sprints
@@ -144,7 +146,7 @@ export function StoryRow({
               <DropdownMenuItem
                 onSelect={() => move.mutate({ story, milestoneId: null })}
               >
-                Backlog
+                {t('common:terms.backlog')}
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>

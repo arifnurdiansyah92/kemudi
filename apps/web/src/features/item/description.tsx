@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useUpdateItem } from '@/lib/taiga/items'
 import type { Item, ItemKind, Project } from '@/lib/taiga/types'
 import { Button } from '@/components/ui/button'
@@ -16,6 +17,7 @@ export function Description({
   item: Item
   editable: boolean
 }) {
+  const { t } = useTranslation(['item', 'common'])
   const update = useUpdateItem(project, kind)
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(item.description ?? '')
@@ -43,13 +45,13 @@ export function Description({
           onChange={setValue}
           rows={8}
           autoFocus
-          aria-label='Description'
-          placeholder='What needs to happen, and why? Markdown works.'
+          aria-label={t('common:terms.description')}
+          placeholder={t('description.placeholder')}
         />
         <div className='flex gap-2'>
           <Button size='sm' type='submit' disabled={update.isPending}>
             {update.isPending && <Loader2 className='animate-spin' />}
-            Save description
+            {t('description.save')}
           </Button>
           <Button
             size='sm'
@@ -57,7 +59,7 @@ export function Description({
             type='button'
             onClick={() => setEditing(false)}
           >
-            Cancel
+            {t('common:actions.cancel')}
           </Button>
         </div>
       </form>
@@ -69,10 +71,10 @@ export function Description({
         onClick={start}
         className='w-full rounded-md border border-dashed px-3 py-4 text-start text-sm text-muted-foreground hover:bg-accent/50'
       >
-        Add a description
+        {t('description.add')}
       </button>
     ) : (
-      <p className='text-sm text-muted-foreground'>No description.</p>
+      <p className='text-sm text-muted-foreground'>{t('description.empty')}</p>
     )
 
   return (
@@ -84,7 +86,7 @@ export function Description({
       />
       {editable && (
         <Button size='sm' variant='outline' className='mt-3' onClick={start}>
-          Edit description
+          {t('description.edit')}
         </Button>
       )}
     </div>

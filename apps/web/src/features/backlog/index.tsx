@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useRef, useState } from 'react'
+import { useFormat } from '@/i18n/format'
 import {
   closestCenter,
   DndContext,
@@ -19,6 +20,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { Plus } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import {
   useBacklogReorder,
   useMilestones,
@@ -54,6 +56,8 @@ import { SprintPanel } from './sprint-panel'
 import { StoryRow } from './story-row'
 
 export function Backlog() {
+  const { t } = useTranslation(['backlog', 'common'])
+  const { number } = useFormat()
   const project = useProject()
   const stories = useStories(project.id)
   const milestones = useMilestones(project.id)
@@ -162,6 +166,7 @@ export function Backlog() {
 
   const loading = stories.isPending || milestones.isPending
   const canAdd = can(project, 'add_us')
+  const canAddSprint = can(project, 'add_milestone')
 
   return (
     <>
@@ -172,17 +177,21 @@ export function Backlog() {
             to: '/p/$slug',
             params: { slug: project.slug },
           },
-          { label: 'Backlog' },
+          { label: t('common:terms.backlog') },
         ]}
       />
       <Main fluid className='mx-auto w-full max-w-6xl'>
         <div className='flex flex-wrap items-end justify-between gap-3'>
           <div>
-            <h1 className='text-2xl font-semibold tracking-tight'>Backlog</h1>
+            <h1 className='text-2xl font-semibold tracking-tight'>
+              {t('common:terms.backlog')}
+            </h1>
             {!loading && (
               <p className='mt-1 text-sm text-muted-foreground tabular-nums'>
-                {backlog.length} {backlog.length === 1 ? 'story' : 'stories'},{' '}
-                {sumPoints(backlog)} points waiting for a sprint
+                {t('backlog.summary', {
+                  count: backlog.length,
+                  points: number(sumPoints(backlog)),
+                })}
               </p>
             )}
           </div>
@@ -191,7 +200,7 @@ export function Backlog() {
               <BulkAddDialog project={project} />
               <Button size='sm' onClick={() => addRef.current?.focus()}>
                 <Plus />
-                New story
+                {t('backlog.newStory')}
               </Button>
             </div>
           )}
@@ -202,12 +211,12 @@ export function Backlog() {
 
         {stories.isError ? (
           <p className='mt-8 text-sm'>
-            Stories could not be loaded.{' '}
+            {t('backlog.loadError')}{' '}
             <button
               className='underline underline-offset-4'
               onClick={() => stories.refetch()}
             >
-              Try again
+              {t('common:actions.retry')}
             </button>
           </p>
         ) : (
@@ -221,7 +230,7 @@ export function Backlog() {
             <div className='mt-8 grid grid-cols-[minmax(0,1fr)] items-start gap-8 xl:grid-cols-[minmax(0,1fr)_24rem]'>
               <section aria-labelledby='backlog-heading' className='min-w-0'>
                 <h2 id='backlog-heading' className='sr-only'>
-                  Stories not in a sprint
+                  {t('backlog.heading')}
                 </h2>
                 <FilterBar
                   savedKey={`${project.id}:kemudi-filters-backlog`}
@@ -247,12 +256,12 @@ export function Backlog() {
                     </div>
                   ) : backlog.length === 0 ? (
                     <p className='px-4 py-10 text-center text-sm text-muted-foreground'>
-                      The backlog is empty.{' '}
-                      {canAdd && 'Add the first story above.'}
+                      {t('backlog.empty')}{' '}
+                      {canAdd && t('backlog.emptyAddFirst')}
                     </p>
                   ) : shown.length === 0 ? (
                     <p className='px-4 py-10 text-center text-sm text-muted-foreground'>
-                      No stories match these filters.
+                      {t('backlog.noMatch')}
                     </p>
                   ) : (
                     <SortableContext
@@ -276,8 +285,9 @@ export function Backlog() {
                                 className='flex items-center gap-2 bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground'
                               >
                                 <span className='h-px flex-1 bg-brass/60' />
-                                Above this line fits the next sprint, at{' '}
-                                {stats.data?.speed} points per sprint
+                                {t('backlog.forecastLine', {
+                                  speed: number(stats.data?.speed ?? 0),
+                                })}
                                 <span className='h-px flex-1 bg-brass/60' />
                               </li>
                             )}
@@ -295,9 +305,9 @@ export function Backlog() {
               >
                 <div className='flex items-center justify-between'>
                   <h2 id='sprints-heading' className='font-semibold'>
-                    Open sprints
+                    {t('sprint.openSprints')}
                   </h2>
-                  {can(project, 'add_milestone') && (
+                  {canAddSprint && (
                     <NewSprintDialog project={project} sprints={sprints} />
                   )}
                 </div>
@@ -305,8 +315,7 @@ export function Backlog() {
                   <Skeleton className='h-24 w-full' />
                 ) : sprints.length === 0 ? (
                   <p className='rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground'>
-                    No open sprints. Create one to plan the next stretch of
-                    work.
+                    {t('sprint.noOpen')}
                   </p>
                 ) : (
                   sprints.map((sprint, i) => (
@@ -322,12 +331,14 @@ export function Backlog() {
                 )}
                 {showClosed ? (
                   <div className='space-y-3 pt-3'>
-                    <h2 className='font-semibold'>Closed sprints</h2>
+                    <h2 className='font-semibold'>
+                      {t('sprint.closedSprints')}
+                    </h2>
                     {closedSprints.isPending ? (
                       <Skeleton className='h-16 w-full' />
                     ) : (closedSprints.data ?? []).length === 0 ? (
                       <p className='text-sm text-muted-foreground'>
-                        No sprint has been closed yet.
+                        {t('sprint.noClosed')}
                       </p>
                     ) : (
                       closedSprints.data!.map((sprint) => (
@@ -349,7 +360,7 @@ export function Backlog() {
                     className='text-muted-foreground'
                     onClick={() => setShowClosed(true)}
                   >
-                    Show closed sprints
+                    {t('sprint.showClosed')}
                   </Button>
                 )}
               </section>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AxiosError } from 'axios'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bookmark, Check, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/taiga/client'
 import { onFail } from '@/lib/taiga/items'
 import { Button } from '@/components/ui/button'
@@ -64,6 +65,7 @@ export function SavedFilters({
   value: FilterState
   onApply: (f: FilterState) => void
 }) {
+  const { t } = useTranslation(['board', 'common'])
   const { saved, write } = useSavedFilters(storageKey)
   const [naming, setNaming] = useState(false)
   const [name, setName] = useState('')
@@ -89,12 +91,12 @@ export function SavedFilters({
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === 'Escape' && setNaming(false)}
-          placeholder='Name these filters'
-          aria-label='Name for the saved filters'
+          placeholder={t('filters.saved.namePlaceholder')}
+          aria-label={t('filters.saved.nameLabel')}
           className='h-8 w-44'
         />
         <Button size='sm' className='h-8' disabled={!name.trim()}>
-          Save
+          {t('common:actions.save')}
         </Button>
       </form>
     )
@@ -104,13 +106,13 @@ export function SavedFilters({
       <DropdownMenuTrigger asChild>
         <Button variant='ghost' size='sm' className='h-8'>
           <Bookmark />
-          Saved filters
+          {t('filters.saved.button')}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align='start' className='min-w-56'>
         {names.length === 0 && (
           <DropdownMenuLabel className='text-xs font-normal text-muted-foreground'>
-            Nothing saved yet
+            {t('filters.saved.empty')}
           </DropdownMenuLabel>
         )}
         {names.map((n) => (
@@ -124,12 +126,12 @@ export function SavedFilters({
           disabled={!isFiltering(value)}
           onSelect={() => setNaming(true)}
         >
-          Save current filters…
+          {t('filters.saved.saveCurrent')}
         </DropdownMenuItem>
         {names.length > 0 && (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
-              Delete saved filters
+              {t('filters.saved.delete')}
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               {names.map((n) => (

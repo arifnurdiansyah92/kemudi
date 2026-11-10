@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
+import { useFormat } from '@/i18n/format'
 import {
   closestCenter,
   DndContext,
@@ -20,10 +21,11 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Lock } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/taiga/client'
 import { onFail } from '@/lib/taiga/items'
 import type { ProjectSummary } from '@/lib/taiga/types'
-import { cn, timeAgo } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 
 /** Your projects, in your own order (drag the handle to rearrange). */
 export function ProjectList({ projects }: { projects: ProjectSummary[] }) {
@@ -89,6 +91,8 @@ function Row({
   project: ProjectSummary
   draggable: boolean
 }) {
+  const { t } = useTranslation('home')
+  const format = useFormat()
   const {
     attributes,
     listeners,
@@ -112,7 +116,7 @@ function Row({
           ref={setActivatorNodeRef}
           {...attributes}
           {...listeners}
-          aria-label={`Move ${project.name}`}
+          aria-label={t('projects.list.move', { name: project.name })}
           className='ms-2 mt-5 cursor-grab rounded p-0.5 text-muted-foreground/40 outline-none group-hover:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing'
         >
           <GripVertical className='size-4' />
@@ -135,7 +139,7 @@ function Row({
             {project.is_private && (
               <Lock
                 className='size-3.5 text-muted-foreground'
-                aria-label='Private'
+                aria-label={t('projects.list.private')}
               />
             )}
           </span>
@@ -146,7 +150,9 @@ function Row({
           )}
         </span>
         <span className='shrink-0 pt-0.5 text-xs text-muted-foreground tabular-nums max-sm:hidden'>
-          Updated {timeAgo(project.modified_date)}
+          {t('projects.list.updated', {
+            time: format.timeAgo(project.modified_date),
+          })}
         </span>
       </Link>
     </li>

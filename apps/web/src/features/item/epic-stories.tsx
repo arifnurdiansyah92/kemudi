@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link2, Plus, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useEpicLinks, useEpicStories, useEpics } from '@/lib/taiga/epics'
 import { useStories } from '@/lib/taiga/queries'
 import type { Item, Project } from '@/lib/taiga/types'
@@ -30,6 +31,7 @@ export function EpicStories({
   project: Project
   epic: Item
 }) {
+  const { t } = useTranslation('item')
   const stories = useEpicStories(project.id, epic.id)
   const all = useStories(project.id)
   const { link, unlink, create } = useEpicLinks(project)
@@ -48,7 +50,7 @@ export function EpicStories({
       {list.length > 0 && (
         <>
           <p className='text-xs text-muted-foreground tabular-nums'>
-            {done} of {list.length} stories closed
+            {t('epic.progress', { done, count: list.length })}
           </p>
           <ul className='grid gap-0.5'>
             {list.map((story) => (
@@ -77,7 +79,7 @@ export function EpicStories({
                     variant='ghost'
                     size='icon'
                     className='size-6 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
-                    aria-label={`Remove #${story.ref} from this epic`}
+                    aria-label={t('epic.removeStory', { ref: story.ref })}
                     onClick={() =>
                       unlink.mutate({ epicId: epic.id, storyId: story.id })
                     }
@@ -91,9 +93,7 @@ export function EpicStories({
         </>
       )}
       {list.length === 0 && (
-        <p className='text-sm text-muted-foreground'>
-          No stories in this epic yet.
-        </p>
+        <p className='text-sm text-muted-foreground'>{t('epic.noStories')}</p>
       )}
 
       {editable && (
@@ -116,8 +116,8 @@ export function EpicStories({
               <input
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                placeholder='New story in this epic'
-                aria-label='New story in this epic'
+                placeholder={t('epic.newStory')}
+                aria-label={t('epic.newStory')}
                 className='min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground'
               />
             </label>
@@ -126,14 +126,14 @@ export function EpicStories({
             <PopoverTrigger asChild>
               <Button variant='outline' size='sm' className='h-9'>
                 <Link2 />
-                Link a story
+                {t('epic.linkStory')}
               </Button>
             </PopoverTrigger>
             <PopoverContent className='w-80 p-0' align='end'>
               <Command>
-                <CommandInput placeholder='Find a story by subject or #ref' />
+                <CommandInput placeholder={t('epic.findStory')} />
                 <CommandList>
-                  <CommandEmpty>No story matches.</CommandEmpty>
+                  <CommandEmpty>{t('epic.noStoryMatches')}</CommandEmpty>
                   <CommandGroup>
                     {(all.data ?? [])
                       .filter((s) => !linked.has(s.id))
@@ -171,6 +171,7 @@ export function StoryEpics({
   project: Project
   story: Item
 }) {
+  const { t } = useTranslation(['item', 'common'])
   const epics = useEpics(project.id)
   const { link, unlink } = useEpicLinks(project)
   const { open } = useRefParam()
@@ -195,7 +196,7 @@ export function StoryEpics({
           </button>
           {editable && (
             <button
-              aria-label={`Remove from epic #${epic.ref}`}
+              aria-label={t('epic.removeFromEpic', { ref: epic.ref })}
               className='text-muted-foreground hover:text-foreground'
               onClick={() =>
                 unlink.mutate({ epicId: epic.id, storyId: story.id })
@@ -210,13 +211,13 @@ export function StoryEpics({
         <Popover open={picking} onOpenChange={setPicking}>
           <PopoverTrigger className='inline-flex h-6 items-center gap-1 rounded-sm border border-dashed px-1.5 text-xs text-muted-foreground hover:bg-accent'>
             <Plus className='size-3' />
-            Add to epic
+            {t('epic.addToEpic')}
           </PopoverTrigger>
           <PopoverContent className='w-72 p-0' align='start'>
             <Command>
-              <CommandInput placeholder='Find an epic' />
+              <CommandInput placeholder={t('epic.findEpic')} />
               <CommandList>
-                <CommandEmpty>No epic matches.</CommandEmpty>
+                <CommandEmpty>{t('epic.noEpicMatches')}</CommandEmpty>
                 <CommandGroup>
                   {(epics.data ?? [])
                     .filter((e) => !current.some((c) => c.id === e.id))
@@ -246,7 +247,9 @@ export function StoryEpics({
         </Popover>
       )}
       {!editable && current.length === 0 && (
-        <span className='text-sm text-muted-foreground'>None</span>
+        <span className='text-sm text-muted-foreground'>
+          {t('common:status.none')}
+        </span>
       )}
     </div>
   )

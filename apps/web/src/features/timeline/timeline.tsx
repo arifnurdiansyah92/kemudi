@@ -1,7 +1,8 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
+import { useFormat } from '@/i18n/format'
+import { Trans, useTranslation } from 'react-i18next'
 import { api } from '@/lib/taiga/client'
-import { timeAgo } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { UserAvatar } from '@/components/user-avatar'
@@ -38,17 +39,36 @@ interface TimelineEvent {
 /** project/<id>, user/<id> (what the user did) or profile/<id> (what they follow). */
 type TimelineSource = `${'project' | 'user' | 'profile'}/${number}`
 
-const NOUN: Record<string, string> = {
+type Noun =
+  | 'story'
+  | 'task'
+  | 'issue'
+  | 'epic'
+  | 'wikiPage'
+  | 'sprint'
+  | 'project'
+  | 'membership'
+
+const NOUN: Record<string, Noun> = {
   userstory: 'story',
   task: 'task',
   issue: 'issue',
   epic: 'epic',
-  wikipage: 'wiki page',
+  wikipage: 'wikiPage',
   milestone: 'sprint',
   project: 'project',
   membership: 'membership',
   relateduserstory: 'story',
 }
+
+type EventKey =
+  | 'created'
+  | 'deleted'
+  | 'commented'
+  | 'changed'
+  | 'updated'
+  | 'addedMember'
+  | 'addedStoryToEpic'
 
 function target(e: TimelineEvent) {
   const d = e.data
@@ -90,28 +110,35 @@ function target(e: TimelineEvent) {
 }
 
 /** "created story", "changed status from New to Ready on story", … */
-function sentence(e: TimelineEvent) {
+function sentence(e: TimelineEvent): {
+  key: EventKey
+  noun: Noun | string
+  changes?: string
+  epic?: string
+} {
   const [, model, action] = e.event_type.split('.')
   const noun = NOUN[model] ?? model
   if (e.event_type === 'epics.relateduserstory.create')
     return {
-      verb: 'added a story to epic',
-      extra: e.data.epic ? `#${e.data.epic.ref} ${e.data.epic.subject}` : '',
+      key: 'addedStoryToEpic',
+      noun,
+      epic: e.data.epic ? `#${e.data.epic.ref} ${e.data.epic.subject}` : '',
     }
-  if (model === 'membership')
-    return { verb: 'added a member to the project', extra: '' }
-  if (action === 'create') return { verb: `created ${noun}`, extra: '' }
-  if (action === 'delete') return { verb: `deleted ${noun}`, extra: '' }
-  if (e.data.comment) return { verb: `commented on ${noun}`, extra: '' }
+  if (model === 'membership') return { key: 'addedMember', noun }
+  if (action === 'create') return { key: 'created', noun }
+  if (action === 'delete') return { key: 'deleted', noun }
+  if (e.data.comment) return { key: 'commented', noun }
   const changes = Object.entries(e.data.values_diff ?? {})
     .filter(([k]) => visibleKey(k))
     .map(([k, v]) => describe(k, v))
-  return {
-    verb: changes.length
-      ? `${changes.join('; ')} on ${noun}`
-      : `updated ${noun}`,
-    extra: '',
-  }
+  return changes.length
+    ? { key: 'changed', noun, changes: changes.join('; ') }
+    : { key: 'updated', noun }
+}
+
+const NOUNS = new Set<string>(Object.values(NOUN))
+function isNoun(n: string): n is Noun {
+  return NOUNS.has(n)
 }
 
 export function Timeline({
@@ -121,6 +148,8 @@ export function Timeline({
   source: TimelineSource
   showProject?: boolean
 }) {
+  const { t } = useTranslation(['home', 'common'])
+  const format = useFormat()
   const feed = useInfiniteQuery({
     queryKey: ['timeline', source],
     initialPageParam: 1,
@@ -145,15 +174,15 @@ export function Timeline({
   const events = feed.data?.pages.flatMap((p) => p.events) ?? []
   if (events.length === 0)
     return (
-      <p className='text-sm text-muted-foreground'>Nothing has happened yet.</p>
+      <p className='text-sm text-muted-foreground'>{t('timeline.empty')}</p>
     )
 
   return (
     <div>
       <ol className='grid gap-4'>
         {events.map((e) => {
-          const t = target(e)
-          const { verb, extra } = sentence(e)
+          const tgt = target(e)
+          const s = sentence(e)
           const user = e.data.user
           return (
             <li key={e.id} className='flex gap-3 text-sm'>
@@ -167,22 +196,31 @@ export function Timeline({
               )}
               <div className='min-w-0 flex-1'>
                 <p className='leading-snug'>
-                  <span className='font-medium'>{user?.name ?? 'Someone'}</span>{' '}
-                  <span className='text-muted-foreground'>{verb}</span>{' '}
-                  {t &&
-                    (t.link ? (
-                      <Link
-                        {...(t.link as { to: string })}
-                        className='font-medium underline-offset-4 hover:underline'
-                      >
-                        {t.label}
-                      </Link>
-                    ) : (
-                      t.label
-                    ))}
-                  {extra && (
-                    <span className='text-muted-foreground'> {extra}</span>
-                  )}
+                  <Trans
+                    t={t}
+                    i18nKey={`timeline.events.${s.key}`}
+                    values={{
+                      user: user?.name ?? t('timeline.someone'),
+                      noun: isNoun(s.noun)
+                        ? t(`timeline.nouns.${s.noun}`)
+                        : s.noun,
+                      changes: s.changes ?? '',
+                      epic: s.epic ?? '',
+                      target: tgt?.label ?? '',
+                    }}
+                    components={{
+                      user: <span className='font-medium' />,
+                      muted: <span className='text-muted-foreground' />,
+                      target: tgt ? (
+                        <Link
+                          {...(tgt.link as { to: string })}
+                          className='font-medium underline-offset-4 hover:underline'
+                        />
+                      ) : (
+                        <span />
+                      ),
+                    }}
+                  />
                 </p>
                 {e.data.comment_html && (
                   <div
@@ -191,10 +229,12 @@ export function Timeline({
                   />
                 )}
                 <p className='mt-0.5 text-xs text-muted-foreground'>
-                  {timeAgo(e.created)}
-                  {showProject &&
-                    e.data.project &&
-                    ` in ${e.data.project.name}`}
+                  {showProject && e.data.project
+                    ? t('timeline.meta', {
+                        time: format.timeAgo(e.created),
+                        project: e.data.project.name,
+                      })
+                    : format.timeAgo(e.created)}
                 </p>
               </div>
             </li>
@@ -209,7 +249,9 @@ export function Timeline({
           disabled={feed.isFetchingNextPage}
           onClick={() => feed.fetchNextPage()}
         >
-          {feed.isFetchingNextPage ? 'Loading…' : 'Show older activity'}
+          {feed.isFetchingNextPage
+            ? t('common:status.loading')
+            : t('timeline.older')}
         </Button>
       )}
     </div>

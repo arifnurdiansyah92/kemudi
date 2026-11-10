@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Logo } from '@/assets/logo'
 
 type AuthLayoutProps = {
@@ -11,6 +12,7 @@ type AuthLayoutProps = {
  * work surface. On phones only the form shows, under a small wordmark.
  */
 export function AuthLayout({ title, description, children }: AuthLayoutProps) {
+  const { t } = useTranslation('auth')
   return (
     <div className='grid min-h-svh lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]'>
       <aside className='relative hidden overflow-hidden bg-sidebar text-sidebar-foreground lg:flex lg:flex-col lg:justify-between lg:p-12'>
@@ -23,7 +25,7 @@ export function AuthLayout({ title, description, children }: AuthLayoutProps) {
           strokeWidth={0.6}
         />
         <p className='relative max-w-xs text-2xl leading-snug font-medium text-sidebar-accent-foreground'>
-          Hold the course on every sprint.
+          {t('layout.tagline')}
         </p>
       </aside>
 

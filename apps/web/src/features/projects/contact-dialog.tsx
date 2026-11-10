@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { api } from '@/lib/taiga/client'
 import { onFail } from '@/lib/taiga/items'
@@ -25,12 +26,13 @@ export function ContactDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const { t } = useTranslation('home')
   const [text, setText] = useState('')
   const send = useMutation({
     mutationFn: () =>
       api.post('/contact', { project: project.id, comment: text.trim() }),
     onSuccess: () => {
-      toast.success(`Message sent to the ${project.name} admins`)
+      toast.success(t('projects.contact.sent', { name: project.name }))
       setText('')
       onOpenChange(false)
     },
@@ -47,10 +49,11 @@ export function ContactDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Contact {project.name}</DialogTitle>
+            <DialogTitle>
+              {t('projects.contact.title', { name: project.name })}
+            </DialogTitle>
             <DialogDescription>
-              The project admins get your message by email, with your name and
-              address so they can reply.
+              {t('projects.contact.description')}
             </DialogDescription>
           </DialogHeader>
           <Textarea
@@ -58,13 +61,13 @@ export function ContactDialog({
             autoFocus
             value={text}
             onChange={(e) => setText(e.target.value)}
-            aria-label='Message'
-            placeholder='I would like to help with…'
+            aria-label={t('projects.contact.message')}
+            placeholder={t('projects.contact.placeholder')}
           />
           <DialogFooter>
             <Button type='submit' disabled={!text.trim() || send.isPending}>
               {send.isPending && <Loader2 className='animate-spin' />}
-              Send message
+              {t('projects.contact.send')}
             </Button>
           </DialogFooter>
         </form>

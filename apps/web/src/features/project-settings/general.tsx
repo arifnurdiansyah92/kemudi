@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
 import {
   useDeleteProject,
@@ -34,6 +35,7 @@ export function GeneralSettings() {
 }
 
 function Details({ project }: { project: Project }) {
+  const { t } = useTranslation(['admin', 'common'])
   const update = useUpdateProject(project)
   const p = project as Project & {
     is_looking_for_people: boolean
@@ -55,7 +57,7 @@ function Details({ project }: { project: Project }) {
   const set = (patch: Partial<typeof form>) => setForm({ ...form, ...patch })
 
   return (
-    <SettingsSection title='Details'>
+    <SettingsSection title={t('general.details.title')}>
       <form
         className='grid gap-4'
         onSubmit={(e) => {
@@ -75,7 +77,7 @@ function Details({ project }: { project: Project }) {
         }}
       >
         <div className='grid gap-1.5'>
-          <Label htmlFor='p-name'>Name</Label>
+          <Label htmlFor='p-name'>{t('shared.name')}</Label>
           <Input
             id='p-name'
             value={form.name}
@@ -83,7 +85,7 @@ function Details({ project }: { project: Project }) {
           />
         </div>
         <div className='grid gap-1.5'>
-          <Label htmlFor='p-desc'>Description</Label>
+          <Label htmlFor='p-desc'>{t('common:terms.description')}</Label>
           <Textarea
             id='p-desc'
             rows={3}
@@ -93,7 +95,9 @@ function Details({ project }: { project: Project }) {
         </div>
         <div className='grid gap-4 sm:grid-cols-2'>
           <div className='grid gap-1.5'>
-            <Label htmlFor='p-sprints'>Planned sprints</Label>
+            <Label htmlFor='p-sprints'>
+              {t('general.details.plannedSprints')}
+            </Label>
             <Input
               id='p-sprints'
               type='number'
@@ -103,7 +107,9 @@ function Details({ project }: { project: Project }) {
             />
           </div>
           <div className='grid gap-1.5'>
-            <Label htmlFor='p-points'>Planned story points</Label>
+            <Label htmlFor='p-points'>
+              {t('general.details.plannedPoints')}
+            </Label>
             <Input
               id='p-points'
               type='number'
@@ -114,13 +120,13 @@ function Details({ project }: { project: Project }) {
           </div>
         </div>
         <p className='-mt-2 text-xs text-muted-foreground'>
-          Both feed the project burndown in the backlog.
+          {t('general.details.burndownHint')}
         </p>
         <label className='flex items-center justify-between gap-4 text-sm'>
           <span>
-            <span className='font-medium'>Private project</span>
+            <span className='font-medium'>{t('general.details.private')}</span>
             <span className='block text-muted-foreground'>
-              Off makes it public: anyone can view it and find it in Discover.
+              {t('general.details.privateHint')}
             </span>
           </span>
           <Switch
@@ -130,9 +136,11 @@ function Details({ project }: { project: Project }) {
         </label>
         <label className='flex items-center justify-between gap-4 text-sm'>
           <span>
-            <span className='font-medium'>Looking for people</span>
+            <span className='font-medium'>
+              {t('general.details.lookingForPeople')}
+            </span>
             <span className='block text-muted-foreground'>
-              Shows in Discover that the project wants contributors.
+              {t('general.details.lookingForPeopleHint')}
             </span>
           </span>
           <Switch
@@ -142,10 +150,11 @@ function Details({ project }: { project: Project }) {
         </label>
         <label className='flex items-center justify-between gap-4 text-sm'>
           <span>
-            <span className='font-medium'>Can be contacted</span>
+            <span className='font-medium'>
+              {t('general.details.contactable')}
+            </span>
             <span className='block text-muted-foreground'>
-              People outside the project can send the admins a message from
-              Discover.
+              {t('general.details.contactableHint')}
             </span>
           </span>
           <Switch
@@ -155,8 +164,8 @@ function Details({ project }: { project: Project }) {
         </label>
         {form.is_looking_for_people && (
           <Input
-            aria-label='Who you are looking for'
-            placeholder='Who you are looking for'
+            aria-label={t('general.details.lookingForNote')}
+            placeholder={t('general.details.lookingForNote')}
             value={form.looking_for_people_note}
             onChange={(e) => set({ looking_for_people_note: e.target.value })}
           />
@@ -167,7 +176,7 @@ function Details({ project }: { project: Project }) {
             disabled={!form.name.trim() || update.isPending}
           >
             {update.isPending && <Loader2 className='animate-spin' />}
-            Save details
+            {t('general.details.save')}
           </Button>
         </div>
       </form>
@@ -176,14 +185,15 @@ function Details({ project }: { project: Project }) {
 }
 
 function Logo({ project }: { project: Project }) {
+  const { t } = useTranslation(['admin', 'common'])
   const { change, remove } = useProjectLogo(project)
   const input = useRef<HTMLInputElement>(null)
   const logo = (project as Project & { logo_big_url: string | null })
     .logo_big_url
   return (
     <SettingsSection
-      title='Logo'
-      description='Square images work best. PNG, JPEG or GIF.'
+      title={t('general.logo.title')}
+      description={t('general.logo.description')}
     >
       <div className='flex items-center gap-4'>
         {logo ? (
@@ -211,11 +221,11 @@ function Logo({ project }: { project: Project }) {
           disabled={change.isPending}
         >
           {change.isPending && <Loader2 className='animate-spin' />}
-          Upload logo
+          {t('general.logo.upload')}
         </Button>
         {logo && (
           <Button variant='ghost' size='sm' onClick={() => remove.mutate()}>
-            Remove
+            {t('general.logo.remove')}
           </Button>
         )}
       </div>
@@ -223,32 +233,45 @@ function Logo({ project }: { project: Project }) {
   )
 }
 
+/** Project flag and its label key under general.modules. */
 const MODULES = [
-  ['is_epics_activated', 'Epics', 'Group stories into larger pieces of work.'],
-  ['is_backlog_activated', 'Scrum', 'Backlog, sprints and the taskboard.'],
-  ['is_kanban_activated', 'Kanban', 'A board of stories by status.'],
-  ['is_issues_activated', 'Issues', 'Bugs, questions and improvements.'],
-  ['is_wiki_activated', 'Wiki', 'Pages for the team’s shared knowledge.'],
+  ['is_epics_activated', 'epics'],
+  ['is_backlog_activated', 'scrum'],
+  ['is_kanban_activated', 'kanban'],
+  ['is_issues_activated', 'issues'],
+  ['is_wiki_activated', 'wiki'],
+] as const
+
+/** Meeting services by brand name; brand names are not translated. */
+const MEETING_SERVICES = [
+  ['whereby-com', 'Whereby'],
+  ['jitsi', 'Jitsi'],
+  ['talky', 'Talky'],
 ] as const
 
 function Modules({ project }: { project: Project }) {
+  const { t } = useTranslation(['admin', 'common'])
   const update = useUpdateProject(project)
   const [call, setCall] = useState(project.videoconferences ?? '')
   const [room, setRoom] = useState(project.videoconferences_extra_data ?? '')
   return (
     <SettingsSection
-      title='Modules'
-      description='Turn parts of Kemudi on or off for this project.'
+      title={t('general.modules.title')}
+      description={t('general.modules.description')}
     >
       <div className='grid gap-3'>
-        {MODULES.map(([key, label, hint]) => (
+        {MODULES.map(([key, name]) => (
           <label
             key={key}
             className='flex items-center justify-between gap-4 text-sm'
           >
             <span>
-              <span className='font-medium'>{label}</span>
-              <span className='block text-muted-foreground'>{hint}</span>
+              <span className='font-medium'>
+                {t(`general.modules.${name}`)}
+              </span>
+              <span className='block text-muted-foreground'>
+                {t(`general.modules.${name}Hint`)}
+              </span>
             </span>
             <Switch
               checked={!!project[key]}
@@ -258,23 +281,29 @@ function Modules({ project }: { project: Project }) {
         ))}
         <div className='mt-2 grid gap-2 border-t pt-4 sm:grid-cols-[12rem_1fr_auto] sm:items-end'>
           <div className='grid gap-1.5'>
-            <Label htmlFor='p-call'>Meeting service</Label>
+            <Label htmlFor='p-call'>
+              {t('general.modules.meetingService')}
+            </Label>
             <select
               id='p-call'
               value={call}
               onChange={(e) => setCall(e.target.value)}
               className='h-9 rounded-md border bg-transparent px-2 text-sm'
             >
-              <option value=''>None</option>
-              <option value='whereby-com'>Whereby</option>
-              <option value='jitsi'>Jitsi</option>
-              <option value='talky'>Talky</option>
-              <option value='custom'>Custom link</option>
+              <option value=''>{t('common:status.none')}</option>
+              {MEETING_SERVICES.map(([value, name]) => (
+                <option key={value} value={value}>
+                  {name}
+                </option>
+              ))}
+              <option value='custom'>{t('general.modules.customLink')}</option>
             </select>
           </div>
           <div className='grid gap-1.5'>
             <Label htmlFor='p-room'>
-              {call === 'custom' ? 'Meeting link' : 'Room name'}
+              {call === 'custom'
+                ? t('general.modules.meetingLink')
+                : t('general.modules.roomName')}
             </Label>
             <Input
               id='p-room'
@@ -292,7 +321,7 @@ function Modules({ project }: { project: Project }) {
               })
             }
           >
-            Save meeting
+            {t('general.modules.saveMeeting')}
           </Button>
         </div>
       </div>
@@ -301,14 +330,15 @@ function Modules({ project }: { project: Project }) {
 }
 
 function Copy({ project }: { project: Project }) {
+  const { t } = useTranslation(['admin', 'common'])
   const [open, setOpen] = useState(false)
   return (
     <SettingsSection
-      title='Duplicate'
-      description='Start a new project with this one’s settings, statuses, roles and custom fields.'
+      title={t('general.duplicate.title')}
+      description={t('general.duplicate.description')}
     >
       <Button variant='outline' onClick={() => setOpen(true)}>
-        Duplicate project
+        {t('general.duplicate.action')}
       </Button>
       {open && (
         <DuplicateProjectDialog
@@ -322,6 +352,7 @@ function Copy({ project }: { project: Project }) {
 }
 
 function Transfer({ project }: { project: Project }) {
+  const { t } = useTranslation(['admin', 'common'])
   const me = useAuthStore((s) => s.session?.user.id)
   const start = useStartTransfer(project)
   const [user, setUser] = useState<number | ''>('')
@@ -329,11 +360,13 @@ function Transfer({ project }: { project: Project }) {
   const others = project.members.filter((m) => m.is_active && m.id !== me)
   return (
     <SettingsSection
-      title='Transfer ownership'
-      description='The new owner gets an email and must accept. Until then you stay the owner.'
+      title={t('general.transfer.title')}
+      description={t('general.transfer.description')}
     >
       {others.length === 0 ? (
-        <p className='text-sm text-muted-foreground'>Invite a member first.</p>
+        <p className='text-sm text-muted-foreground'>
+          {t('general.transfer.inviteFirst')}
+        </p>
       ) : (
         <form
           className='grid gap-3 sm:grid-cols-[14rem_1fr_auto] sm:items-end'
@@ -343,7 +376,7 @@ function Transfer({ project }: { project: Project }) {
           }}
         >
           <div className='grid gap-1.5'>
-            <Label htmlFor='t-user'>New owner</Label>
+            <Label htmlFor='t-user'>{t('general.transfer.newOwner')}</Label>
             <select
               id='t-user'
               value={user}
@@ -352,7 +385,7 @@ function Transfer({ project }: { project: Project }) {
               }
               className='h-9 rounded-md border bg-transparent px-2 text-sm'
             >
-              <option value=''>Choose a member</option>
+              <option value=''>{t('general.transfer.chooseMember')}</option>
               {others.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.full_name_display}
@@ -361,7 +394,7 @@ function Transfer({ project }: { project: Project }) {
             </select>
           </div>
           <div className='grid gap-1.5'>
-            <Label htmlFor='t-reason'>Message</Label>
+            <Label htmlFor='t-reason'>{t('general.transfer.message')}</Label>
             <Input
               id='t-reason'
               value={reason}
@@ -373,7 +406,7 @@ function Transfer({ project }: { project: Project }) {
             variant='outline'
             disabled={!user || start.isPending}
           >
-            Offer ownership
+            {t('general.transfer.offer')}
           </Button>
         </form>
       )}
@@ -382,6 +415,7 @@ function Transfer({ project }: { project: Project }) {
 }
 
 function Delete({ project }: { project: Project }) {
+  const { t } = useTranslation(['admin', 'common'])
   const navigate = useNavigate()
   const remove = useDeleteProject(project)
   const [open, setOpen] = useState(false)
@@ -389,27 +423,27 @@ function Delete({ project }: { project: Project }) {
   return (
     <SettingsSection
       danger
-      title='Delete project'
-      description='Deletes every story, task, issue, epic, wiki page and attachment in it. This cannot be undone.'
+      title={t('general.delete.title')}
+      description={t('general.delete.description')}
     >
       <Button variant='destructive' onClick={() => setOpen(true)}>
-        Delete {project.name}
+        {t('general.delete.action', { name: project.name })}
       </Button>
       <ConfirmDialog
         open={open}
         onOpenChange={setOpen}
-        title={`Delete ${project.name}?`}
+        title={t('general.delete.confirmTitle', { name: project.name })}
         desc={
           <span className='grid gap-3'>
-            <span>Type the project name to confirm.</span>
+            <span>{t('general.delete.typeName')}</span>
             <Input
-              aria-label='Project name'
+              aria-label={t('general.delete.nameLabel')}
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
             />
           </span>
         }
-        confirmText='Delete project'
+        confirmText={t('general.delete.title')}
         destructive
         disabled={typed !== project.name}
         isLoading={remove.isPending}

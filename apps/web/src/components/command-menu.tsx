@@ -2,6 +2,7 @@ import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { FolderKanban, Laptop, Moon, Sun } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/taiga/client'
 import { projectQuery, useProjects } from '@/lib/taiga/queries'
 import { useSearch } from '@/context/search-provider'
@@ -23,19 +24,20 @@ type SearchResults = Record<
   'userstories' | 'tasks' | 'issues' | 'epics' | 'wikipages',
   Hit[]
 >
-const SEARCH_GROUPS: [keyof SearchResults, string][] = [
-  ['userstories', 'Stories'],
-  ['tasks', 'Tasks'],
-  ['issues', 'Issues'],
-  ['epics', 'Epics'],
-  ['wikipages', 'Wiki pages'],
-]
+const SEARCH_GROUPS = [
+  'userstories',
+  'tasks',
+  'issues',
+  'epics',
+  'wikipages',
+] as const satisfies (keyof SearchResults)[]
 
 /**
  * Ctrl/Cmd+K: jump to a view or project, or search the open project's
  * stories, tasks, issues, epics and wiki (server-side, two letters or more).
  */
 export function CommandMenu() {
+  const { t } = useTranslation(['shell', 'common'])
   const navigate = useNavigate()
   const { setTheme } = useTheme()
   const { open, setOpen } = useSearch()
@@ -49,8 +51,8 @@ export function CommandMenu() {
   const [query, setQuery] = React.useState('')
   const [debounced, setDebounced] = React.useState('')
   React.useEffect(() => {
-    const t = window.setTimeout(() => setDebounced(query.trim()), 250)
-    return () => window.clearTimeout(t)
+    const timer = window.setTimeout(() => setDebounced(query.trim()), 250)
+    return () => window.clearTimeout(timer)
   }, [query])
   const { data: results } = useQuery({
     queryKey: ['search', project?.id, debounced],
@@ -78,13 +80,13 @@ export function CommandMenu() {
         onValueChange={setQuery}
         placeholder={
           project
-            ? `Search ${project.name}, or jump to a view`
-            : 'Jump to a view or project'
+            ? t('commandMenu.placeholderProject', { project: project.name })
+            : t('commandMenu.placeholder')
         }
       />
       <CommandList>
         <ScrollArea type='hover' className='h-80 pe-1'>
-          <CommandEmpty>Nothing matches.</CommandEmpty>
+          <CommandEmpty>{t('commandMenu.empty')}</CommandEmpty>
           {groups.map((group) => (
             <CommandGroup key={group.title} heading={group.title}>
               {group.items.map(
@@ -107,11 +109,16 @@ export function CommandMenu() {
 
           {project &&
             results &&
-            SEARCH_GROUPS.map(([key, label]) => {
+            SEARCH_GROUPS.map((key) => {
               const hits = results[key]
               if (!hits?.length) return null
               return (
-                <CommandGroup key={key} heading={`${label} in ${project.name}`}>
+                <CommandGroup
+                  key={key}
+                  heading={t(`commandMenu.resultsIn.${key}`, {
+                    project: project.name,
+                  })}
+                >
                   {hits.map((hit) => (
                     <CommandItem
                       key={`${key}-${hit.id}`}
@@ -150,7 +157,7 @@ export function CommandMenu() {
             })}
 
           {projects.length > 0 && (
-            <CommandGroup heading='Projects'>
+            <CommandGroup heading={t('common:terms.project_other')}>
               {projects.map((p) => (
                 <CommandItem
                   key={p.id}
@@ -169,15 +176,15 @@ export function CommandMenu() {
           )}
 
           <CommandSeparator />
-          <CommandGroup heading='Theme'>
+          <CommandGroup heading={t('theme.label')}>
             <CommandItem onSelect={() => run(() => setTheme('light'))}>
-              <Sun /> Light
+              <Sun /> {t('theme.light')}
             </CommandItem>
             <CommandItem onSelect={() => run(() => setTheme('dark'))}>
-              <Moon /> Dark
+              <Moon /> {t('theme.dark')}
             </CommandItem>
             <CommandItem onSelect={() => run(() => setTheme('system'))}>
-              <Laptop /> Match system
+              <Laptop /> {t('theme.matchSystem')}
             </CommandItem>
           </CommandGroup>
         </ScrollArea>

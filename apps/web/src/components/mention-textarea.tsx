@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/taiga/client'
 import type { Project } from '@/lib/taiga/types'
 import { cn } from '@/lib/utils'
@@ -44,6 +45,7 @@ export function MentionTextarea({
   value: string
   onChange: (value: string) => void
 }) {
+  const { t } = useTranslation('shell')
   const ref = useRef<HTMLTextAreaElement>(null)
   const [caret, setCaret] = useState(0)
   const [activeState, setActive] = useState({ key: '', index: 0 })
@@ -164,7 +166,9 @@ export function MentionTextarea({
       {open && suggestions.length > 0 && (
         <ul
           role='listbox'
-          aria-label={token!.trigger === '@' ? 'People' : 'Items'}
+          aria-label={
+            token!.trigger === '@' ? t('mention.people') : t('mention.items')
+          }
           className='absolute inset-x-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-md border bg-popover p-1 text-sm shadow-md'
         >
           {suggestions.map((s, i) => (

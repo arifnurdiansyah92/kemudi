@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useCreateTask, useTasks, useUpdateTask } from '@/lib/taiga/queries'
 import type { Item, Project, Task } from '@/lib/taiga/types'
 import { cn } from '@/lib/utils'
@@ -15,6 +16,7 @@ export function StoryTasks({
   project: Project
   story: Item
 }) {
+  const { t } = useTranslation('item')
   const tasks = useTasks(story.id)
   const create = useCreateTask(project)
   const update = useUpdateTask(project)
@@ -34,13 +36,13 @@ export function StoryTasks({
 
   if (tasks.isPending) return <Skeleton className='h-16 w-full' />
   const list = tasks.data ?? []
-  const done = list.filter((t) => t.is_closed).length
+  const done = list.filter((task) => task.is_closed).length
 
   return (
     <div className='grid gap-1'>
       {list.length > 0 && (
         <p className='mb-1 text-xs text-muted-foreground tabular-nums'>
-          {done} of {list.length} done
+          {t('tasks.progress', { done, total: list.length })}
         </p>
       )}
       <ul className='grid gap-0.5'>
@@ -54,7 +56,11 @@ export function StoryTasks({
               className='flex items-center gap-3 rounded-md px-1 py-1.5 text-sm hover:bg-accent/50'
             >
               <Checkbox
-                aria-label={`Mark #${task.ref} ${task.is_closed ? 'not done' : 'done'}`}
+                aria-label={
+                  task.is_closed
+                    ? t('tasks.markNotDone', { ref: task.ref })
+                    : t('tasks.markDone', { ref: task.ref })
+                }
                 checked={task.is_closed}
                 disabled={!canEdit || !closedStatus}
                 onCheckedChange={(v) => toggle(task, v === true)}
@@ -93,8 +99,8 @@ export function StoryTasks({
           <input
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
-            placeholder='Add a task and press Enter'
-            aria-label='New task'
+            placeholder={t('tasks.addPlaceholder')}
+            aria-label={t('tasks.new')}
             className='h-9 w-full rounded-md border border-dashed bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-solid focus-visible:ring-2 focus-visible:ring-ring'
           />
         </form>

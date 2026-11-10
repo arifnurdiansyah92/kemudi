@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useProjects } from '@/lib/taiga/queries'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -8,29 +9,32 @@ import { Main } from '@/components/layout/main'
 import { ProjectList } from './project-list'
 
 export function Projects() {
+  const { t } = useTranslation(['home', 'common'])
   const { data: projects, isPending, isError, refetch } = useProjects()
 
   return (
     <>
-      <AppHeader crumbs={[{ label: 'Projects' }]} />
+      <AppHeader crumbs={[{ label: t('common:terms.project_other') }]} />
       <Main className='max-w-4xl'>
         <div className='flex flex-wrap items-end justify-between gap-3'>
           <div>
-            <h1 className='text-2xl font-semibold tracking-tight'>Projects</h1>
+            <h1 className='text-2xl font-semibold tracking-tight'>
+              {t('common:terms.project_other')}
+            </h1>
             <p className='mt-1 text-sm text-muted-foreground'>
-              Every project you are a member of; drag to put them in your order.{' '}
+              {t('projects.intro')}{' '}
               <Link
                 to='/discover'
                 className='text-foreground underline-offset-4 hover:underline'
               >
-                Discover public projects
+                {t('projects.discoverLink')}
               </Link>
             </p>
           </div>
           <Button size='sm' asChild>
             <Link to='/projects/new'>
               <Plus />
-              New project
+              {t('projects.newProject')}
             </Link>
           </Button>
         </div>
@@ -44,19 +48,19 @@ export function Projects() {
             </div>
           ) : isError ? (
             <p className='text-sm'>
-              Projects could not be loaded.{' '}
+              {t('projects.loadFailed')}{' '}
               <button
                 className='underline underline-offset-4'
                 onClick={() => refetch()}
               >
-                Try again
+                {t('common:actions.retry')}
               </button>
             </p>
           ) : projects.length === 0 ? (
             <div className='rounded-lg border border-dashed p-10 text-center'>
-              <p className='font-medium'>No projects yet</p>
+              <p className='font-medium'>{t('projects.emptyTitle')}</p>
               <p className='mt-1 text-sm text-muted-foreground'>
-                Create one, or ask a project admin to invite you.
+                {t('projects.emptyHint')}
               </p>
             </div>
           ) : (

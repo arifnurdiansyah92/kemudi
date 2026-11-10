@@ -1,5 +1,6 @@
 /** Issues: the list, creation, and promoting issues or tasks to stories. */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import i18n from '@/i18n'
 import { toast } from 'sonner'
 import { api } from './client'
 import { KINDS, onFail, refreshLists } from './items'
@@ -33,7 +34,8 @@ export function useCreateIssue(project: Project) {
   return useMutation({
     mutationFn: async (input: NewIssue) =>
       (await api.post<Item>('/issues', { project: project.id, ...input })).data,
-    onSuccess: (issue) => toast.success(`Issue #${issue.ref} created`),
+    onSuccess: (issue) =>
+      toast.success(i18n.t('shell:toast.issueCreated', { ref: issue.ref })),
     onError: onFail,
     onSettled: () => refreshLists(qc),
   })

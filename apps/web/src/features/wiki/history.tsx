@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useFormat } from '@/i18n/format'
 import { ChevronRight } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/taiga/client'
 import type { HistoryChange, Id } from '@/lib/taiga/types'
-import { cn, timeAgo } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { UserAvatar } from '@/components/user-avatar'
 
 /** Who changed a wiki page and when, with each edit's diff. */
 export function WikiHistory({ pageId }: { pageId: Id }) {
+  const { t } = useTranslation(['pages', 'common'])
+  const { timeAgo } = useFormat()
   const [open, setOpen] = useState(false)
   const history = useQuery({
     queryKey: ['wiki-history', pageId],
@@ -28,14 +32,14 @@ export function WikiHistory({ pageId }: { pageId: Id }) {
         <ChevronRight
           className={cn('size-4 transition-transform', open && 'rotate-90')}
         />
-        History
+        {t('wiki.history.title')}
       </button>
       {open &&
         (history.isPending ? (
           <Skeleton className='mt-3 h-16 w-full' />
         ) : edits.length === 0 ? (
           <p className='mt-3 text-sm text-muted-foreground'>
-            No edits recorded since the page was written.
+            {t('wiki.history.empty')}
           </p>
         ) : (
           <ol className='mt-3 grid gap-3'>
@@ -54,7 +58,9 @@ export function WikiHistory({ pageId }: { pageId: Id }) {
                       />
                       <span className='font-medium'>{e.user.name}</span>
                       <span className='text-muted-foreground'>
-                        edited {timeAgo(e.created_at)}
+                        {t('wiki.history.edited', {
+                          when: timeAgo(e.created_at),
+                        })}
                       </span>
                     </summary>
                     {/* content_diff is built and escaped by kemudi-back. */}

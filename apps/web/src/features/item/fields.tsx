@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
+import { useFormat } from '@/i18n/format'
 import { Check, Plus, UserRound, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { KINDS, useUpdateItem } from '@/lib/taiga/items'
 import { useMilestones } from '@/lib/taiga/queries'
 import type { Item, ItemKind, Project, Tag } from '@/lib/taiga/types'
@@ -29,13 +31,14 @@ function useSave({ project, kind, item }: FieldProps) {
 }
 
 export function StatusField(props: FieldProps) {
+  const { t } = useTranslation('common')
   const save = useSave(props)
   const statuses = KINDS[props.kind]
     .statuses(props.project)
     .filter((s) => !s.is_archived || s.id === props.item.status)
   return (
     <OptionMenu
-      label='Status'
+      label={t('terms.status')}
       value={props.item.status}
       options={statuses}
       disabled={!props.editable}
@@ -48,13 +51,14 @@ export function StatusField(props: FieldProps) {
 export function AttributeField(
   props: FieldProps & { field: 'type' | 'priority' | 'severity' }
 ) {
+  const { t } = useTranslation('common')
   const save = useSave(props)
   const options = {
     type: props.project.issue_types,
     priority: props.project.priorities,
     severity: props.project.severities,
   }[props.field]
-  const label = props.field[0].toUpperCase() + props.field.slice(1)
+  const label = t(`terms.${props.field}`)
   return (
     <OptionMenu
       label={label}
@@ -67,6 +71,7 @@ export function AttributeField(
 }
 
 export function SprintField(props: FieldProps) {
+  const { t } = useTranslation(['item', 'common'])
   const save = useSave(props)
   const { data: sprints = [] } = useMilestones(props.project.id)
   const options = sprints.map((s) => ({ id: s.id, name: s.name }))
@@ -77,14 +82,14 @@ export function SprintField(props: FieldProps) {
   )
     options.push({
       id: props.item.milestone,
-      name: props.item.milestone_name ?? 'Closed sprint',
+      name: props.item.milestone_name ?? t('fields.closedSprint'),
     })
   return (
     <OptionMenu
-      label='Sprint'
+      label={t('common:terms.sprint', { count: 1 })}
       value={props.item.milestone}
       options={options}
-      emptyLabel='Backlog'
+      emptyLabel={t('common:terms.backlog')}
       disabled={!props.editable}
       onChange={(milestone) => save({ milestone })}
     />
@@ -93,6 +98,7 @@ export function SprintField(props: FieldProps) {
 
 /** One assignee, or several for stories (assigned_users). */
 export function AssigneeField(props: FieldProps) {
+  const { t } = useTranslation(['item', 'common'])
   const save = useSave(props)
   const { project, item, editable } = props
   const multi = props.kind === 'userstory'
@@ -121,7 +127,9 @@ export function AssigneeField(props: FieldProps) {
           <span className='flex size-6 items-center justify-center rounded-full border border-dashed text-muted-foreground'>
             <UserRound className='size-3.5' />
           </span>
-          <span className='text-sm text-muted-foreground'>Unassigned</span>
+          <span className='text-sm text-muted-foreground'>
+            {t('common:status.unassigned')}
+          </span>
         </>
       ) : (
         <>
@@ -147,7 +155,7 @@ export function AssigneeField(props: FieldProps) {
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger
         className='-mx-1 max-w-full rounded-md px-1 py-0.5 text-start outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring'
-        aria-label='Change assignee'
+        aria-label={t('fields.changeAssignee')}
       >
         {face}
       </DropdownMenuTrigger>
@@ -180,7 +188,9 @@ export function AssigneeField(props: FieldProps) {
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => set([])}>
-              Unassign {multi && ids.length > 1 ? 'everyone' : ''}
+              {multi && ids.length > 1
+                ? t('fields.unassignAll')
+                : t('fields.unassign')}
             </DropdownMenuItem>
           </>
         )}
@@ -190,6 +200,7 @@ export function AssigneeField(props: FieldProps) {
 }
 
 export function TagsField(props: FieldProps) {
+  const { t } = useTranslation(['item', 'common'])
   const save = useSave(props)
   const { project, item, editable } = props
   const [adding, setAdding] = useState(false)
@@ -200,7 +211,7 @@ export function TagsField(props: FieldProps) {
   const add = () => {
     const name = value.trim().toLowerCase()
     setValue('')
-    if (!name || item.tags.some(([t]) => t === name)) return
+    if (!name || item.tags.some(([tag]) => tag === name)) return
     setTags([...item.tags, [name, project.tags_colors[name] ?? null]])
   }
 
@@ -223,9 +234,11 @@ export function TagsField(props: FieldProps) {
             {name}
             {editable && (
               <button
-                aria-label={`Remove tag ${name}`}
+                aria-label={t('fields.removeTag', { name })}
                 className='rounded text-muted-foreground hover:text-foreground'
-                onClick={() => setTags(item.tags.filter(([t]) => t !== name))}
+                onClick={() =>
+                  setTags(item.tags.filter(([tag]) => tag !== name))
+                }
               >
                 <X className='size-3' />
               </button>
@@ -251,13 +264,13 @@ export function TagsField(props: FieldProps) {
                 setAdding(false)
               }}
               onKeyDown={(e) => e.key === 'Escape' && setAdding(false)}
-              placeholder='Tag name'
-              aria-label='New tag'
+              placeholder={t('fields.tagName')}
+              aria-label={t('fields.newTag')}
               className='h-6 w-32 px-2 text-xs'
             />
             <datalist id='project-tags'>
-              {known.map((t) => (
-                <option key={t} value={t} />
+              {known.map((tag) => (
+                <option key={tag} value={tag} />
               ))}
             </datalist>
           </form>
@@ -267,17 +280,21 @@ export function TagsField(props: FieldProps) {
             className='inline-flex h-6 items-center gap-1 rounded-sm border border-dashed px-1.5 text-xs text-muted-foreground hover:bg-accent'
           >
             <Plus className='size-3' />
-            Add tag
+            {t('fields.addTag')}
           </button>
         ))}
       {!editable && item.tags.length === 0 && (
-        <span className='text-sm text-muted-foreground'>None</span>
+        <span className='text-sm text-muted-foreground'>
+          {t('common:status.none')}
+        </span>
       )}
     </div>
   )
 }
 
 export function DueDateField(props: FieldProps) {
+  const { t } = useTranslation(['item', 'common'])
+  const fmt = useFormat()
   const save = useSave(props)
   const { item, editable } = props
   const reason =
@@ -285,7 +302,13 @@ export function DueDateField(props: FieldProps) {
   if (!editable)
     return (
       <span className='text-sm'>
-        {item.due_date ?? <span className='text-muted-foreground'>None</span>}
+        {item.due_date ? (
+          fmt.date(item.due_date)
+        ) : (
+          <span className='text-muted-foreground'>
+            {t('common:status.none')}
+          </span>
+        )}
         {item.due_date && reason && (
           <span className='text-muted-foreground'>, {reason}</span>
         )}
@@ -295,7 +318,7 @@ export function DueDateField(props: FieldProps) {
     <span className='inline-flex flex-wrap items-center gap-1'>
       <Input
         type='date'
-        aria-label='Due date'
+        aria-label={t('common:terms.dueDate')}
         value={item.due_date ?? ''}
         onChange={(e) => save({ due_date: e.target.value || null })}
         className={cn(
@@ -308,7 +331,7 @@ export function DueDateField(props: FieldProps) {
           variant='ghost'
           size='icon'
           className='size-7'
-          aria-label='Clear due date'
+          aria-label={t('fields.clearDueDate')}
           onClick={() => save({ due_date: null, due_date_reason: '' })}
         >
           <X />
@@ -316,8 +339,8 @@ export function DueDateField(props: FieldProps) {
       )}
       {item.due_date && (
         <Input
-          aria-label='Why this date'
-          placeholder='Why this date (optional)'
+          aria-label={t('fields.dueDateReason')}
+          placeholder={t('fields.dueDateReasonPlaceholder')}
           defaultValue={reason}
           onBlur={(e) =>
             e.target.value !== reason &&
@@ -332,6 +355,7 @@ export function DueDateField(props: FieldProps) {
 
 /** Who gets notified about changes; members can add others. */
 export function WatchersField(props: FieldProps) {
+  const { t } = useTranslation('item')
   const save = useSave(props)
   const { project, item, editable } = props
   const watchers = item.watchers
@@ -342,7 +366,9 @@ export function WatchersField(props: FieldProps) {
   const face = (
     <span className='inline-flex min-w-0 items-center gap-2'>
       {watchers.length === 0 ? (
-        <span className='text-sm text-muted-foreground'>Nobody</span>
+        <span className='text-sm text-muted-foreground'>
+          {t('fields.nobody')}
+        </span>
       ) : (
         <>
           <span className='flex -space-x-1.5'>
@@ -366,7 +392,7 @@ export function WatchersField(props: FieldProps) {
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger
         className='-mx-1 max-w-full rounded-md px-1 py-0.5 text-start outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring'
-        aria-label='Change watchers'
+        aria-label={t('fields.changeWatchers')}
       >
         {face}
       </DropdownMenuTrigger>
@@ -400,6 +426,7 @@ export function WatchersField(props: FieldProps) {
 
 /** Points per computable role, as Taiga estimates stories. */
 export function PointsField(props: FieldProps) {
+  const { t } = useTranslation('item')
   const save = useSave(props)
   const { project, item, editable } = props
   const roles = project.roles
@@ -415,7 +442,7 @@ export function PointsField(props: FieldProps) {
           <span key={role.id} className='inline-flex items-center gap-1.5'>
             <span className='text-xs text-muted-foreground'>{role.name}</span>
             <OptionMenu
-              label={`${role.name} points`}
+              label={t('fields.rolePoints', { role: role.name })}
               value={current[role.id]}
               options={points}
               disabled={!editable}
@@ -428,18 +455,21 @@ export function PointsField(props: FieldProps) {
         ))}
       </div>
       <span className='text-xs text-muted-foreground tabular-nums'>
-        Total: {item.total_points ?? 'not estimated'}
+        {t('fields.totalPoints', {
+          total: item.total_points ?? t('fields.notEstimated'),
+        })}
       </span>
     </div>
   )
 }
 
 export function FlagsField(props: FieldProps) {
+  const { t } = useTranslation('item')
   const save = useSave(props)
   const { item, editable } = props
   const flags = [
-    ['client_requirement', 'Client requirement'],
-    ['team_requirement', 'Team requirement'],
+    ['client_requirement', t('fields.clientRequirement')],
+    ['team_requirement', t('fields.teamRequirement')],
   ] as const
   return (
     <div className='flex flex-wrap gap-1.5'>
@@ -465,6 +495,7 @@ export function FlagsField(props: FieldProps) {
 }
 
 export function IocaineField(props: FieldProps) {
+  const { t } = useTranslation('item')
   const save = useSave(props)
   const on = !!props.item.is_iocaine
   return (
@@ -472,7 +503,7 @@ export function IocaineField(props: FieldProps) {
       disabled={!props.editable}
       aria-pressed={on}
       onClick={() => save({ is_iocaine: !on })}
-      title='A task that is hard, risky or new to the team'
+      title={t('fields.iocaineHint')}
       className={cn(
         'h-7 rounded-full border px-2.5 text-xs',
         on
@@ -480,19 +511,20 @@ export function IocaineField(props: FieldProps) {
           : 'text-muted-foreground hover:bg-accent'
       )}
     >
-      Iocaine
+      {t('fields.iocaine')}
     </button>
   )
 }
 
 export function ColorField(props: FieldProps) {
+  const { t } = useTranslation('item')
   const save = useSave(props)
   const [color, setColor] = useState(props.item.color ?? '#999999')
   const timer = useRef<number | undefined>(undefined)
   return (
     <input
       type='color'
-      aria-label='Epic colour'
+      aria-label={t('fields.epicColour')}
       disabled={!props.editable}
       value={color}
       onChange={(e) => {

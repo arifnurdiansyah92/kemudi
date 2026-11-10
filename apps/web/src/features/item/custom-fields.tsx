@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   useCustomAttributes,
   useCustomValues,
@@ -31,6 +32,7 @@ export function CustomFields({
   item: Item
   editable: boolean
 }) {
+  const { t } = useTranslation('item')
   const attributes = useCustomAttributes(project, kind)
   const hasAttributes = (attributes.data?.length ?? 0) > 0
   const values = useCustomValues(kind, item.id, hasAttributes)
@@ -44,7 +46,7 @@ export function CustomFields({
 
   return (
     <section className='border-t px-6 py-5'>
-      <h3 className='mb-3 text-sm font-semibold'>Custom fields</h3>
+      <h3 className='mb-3 text-sm font-semibold'>{t('customFields.title')}</h3>
       <dl className='grid grid-cols-[7rem_1fr] items-start gap-x-4 gap-y-3 text-sm'>
         {attributes.data!.map((attr) => (
           <div key={attr.id} className='contents'>
@@ -80,6 +82,7 @@ function CustomInput({
   editable: boolean
   onSave: (v: Value) => void
 }) {
+  const { t } = useTranslation('item')
   const [draft, setDraft] = useState(value === null ? '' : String(value))
   const commit = () => {
     const next =
@@ -111,7 +114,9 @@ function CustomInput({
     ) : (
       <span className='block pt-1.5 whitespace-pre-wrap'>
         {value === null || value === '' ? (
-          <span className='text-muted-foreground'>Empty</span>
+          <span className='text-muted-foreground'>
+            {t('customFields.empty')}
+          </span>
         ) : (
           String(value)
         )}
@@ -126,7 +131,7 @@ function CustomInput({
         onChange={(e) => onSave(e.target.value || null)}
         className='h-8 w-full rounded-md border bg-transparent px-2 text-sm'
       >
-        <option value=''>Empty</option>
+        <option value=''>{t('customFields.empty')}</option>
         {(attr.extra ?? []).map((choice) => (
           <option key={choice} value={choice}>
             {choice}

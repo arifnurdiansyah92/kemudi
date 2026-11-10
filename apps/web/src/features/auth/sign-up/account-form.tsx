@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { apiErrorMessage, type NewAccount } from '@/lib/taiga/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PasswordInput } from '@/components/password-input'
+
+const MIN_PASSWORD = 6
 
 /** Fields for a new account; `onSubmit` registers and signs in. */
 export function AccountForm({
@@ -17,6 +20,7 @@ export function AccountForm({
   submitLabel: string
   onSubmit: (account: NewAccount) => Promise<unknown>
 }) {
+  const { t } = useTranslation('auth')
   const [form, setForm] = useState<NewAccount>({
     username: '',
     full_name: '',
@@ -30,7 +34,7 @@ export function AccountForm({
     form.username.trim() &&
     form.full_name.trim() &&
     /\S+@\S+/.test(form.email) &&
-    form.password.length >= 6
+    form.password.length >= MIN_PASSWORD
 
   return (
     <form
@@ -48,7 +52,7 @@ export function AccountForm({
             email: form.email.trim(),
           })
         } catch (err) {
-          setError(apiErrorMessage(err, 'The account could not be created.'))
+          setError(apiErrorMessage(err, t('accountForm.failed')))
         } finally {
           setBusy(false)
         }
@@ -60,7 +64,7 @@ export function AccountForm({
         </Alert>
       )}
       <div className='grid gap-1.5'>
-        <Label htmlFor='su-name'>Full name</Label>
+        <Label htmlFor='su-name'>{t('fields.fullName')}</Label>
         <Input
           id='su-name'
           autoComplete='name'
@@ -69,7 +73,7 @@ export function AccountForm({
         />
       </div>
       <div className='grid gap-1.5'>
-        <Label htmlFor='su-username'>Username</Label>
+        <Label htmlFor='su-username'>{t('fields.username')}</Label>
         <Input
           id='su-username'
           autoComplete='username'
@@ -78,7 +82,7 @@ export function AccountForm({
         />
       </div>
       <div className='grid gap-1.5'>
-        <Label htmlFor='su-email'>Email</Label>
+        <Label htmlFor='su-email'>{t('fields.email')}</Label>
         <Input
           id='su-email'
           type='email'
@@ -88,19 +92,18 @@ export function AccountForm({
         />
       </div>
       <div className='grid gap-1.5'>
-        <Label htmlFor='su-password'>Password</Label>
+        <Label htmlFor='su-password'>{t('fields.password')}</Label>
         <PasswordInput
           id='su-password'
           autoComplete='new-password'
           value={form.password}
           onChange={(e) => set({ password: e.target.value })}
         />
-        <p className='text-xs text-muted-foreground'>At least 6 characters.</p>
+        <p className='text-xs text-muted-foreground'>
+          {t('accountForm.passwordHint', { min: MIN_PASSWORD })}
+        </p>
       </div>
-      <p className='text-xs text-muted-foreground'>
-        Creating an account accepts this server's terms of service and privacy
-        policy.
-      </p>
+      <p className='text-xs text-muted-foreground'>{t('accountForm.terms')}</p>
       <Button type='submit' disabled={!valid || busy}>
         {busy && <Loader2 className='animate-spin' />}
         {submitLabel}

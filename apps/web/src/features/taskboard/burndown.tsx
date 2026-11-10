@@ -1,4 +1,6 @@
-import { format, parseISO } from 'date-fns'
+import { format } from 'date-fns'
+import { useFormat } from '@/i18n/format'
+import { useTranslation } from 'react-i18next'
 import type { SprintStats } from '@/lib/taiga/sprints'
 
 const W = 360
@@ -10,6 +12,8 @@ const PAD = { top: 8, right: 8, bottom: 18, left: 28 }
  * actual value yet, so the actual line stops at today.
  */
 export function Burndown({ stats }: { stats: SprintStats }) {
+  const { t } = useTranslation(['backlog', 'common'])
+  const { date, number } = useFormat()
   const days = stats.days
   if (days.length < 2) return null
   const max = Math.max(
@@ -29,6 +33,7 @@ export function Burndown({ stats }: { stats: SprintStats }) {
   const actualDays = days.filter((d) => d.day <= today)
   const actual = line(actualDays.map((d, i) => [x(i), y(d.open_points)]))
   const last = actualDays[actualDays.length - 1]
+  const dayLabel = (i: number) => date(days[i].day, 'dayMonth')
 
   return (
     <figure className='min-w-0'>
@@ -36,7 +41,15 @@ export function Burndown({ stats }: { stats: SprintStats }) {
         viewBox={`0 0 ${W} ${H}`}
         className='h-auto w-full max-w-[360px]'
         role='img'
-        aria-label={`Burndown: ${last ? `${last.open_points} points open on ${last.day}` : 'not started'}, out of ${max}`}
+        aria-label={
+          last
+            ? t('burndown.ariaProgress', {
+                points: number(last.open_points),
+                date: date(last.day),
+                max: number(max),
+              })
+            : t('burndown.ariaNotStarted', { max: number(max) })
+        }
       >
         {[0, 0.5, 1].map((t) => (
           <g key={t}>
@@ -89,21 +102,21 @@ export function Burndown({ stats }: { stats: SprintStats }) {
             textAnchor={i ? 'end' : 'start'}
             className='fill-muted-foreground text-[9px]'
           >
-            {format(parseISO(days[i].day), 'd MMM')}
+            {dayLabel(i)}
           </text>
         ))}
       </svg>
       <figcaption className='mt-1 flex gap-4 text-xs text-muted-foreground'>
         <span className='inline-flex items-center gap-1.5'>
           <span className='h-0.5 w-4 bg-brass' aria-hidden='true' />
-          Open points
+          {t('burndown.openPoints')}
         </span>
         <span className='inline-flex items-center gap-1.5'>
           <span
             className='h-0 w-4 border-t border-dashed border-muted-foreground'
             aria-hidden='true'
           />
-          Ideal
+          {t('burndown.ideal')}
         </span>
       </figcaption>
     </figure>

@@ -1,1 +1,159 @@
-{}
+{
+  "home": {
+    "title": "Home",
+    "greeting": "Hello, {{name}}",
+    "workingOn": "Working on",
+    "workingOnEmpty": "Nothing is assigned to you. Pick something up from a backlog.",
+    "watching": "Watching",
+    "watchingEmpty": "Watch a story, task or issue to follow its changes here.",
+    "allProjects": "All projects",
+    "itemMeta": "{{project}}, {{time}}"
+  },
+  "projects": {
+    "intro": "Every project you are a member of; drag to put them in your order.",
+    "discoverLink": "Discover public projects",
+    "newProject": "New project",
+    "loadFailed": "Projects could not be loaded.",
+    "emptyTitle": "No projects yet",
+    "emptyHint": "Create one, or ask a project admin to invite you.",
+    "list": {
+      "move": "Move {{name}}",
+      "private": "Private",
+      "updated": "Updated {{time}}"
+    },
+    "new": {
+      "templateLegend": "How the team works",
+      "templates": {
+        "scrum": "A prioritised backlog, planned into time-boxed sprints with a taskboard.",
+        "kanban": "A board of columns that work flows through, with limits on work in progress."
+      },
+      "templatesLater": "Both can be switched on later in project settings.",
+      "name": "Name",
+      "descriptionPlaceholder": "What the project is for, in a sentence or two.",
+      "visibility": "Who can see it",
+      "private": "Private",
+      "privateHint": "Only members see the project.",
+      "public": "Public",
+      "publicHint": "Anyone can view it and find it in Discover; only members can change it.",
+      "submit": "Create project"
+    },
+    "import": {
+      "title": "Import a project",
+      "intro": "Restore a project from an export file made by Kemudi or Taiga (Settings, Import and export).",
+      "choose": "Choose export file",
+      "started": "Import started. You get an email when the project is ready.",
+      "failed": "That file could not be imported."
+    },
+    "contact": {
+      "title": "Contact {{name}}",
+      "description": "The project admins get your message by email, with your name and address so they can reply.",
+      "message": "Message",
+      "placeholder": "I would like to help with…",
+      "send": "Send message",
+      "sent": "Message sent to the {{name}} admins"
+    },
+    "duplicate": {
+      "copyName": "{{name}} (copy)",
+      "title": "Duplicate {{name}}",
+      "description": "The copy keeps settings, statuses, roles and custom fields, but no stories, tasks or issues.",
+      "nameLabel": "Name of the copy",
+      "membersLegend": "Members to bring along",
+      "submit": "Duplicate project"
+    },
+    "discover": {
+      "title": "Discover",
+      "intro": "Public projects on this server, most liked first.",
+      "search": "Search public projects",
+      "noMatch": "No public project matches.",
+      "empty": "No public projects yet. Make a project public in its settings to list it here.",
+      "contact": "Contact",
+      "like": "Like {{name}}",
+      "unlike": "Unlike {{name}}",
+      "watch": "Watch {{name}}",
+      "unwatch": "Stop watching {{name}}"
+    }
+  },
+  "profile": {
+    "people": "People",
+    "notFound": "Nobody here is called @{{username}}.",
+    "loadFailed": "This profile could not be loaded.",
+    "edit": "Edit profile",
+    "stats": {
+      "storiesClosed": "Stories closed",
+      "contacts": "Contacts"
+    },
+    "tabs": {
+      "activity": "Activity",
+      "watching": "Watching",
+      "liked": "Liked projects",
+      "votes": "Votes",
+      "contacts": "Contacts"
+    },
+    "empty": "Nothing here yet.",
+    "noContacts": "No contacts yet."
+  },
+  "notifications": {
+    "title": "Notifications",
+    "unreadLabel": "Notifications, {{unread}} unread",
+    "markAllRead": "Mark all as read",
+    "empty": "Nothing new. You hear about assignments, mentions and comments here.",
+    "unread": "Unread",
+    "meta": "{{time}} in {{project}}",
+    "events": {
+      "assigned": "<user>{{user}}</user> <muted>assigned you to</muted> <target>{{target}}</target>",
+      "mentioned": "<user>{{user}}</user> <muted>mentioned you in</muted> <target>{{target}}</target>",
+      "addedWatcher": "<user>{{user}}</user> <muted>added you as a watcher of</muted> <target>{{target}}</target>",
+      "addedToProject": "<user>{{user}}</user> <muted>added you to the project</muted> <target>{{target}}</target>",
+      "commented": "<user>{{user}}</user> <muted>commented on</muted> <target>{{target}}</target>",
+      "mentionedInComment": "<user>{{user}}</user> <muted>mentioned you in a comment on</muted> <target>{{target}}</target>"
+    }
+  },
+  "timeline": {
+    "empty": "Nothing has happened yet.",
+    "someone": "Someone",
+    "older": "Show older activity",
+    "meta": "{{time}} in {{project}}",
+    "nouns": {
+      "story": "story",
+      "task": "task",
+      "issue": "issue",
+      "epic": "epic",
+      "wikiPage": "wiki page",
+      "sprint": "sprint",
+      "project": "project",
+      "membership": "membership"
+    },
+    "events": {
+      "created": "<user>{{user}}</user> <muted>created {{noun}}</muted> <target>{{target}}</target>",
+      "deleted": "<user>{{user}}</user> <muted>deleted {{noun}}</muted> <target>{{target}}</target>",
+      "commented": "<user>{{user}}</user> <muted>commented on {{noun}}</muted> <target>{{target}}</target>",
+      "changed": "<user>{{user}}</user> <muted>{{changes}} on {{noun}}</muted> <target>{{target}}</target>",
+      "updated": "<user>{{user}}</user> <muted>updated {{noun}}</muted> <target>{{target}}</target>",
+      "addedMember": "<user>{{user}}</user> <muted>added a member to the project</muted> <target>{{target}}</target>",
+      "addedStoryToEpic": "<user>{{user}}</user> <muted>added a story to epic</muted> <target>{{target}}</target><muted> {{epic}}</muted>"
+    }
+  },
+  "team": {
+    "activity": "Activity",
+    "membersTab": "Members ({{total}})",
+    "you": "you",
+    "stats": {
+      "closedTasks_one": "task closed",
+      "closedTasks_other": "tasks closed",
+      "createdBugs_one": "issue reported",
+      "createdBugs_other": "issues reported",
+      "closedBugs_one": "issue closed",
+      "closedBugs_other": "issues closed",
+      "iocaineTasks_one": "iocaine task",
+      "iocaineTasks_other": "iocaine tasks",
+      "wikiChanges_one": "wiki edit",
+      "wikiChanges_other": "wiki edits"
+    },
+    "leave": {
+      "button": "Leave this project",
+      "title": "Leave {{name}}?",
+      "description": "You lose access until an admin invites you again.",
+      "confirm": "Leave project"
+    }
+  }
+}

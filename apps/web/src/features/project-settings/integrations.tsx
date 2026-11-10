@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Copy } from 'lucide-react'
+import { Trans, useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { api } from '@/lib/taiga/client'
 import { onFail } from '@/lib/taiga/items'
@@ -20,34 +21,16 @@ type Modules = Partial<
   Record<'github' | 'gitlab' | 'bitbucket' | 'gogs', ServiceConfig>
 >
 
-const SERVICES: { key: keyof Modules; name: string; where: string }[] = [
-  {
-    key: 'github',
-    name: 'GitHub',
-    where:
-      'Repository settings, Webhooks: content type application/json, the secret below, events "push", "issues" and "issue comment".',
-  },
-  {
-    key: 'gitlab',
-    name: 'GitLab',
-    where:
-      'Project settings, Webhooks: the URL below (it carries the key), triggers "push", "issues" and "comments".',
-  },
-  {
-    key: 'bitbucket',
-    name: 'Bitbucket',
-    where:
-      'Repository settings, Webhooks: the URL below, triggers "repository push" and issue events.',
-  },
-  {
-    key: 'gogs',
-    name: 'Gogs',
-    where:
-      'Repository settings, Webhooks: content type application/json, the secret below.',
-  },
+/** Code hosts by brand name; setup steps are integrations.services.<key>. */
+const SERVICES: { key: keyof Modules; name: string }[] = [
+  { key: 'github', name: 'GitHub' },
+  { key: 'gitlab', name: 'GitLab' },
+  { key: 'bitbucket', name: 'Bitbucket' },
+  { key: 'gogs', name: 'Gogs' },
 ]
 
 function CopyField({ label, value }: { label: string; value: string }) {
+  const { t } = useTranslation(['admin', 'common'])
   return (
     <div className='grid gap-1.5'>
       <Label>{label}</Label>
@@ -64,11 +47,11 @@ function CopyField({ label, value }: { label: string; value: string }) {
           onClick={() =>
             navigator.clipboard
               ?.writeText(value)
-              .then(() => toast.success(`${label} copied`))
+              .then(() => toast.success(t('integrations.copied', { label })))
           }
         >
           <Copy />
-          Copy
+          {t('common:actions.copy')}
         </Button>
       </div>
     </div>
@@ -76,6 +59,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
 }
 
 export function IntegrationsSettings() {
+  const { t } = useTranslation(['admin', 'common'])
   const project = useProject()
   const qc = useQueryClient()
   const key = ['modules', project.id]
@@ -87,7 +71,7 @@ export function IntegrationsSettings() {
   const save = useMutation({
     mutationFn: (patch: Modules) =>
       api.patch(`/projects/${project.id}/modules`, patch),
-    onSuccess: () => toast.success('Integration saved'),
+    onSuccess: () => toast.success(t('integrations.saved')),
     onError: onFail,
     onSettled: () => qc.invalidateQueries({ queryKey: key }),
   })
@@ -95,28 +79,40 @@ export function IntegrationsSettings() {
   return (
     <div className='grid gap-6'>
       <SettingsSection
-        title='Commits and issues from code hosting'
+        title={t('integrations.intro.title')}
         description={
-          <>
-            Mention an item in a commit message to link it, and add a status to
-            move it: <code className='rounded bg-muted px-1'>TG-12 #done</code>{' '}
-            closes item 12 with the status whose slug is <em>done</em>. Issues
-            opened on the code host can create Kemudi issues too.
-          </>
+          <Trans
+            t={t}
+            i18nKey='integrations.intro.description'
+            components={{
+              code: <code className='rounded bg-muted px-1' />,
+              em: <em />,
+            }}
+          />
         }
       >
         {modules.isPending && <Skeleton className='h-40 w-full' />}
       </SettingsSection>
       {modules.data &&
-        SERVICES.map(({ key: k, name, where }) => {
+        SERVICES.map(({ key: k, name }) => {
           const cfg = modules.data?.[k]
           if (!cfg) return null
           return (
-            <SettingsSection key={k} title={name} description={where}>
+            <SettingsSection
+              key={k}
+              title={name}
+              description={t(`integrations.services.${k}`)}
+            >
               <div className='grid gap-3'>
-                <CopyField label='Webhook URL' value={cfg.webhooks_url} />
+                <CopyField
+                  label={t('integrations.webhookUrl')}
+                  value={cfg.webhooks_url}
+                />
                 {cfg.secret && k !== 'gitlab' && (
-                  <CopyField label='Secret key' value={cfg.secret} />
+                  <CopyField
+                    label={t('integrations.secret')}
+                    value={cfg.secret}
+                  />
                 )}
                 {cfg.valid_origin_ips && (
                   <OriginIps
@@ -142,16 +138,17 @@ function OriginIps({
   ips: string[]
   onSave: (ips: string[]) => void
 }) {
+  const { t } = useTranslation(['admin', 'common'])
   const [text, setText] = useState(ips.join(', '))
   return (
     <div className='grid gap-1.5'>
-      <Label htmlFor='origin-ips'>Accept hooks only from these addresses</Label>
+      <Label htmlFor='origin-ips'>{t('integrations.originIps')}</Label>
       <div className='flex gap-2'>
         <Input
           id='origin-ips'
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder='Any address'
+          placeholder={t('integrations.anyAddress')}
           className='h-8 min-w-0 flex-1 text-xs'
         />
         <Button
@@ -166,11 +163,11 @@ function OriginIps({
             )
           }
         >
-          Save
+          {t('common:actions.save')}
         </Button>
       </div>
       <p className='text-xs text-muted-foreground'>
-        IP addresses or ranges (CIDR), separated by commas. Empty accepts any.
+        {t('integrations.originIpsHint')}
       </p>
     </div>
   )

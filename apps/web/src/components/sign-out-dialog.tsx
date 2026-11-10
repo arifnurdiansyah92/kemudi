@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 
@@ -9,6 +10,7 @@ interface SignOutDialogProps {
 }
 
 export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
+  const { t } = useTranslation('shell')
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const reset = useAuthStore((s) => s.reset)
@@ -23,9 +25,9 @@ export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
     <ConfirmDialog
       open={open}
       onOpenChange={onOpenChange}
-      title='Sign out of Kemudi?'
-      desc='You will need your username and password to sign in again.'
-      confirmText='Sign out'
+      title={t('signOut.title')}
+      desc={t('signOut.description')}
+      confirmText={t('signOut.confirm')}
       destructive
       handleConfirm={handleSignOut}
       className='sm:max-w-sm'

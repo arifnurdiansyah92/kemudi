@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
 import {
   useApplicationTokens,
@@ -41,12 +42,13 @@ export function ProfileSettings() {
 }
 
 function Photo({ me }: { me: Me }) {
+  const { t } = useTranslation('settings')
   const { change, remove } = useAvatar()
   const input = useRef<HTMLInputElement>(null)
   return (
     <SettingsSection
-      title='Photo'
-      description='Shown next to your name everywhere in Kemudi.'
+      title={t('photo.title')}
+      description={t('photo.description')}
     >
       <div className='flex items-center gap-4'>
         <UserAvatar
@@ -71,11 +73,11 @@ function Photo({ me }: { me: Me }) {
           disabled={change.isPending}
         >
           {change.isPending && <Loader2 className='animate-spin' />}
-          Upload photo
+          {t('photo.upload')}
         </Button>
         {me.photo && (
           <Button variant='ghost' size='sm' onClick={() => remove.mutate()}>
-            Remove
+            {t('photo.remove')}
           </Button>
         )}
       </div>
@@ -84,6 +86,7 @@ function Photo({ me }: { me: Me }) {
 }
 
 function ProfileForm({ me }: { me: Me }) {
+  const { t } = useTranslation('settings')
   const update = useUpdateMe()
   const locales = useLocales()
   const [form, setForm] = useState({
@@ -100,7 +103,7 @@ function ProfileForm({ me }: { me: Me }) {
     ).supportedValuesOf?.('timeZone') ?? []
 
   return (
-    <SettingsSection title='About you'>
+    <SettingsSection title={t('profile.title')}>
       <form
         className='grid gap-4'
         onSubmit={(e) => {
@@ -114,7 +117,7 @@ function ProfileForm({ me }: { me: Me }) {
       >
         <div className='grid gap-4 sm:grid-cols-2'>
           <div className='grid gap-1.5'>
-            <Label htmlFor='me-name'>Full name</Label>
+            <Label htmlFor='me-name'>{t('profile.fullName')}</Label>
             <Input
               id='me-name'
               value={form.full_name}
@@ -122,7 +125,7 @@ function ProfileForm({ me }: { me: Me }) {
             />
           </div>
           <div className='grid gap-1.5'>
-            <Label htmlFor='me-username'>Username</Label>
+            <Label htmlFor='me-username'>{t('profile.username')}</Label>
             <Input
               id='me-username'
               value={form.username}
@@ -131,26 +134,26 @@ function ProfileForm({ me }: { me: Me }) {
           </div>
         </div>
         <div className='grid gap-1.5'>
-          <Label htmlFor='me-bio'>Bio</Label>
+          <Label htmlFor='me-bio'>{t('profile.bio')}</Label>
           <Textarea
             id='me-bio'
             rows={3}
             maxLength={210}
             value={form.bio}
             onChange={(e) => set({ bio: e.target.value })}
-            placeholder='What you work on, in a line or two.'
+            placeholder={t('profile.bioPlaceholder')}
           />
         </div>
         <div className='grid gap-4 sm:grid-cols-2'>
           <div className='grid gap-1.5'>
-            <Label htmlFor='me-lang'>Language of emails</Label>
+            <Label htmlFor='me-lang'>{t('profile.language')}</Label>
             <select
               id='me-lang'
               value={form.lang}
               onChange={(e) => set({ lang: e.target.value })}
               className='h-9 rounded-md border bg-transparent px-2 text-sm'
             >
-              <option value=''>Server default</option>
+              <option value=''>{t('profile.serverDefault')}</option>
               {(locales.data ?? []).map((l) => (
                 <option key={l.code} value={l.code}>
                   {l.name}
@@ -159,14 +162,14 @@ function ProfileForm({ me }: { me: Me }) {
             </select>
           </div>
           <div className='grid gap-1.5'>
-            <Label htmlFor='me-tz'>Time zone</Label>
+            <Label htmlFor='me-tz'>{t('profile.timezone')}</Label>
             <select
               id='me-tz'
               value={form.timezone}
               onChange={(e) => set({ timezone: e.target.value })}
               className='h-9 rounded-md border bg-transparent px-2 text-sm'
             >
-              <option value=''>Server default</option>
+              <option value=''>{t('profile.serverDefault')}</option>
               {zones.map((z) => (
                 <option key={z} value={z}>
                   {z.replace(/_/g, ' ')}
@@ -181,7 +184,7 @@ function ProfileForm({ me }: { me: Me }) {
             disabled={!form.username.trim() || update.isPending}
           >
             {update.isPending && <Loader2 className='animate-spin' />}
-            Save profile
+            {t('profile.save')}
           </Button>
         </div>
       </form>
@@ -203,13 +206,14 @@ export function AccountSettings() {
 }
 
 function PasswordForm() {
+  const { t } = useTranslation('settings')
   const change = useChangePassword()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [again, setAgain] = useState('')
   const mismatch = !!again && next !== again
   return (
-    <SettingsSection title='Password'>
+    <SettingsSection title={t('password.title')}>
       <form
         className='grid max-w-sm gap-3'
         onSubmit={(e) => {
@@ -228,7 +232,7 @@ function PasswordForm() {
         }}
       >
         <div className='grid gap-1.5'>
-          <Label htmlFor='pw-current'>Current password</Label>
+          <Label htmlFor='pw-current'>{t('password.current')}</Label>
           <PasswordInput
             id='pw-current'
             autoComplete='current-password'
@@ -237,7 +241,7 @@ function PasswordForm() {
           />
         </div>
         <div className='grid gap-1.5'>
-          <Label htmlFor='pw-new'>New password</Label>
+          <Label htmlFor='pw-new'>{t('password.new')}</Label>
           <PasswordInput
             id='pw-new'
             autoComplete='new-password'
@@ -246,7 +250,7 @@ function PasswordForm() {
           />
         </div>
         <div className='grid gap-1.5'>
-          <Label htmlFor='pw-again'>Repeat the new password</Label>
+          <Label htmlFor='pw-again'>{t('password.again')}</Label>
           <PasswordInput
             id='pw-again'
             autoComplete='new-password'
@@ -254,9 +258,7 @@ function PasswordForm() {
             onChange={(e) => setAgain(e.target.value)}
           />
           {mismatch && (
-            <p className='text-sm text-destructive'>
-              The passwords do not match.
-            </p>
+            <p className='text-sm text-destructive'>{t('password.mismatch')}</p>
           )}
         </div>
         <div>
@@ -267,7 +269,7 @@ function PasswordForm() {
             }
           >
             {change.isPending && <Loader2 className='animate-spin' />}
-            Change password
+            {t('password.submit')}
           </Button>
         </div>
       </form>
@@ -276,12 +278,13 @@ function PasswordForm() {
 }
 
 function EmailForm({ me }: { me: Me }) {
+  const { t } = useTranslation('settings')
   const update = useUpdateMe()
   const [email, setEmail] = useState(me.email)
   return (
     <SettingsSection
-      title='Email'
-      description='Kemudi sends a confirmation link to the new address; the change applies once you open it.'
+      title={t('email.title')}
+      description={t('email.description')}
     >
       <form
         className='flex max-w-md flex-wrap gap-2'
@@ -293,7 +296,7 @@ function EmailForm({ me }: { me: Me }) {
       >
         <Input
           type='email'
-          aria-label='Email'
+          aria-label={t('email.label')}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className='min-w-56 flex-1'
@@ -303,12 +306,12 @@ function EmailForm({ me }: { me: Me }) {
           variant='outline'
           disabled={!email.trim() || email === me.email}
         >
-          Change email
+          {t('email.submit')}
         </Button>
       </form>
       {!me.verified_email && (
         <p className='mt-2 text-sm text-muted-foreground'>
-          This address is not confirmed yet. Look for the link in your inbox.
+          {t('email.unverified')}
         </p>
       )}
     </SettingsSection>
@@ -316,6 +319,7 @@ function EmailForm({ me }: { me: Me }) {
 }
 
 function DeleteAccount() {
+  const { t } = useTranslation('settings')
   const del = useDeleteAccount()
   const reset = useAuthStore((s) => s.reset)
   const qc = useQueryClient()
@@ -324,18 +328,18 @@ function DeleteAccount() {
   return (
     <SettingsSection
       danger
-      title='Delete your account'
-      description='You are removed from every project and can no longer sign in. Stories, comments and other work you did stay, without your name. Projects you own must be transferred or deleted first.'
+      title={t('deleteAccount.title')}
+      description={t('deleteAccount.description')}
     >
       <Button variant='destructive' onClick={() => setOpen(true)}>
-        Delete my account
+        {t('deleteAccount.submit')}
       </Button>
       <ConfirmDialog
         open={open}
         onOpenChange={setOpen}
-        title='Delete your account?'
-        desc='This cannot be undone.'
-        confirmText='Delete my account'
+        title={t('deleteAccount.confirmTitle')}
+        desc={t('deleteAccount.confirmDesc')}
+        confirmText={t('deleteAccount.submit')}
         destructive
         isLoading={del.isPending}
         handleConfirm={() =>
@@ -354,19 +358,23 @@ function DeleteAccount() {
 
 /* ---------- notifications ---------- */
 
-const LEVELS: [NotifyPolicy['notify_level'], string][] = [
-  [1, 'All activity'],
-  [2, 'Only items I am involved in'],
-  [3, 'Nothing'],
-]
+const LEVELS = [
+  [1, 'all'],
+  [2, 'involved'],
+  [3, 'none'],
+] as const satisfies readonly (readonly [
+  NotifyPolicy['notify_level'],
+  string,
+])[]
 
 export function NotificationSettings() {
+  const { t } = useTranslation(['settings', 'common'])
   const policies = useNotifyPolicies()
   const update = useUpdateNotifyPolicy()
   return (
     <SettingsSection
-      title='Notifications per project'
-      description='Choose what each project emails you about, and whether it shows in the bell. Involved means items you created, are assigned to or watch.'
+      title={t('notifications.title')}
+      description={t('notifications.description')}
     >
       {policies.isPending ? (
         <Skeleton className='h-24 w-full' />
@@ -376,13 +384,13 @@ export function NotificationSettings() {
             <thead className='text-xs text-muted-foreground'>
               <tr>
                 <th scope='col' className='py-2 text-start font-medium'>
-                  Project
+                  {t('common:terms.project_one')}
                 </th>
                 <th scope='col' className='py-2 text-start font-medium'>
-                  Email
+                  {t('notifications.email')}
                 </th>
                 <th scope='col' className='py-2 text-start font-medium'>
-                  In the bell
+                  {t('notifications.bell')}
                 </th>
               </tr>
             </thead>
@@ -394,7 +402,9 @@ export function NotificationSettings() {
                   </th>
                   <td className='py-2 pe-4'>
                     <select
-                      aria-label={`Email from ${p.project_name}`}
+                      aria-label={t('notifications.emailFrom', {
+                        project: p.project_name,
+                      })}
                       value={p.notify_level}
                       onChange={(e) =>
                         update.mutate({
@@ -410,14 +420,16 @@ export function NotificationSettings() {
                     >
                       {LEVELS.map(([v, l]) => (
                         <option key={v} value={v}>
-                          {l}
+                          {t(`notifications.levels.${l}`)}
                         </option>
                       ))}
                     </select>
                   </td>
                   <td className='py-2'>
                     <Switch
-                      aria-label={`Bell notifications from ${p.project_name}`}
+                      aria-label={t('notifications.bellFrom', {
+                        project: p.project_name,
+                      })}
                       checked={p.web_notify_level}
                       onCheckedChange={(v) =>
                         update.mutate({
@@ -440,34 +452,33 @@ export function NotificationSettings() {
 /* ---------- connected apps ---------- */
 
 export function AppsSettings() {
+  const { t } = useTranslation('settings')
   const { list, revoke } = useApplicationTokens()
   return (
     <SettingsSection
-      title='Connected apps'
-      description='Applications you allowed to use Kemudi on your behalf. Revoke one to cut off its access.'
+      title={t('apps.title')}
+      description={t('apps.description')}
     >
       {list.isPending ? (
         <Skeleton className='h-12 w-full' />
       ) : (list.data ?? []).length === 0 ? (
-        <p className='text-sm text-muted-foreground'>
-          No apps are connected to your account.
-        </p>
+        <p className='text-sm text-muted-foreground'>{t('apps.empty')}</p>
       ) : (
         <ul className='divide-y'>
-          {list.data!.map((t) => (
-            <li key={t.id} className='flex items-center gap-3 py-2.5'>
+          {list.data!.map((token) => (
+            <li key={token.id} className='flex items-center gap-3 py-2.5'>
               <div className='min-w-0 flex-1'>
-                <p className='text-sm font-medium'>{t.application.name}</p>
+                <p className='text-sm font-medium'>{token.application.name}</p>
                 <p className='truncate text-xs text-muted-foreground'>
-                  {t.application.description}
+                  {token.application.description}
                 </p>
               </div>
               <Button
                 variant='outline'
                 size='sm'
-                onClick={() => revoke.mutate(t)}
+                onClick={() => revoke.mutate(token)}
               >
-                Revoke
+                {t('apps.revoke')}
               </Button>
             </li>
           ))}

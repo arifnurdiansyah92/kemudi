@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useFormat } from '@/i18n/format'
 import { ChevronRight, Loader2, Plus } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { api } from '@/lib/taiga/client'
 import { onFail } from '@/lib/taiga/items'
 import type { Id, Project } from '@/lib/taiga/types'
-import { cn, timeAgo } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -33,6 +35,7 @@ interface WebhookLog {
 }
 
 function useWebhooks(project: Project) {
+  const { t } = useTranslation(['admin', 'common'])
   const qc = useQueryClient()
   const key = ['webhooks', project.id]
   const settle = () => qc.invalidateQueries({ queryKey: ['webhooks'] })
@@ -63,8 +66,12 @@ function useWebhooks(project: Project) {
       (await api.post<WebhookLog>(`/webhooks/${w.id}/test`)).data,
     onSuccess: (log) =>
       log.status >= 200 && log.status < 300
-        ? toast.success(`Test delivered (HTTP ${log.status})`)
-        : toast.error(`Test failed: HTTP ${log.status || 'no response'}`),
+        ? toast.success(t('webhooks.testOk', { status: log.status }))
+        : toast.error(
+            t('webhooks.testFailed', {
+              status: log.status || t('webhooks.noResponse'),
+            })
+          ),
     onError: onFail,
     onSettled: settle,
   })
@@ -72,6 +79,7 @@ function useWebhooks(project: Project) {
 }
 
 export function WebhooksSettings() {
+  const { t } = useTranslation(['admin', 'common'])
   const project = useProject()
   const w = useWebhooks(project)
   const [adding, setAdding] = useState(false)
@@ -79,8 +87,8 @@ export function WebhooksSettings() {
 
   return (
     <SettingsSection
-      title='Webhooks'
-      description='Kemudi POSTs a JSON event to each URL whenever a story, task, issue, epic, sprint or wiki page changes. The key signs each request (X-TAIGA-WEBHOOK-SIGNATURE, HMAC-SHA1).'
+      title={t('webhooks.title')}
+      description={t('webhooks.description')}
     >
       {w.list.isPending ? (
         <Skeleton className='h-16 w-full' />
@@ -107,7 +115,7 @@ export function WebhooksSettings() {
           onClick={() => setAdding(true)}
         >
           <Plus />
-          Add webhook
+          {t('webhooks.add')}
         </Button>
       )}
     </SettingsSection>
@@ -121,6 +129,7 @@ function HookRow({
   hook: Webhook
   w: ReturnType<typeof useWebhooks>
 }) {
+  const { t } = useTranslation(['admin', 'common'])
   const [editing, setEditing] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -154,13 +163,13 @@ function HookRow({
           disabled={w.test.isPending}
         >
           {w.test.isPending && <Loader2 className='animate-spin' />}
-          Send test
+          {t('webhooks.sendTest')}
         </Button>
         <Button size='sm' variant='ghost' onClick={() => setEditing(true)}>
-          Edit
+          {t('common:actions.edit')}
         </Button>
         <Button size='sm' variant='ghost' onClick={() => setDeleting(true)}>
-          Delete
+          {t('common:actions.delete')}
         </Button>
       </div>
       <button
@@ -171,15 +180,15 @@ function HookRow({
         <ChevronRight
           className={cn('size-3 transition-transform', showLogs && 'rotate-90')}
         />
-        Deliveries ({hook.logs_counter})
+        {t('webhooks.deliveries', { total: hook.logs_counter })}
       </button>
       {showLogs && <Logs hook={hook} />}
       <ConfirmDialog
         open={deleting}
         onOpenChange={setDeleting}
-        title={`Delete the ${hook.name} webhook?`}
-        desc='Kemudi stops sending events to this URL.'
-        confirmText='Delete webhook'
+        title={t('webhooks.deleteTitle', { name: hook.name })}
+        desc={t('webhooks.deleteDescription')}
+        confirmText={t('webhooks.confirm')}
         destructive
         handleConfirm={() =>
           w.remove.mutate(hook, { onSuccess: () => setDeleting(false) })
@@ -190,6 +199,8 @@ function HookRow({
 }
 
 function Logs({ hook }: { hook: Webhook }) {
+  const { t } = useTranslation(['admin', 'common'])
+  const fmt = useFormat()
   const qc = useQueryClient()
   const logs = useQuery({
     queryKey: ['webhooks', 'logs', hook.id],
@@ -209,7 +220,9 @@ function Logs({ hook }: { hook: Webhook }) {
   const list = logs.data ?? []
   if (!list.length)
     return (
-      <p className='mt-2 text-xs text-muted-foreground'>Nothing sent yet.</p>
+      <p className='mt-2 text-xs text-muted-foreground'>
+        {t('webhooks.nothingSent')}
+      </p>
     )
   return (
     <ul className='mt-2 grid gap-1 text-xs'>
@@ -225,13 +238,15 @@ function Logs({ hook }: { hook: Webhook }) {
                     ok ? 'text-success' : 'text-destructive'
                   )}
                 >
-                  {log.status || 'failed'}
+                  {log.status || t('webhooks.failed')}
                 </span>
                 <span className='text-muted-foreground'>
-                  {timeAgo(log.created)}
+                  {fmt.timeAgo(log.created)}
                 </span>
                 <span className='text-muted-foreground tabular-nums'>
-                  {Math.round(log.duration * 1000)} ms
+                  {t('webhooks.duration', {
+                    ms: fmt.number(Math.round(log.duration * 1000)),
+                  })}
                 </span>
                 <Button
                   size='sm'
@@ -242,7 +257,7 @@ function Logs({ hook }: { hook: Webhook }) {
                     resend.mutate(log)
                   }}
                 >
-                  Resend
+                  {t('webhooks.resend')}
                 </Button>
               </summary>
               <pre className='mt-2 max-h-48 overflow-auto rounded bg-muted p-2 text-[11px]'>
@@ -278,6 +293,7 @@ function HookForm({
   onCancel: () => void
   pending: boolean
 }) {
+  const { t } = useTranslation(['admin', 'common'])
   const [form, setForm] = useState(() => ({
     name: initial?.name ?? '',
     url: initial?.url ?? '',
@@ -296,7 +312,7 @@ function HookForm({
     >
       <div className='grid gap-3 sm:grid-cols-2'>
         <div className='grid gap-1.5'>
-          <Label htmlFor='wh-name'>Name</Label>
+          <Label htmlFor='wh-name'>{t('shared.name')}</Label>
           <Input
             id='wh-name'
             value={form.name}
@@ -304,7 +320,7 @@ function HookForm({
           />
         </div>
         <div className='grid gap-1.5'>
-          <Label htmlFor='wh-key'>Secret key</Label>
+          <Label htmlFor='wh-key'>{t('webhooks.secret')}</Label>
           <Input
             id='wh-key'
             value={form.key}
@@ -313,11 +329,11 @@ function HookForm({
         </div>
       </div>
       <div className='grid gap-1.5'>
-        <Label htmlFor='wh-url'>URL</Label>
+        <Label htmlFor='wh-url'>{t('webhooks.url')}</Label>
         <Input
           id='wh-url'
           type='url'
-          placeholder='https://example.com/hooks/kemudi'
+          placeholder={t('webhooks.urlPlaceholder')}
           value={form.url}
           onChange={(e) => setForm({ ...form, url: e.target.value })}
         />
@@ -325,10 +341,10 @@ function HookForm({
       <div className='flex gap-2'>
         <Button type='submit' size='sm' disabled={!valid || pending}>
           {pending && <Loader2 className='animate-spin' />}
-          Save webhook
+          {t('webhooks.save')}
         </Button>
         <Button type='button' size='sm' variant='ghost' onClick={onCancel}>
-          Cancel
+          {t('common:actions.cancel')}
         </Button>
       </div>
     </form>

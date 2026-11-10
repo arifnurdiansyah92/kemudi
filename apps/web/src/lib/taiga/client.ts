@@ -1,4 +1,5 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
+import i18n from '@/i18n'
 import { useAuthStore } from '@/stores/auth-store'
 import type { AuthResponse } from './types'
 
@@ -133,7 +134,7 @@ export async function requestPasswordReset(username: string) {
 /** Reads the first human-readable message out of a Taiga error body. */
 export function apiErrorMessage(
   error: unknown,
-  fallback = 'Something went wrong.'
+  fallback = i18n.t('common:errors.generic')
 ) {
   if (!(error instanceof AxiosError)) return fallback
   const data = error.response?.data as Record<string, unknown> | undefined

@@ -1,1 +1,117 @@
-{}
+{
+  "backlog": {
+    "summary_other": "{{count}} story, {{points}} poin menunggu sprint",
+    "newStory": "Story baru",
+    "loadError": "Story tidak dapat dimuat.",
+    "heading": "Story di luar sprint",
+    "empty": "Backlog masih kosong.",
+    "emptyAddFirst": "Tambahkan story pertama di atas.",
+    "noMatch": "Tidak ada story yang cocok dengan filter ini.",
+    "forecastLine": "Story di atas garis ini cukup untuk sprint berikutnya, dengan {{speed}} poin per sprint",
+    "stats": {
+      "closed": "<strong>{{closed}}</strong><muted> dari {{total}} poin selesai</muted>",
+      "speed": "Velocity {{speed}} poin per sprint",
+      "progress": "Progres proyek"
+    },
+    "bulkAdd": {
+      "trigger": "Tambah beberapa",
+      "title": "Tambah beberapa story",
+      "description": "Satu story per baris. Semuanya akan ditambahkan di akhir backlog.",
+      "inputLabel": "Story, satu per baris",
+      "placeholder": "Ekspor laporan sebagai CSV\nTampilkan total per tim",
+      "submitOne": "Tambah story",
+      "submitMany": "Tambah {{lines}} story"
+    }
+  },
+  "sprint": {
+    "openSprints": "Sprint terbuka",
+    "closedSprints": "Sprint yang ditutup",
+    "noOpen": "Belum ada sprint terbuka. Buat sprint untuk merencanakan pekerjaan berikutnya.",
+    "noClosed": "Belum ada sprint yang ditutup.",
+    "showClosed": "Tampilkan sprint yang ditutup",
+    "form": {
+      "defaultName": "Sprint {{number}}",
+      "name": "Nama",
+      "start": "Mulai",
+      "end": "Berakhir",
+      "endBeforeStart": "Tanggal berakhir harus sama dengan atau setelah tanggal mulai."
+    },
+    "new": {
+      "trigger": "Sprint baru",
+      "title": "Sprint baru",
+      "description": "Story masuk ke sprint dari backlog.",
+      "submit": "Buat sprint"
+    },
+    "edit": {
+      "title": "Ubah {{name}}",
+      "description": "Ubah nama atau tanggalnya.",
+      "submit": "Simpan sprint"
+    },
+    "panel": {
+      "points": "{{done}} dari {{total}} poin",
+      "openTaskboard": "Buka taskboard {{name}}",
+      "progress": "Progres {{name}}",
+      "empty": "Belum ada story di sprint ini. Seret story dari backlog ke sini.",
+      "addStory": "Tambahkan story ke {{name}}"
+    },
+    "menu": {
+      "actions": "Tindakan untuk {{name}}",
+      "edit": "Ubah sprint",
+      "close": "Tutup sprint",
+      "reopen": "Buka kembali sprint",
+      "delete": "Hapus sprint",
+      "deleteTitle": "Hapus {{name}}?",
+      "deleteDescription": "Story di dalamnya akan kembali ke backlog, dan tugasnya tetap melekat pada story masing-masing. Tindakan ini tidak dapat dibatalkan."
+    }
+  },
+  "taskboard": {
+    "notFound": "Sprint ini tidak ditemukan.",
+    "backToBacklog": "Kembali ke backlog",
+    "closedSuffix": ", ditutup",
+    "noSprint": "Belum ada sprint terbuka. <link>Buat sprint di backlog</link>.",
+    "ofTotal": "{{done}} dari {{total}}",
+    "stats": {
+      "pointsDone": "Poin selesai",
+      "storiesClosed": "Story selesai",
+      "tasksClosed": "Tugas selesai",
+      "iocaineDoses": "Dosis iocaine"
+    },
+    "pointsUnit": "poin",
+    "noStoryRow": "Tugas tanpa story",
+    "tasksDone_other": "{{done}} dari {{count}} tugas selesai",
+    "noStory": "Tanpa story",
+    "cell": "{{row}}, {{status}}",
+    "addTasks": {
+      "trigger": "Tambah tugas",
+      "inputLabel": "Tugas baru, satu per baris",
+      "placeholder": "Satu tugas per baris"
+    },
+    "task": {
+      "draggable": "Tugas yang dapat diseret",
+      "blocked": "Terblokir",
+      "iocaine": "Iocaine"
+    }
+  },
+  "burndown": {
+    "ariaProgress": "Burndown: {{points}} poin tersisa pada {{date}}, dari total {{max}}",
+    "ariaNotStarted": "Burndown: belum dimulai, dari total {{max}}",
+    "openPoints": "Poin tersisa",
+    "ideal": "Ideal"
+  },
+  "story": {
+    "count_other": "{{count}} story",
+    "open": "Buka story",
+    "moveTo": "Pindahkan ke",
+    "reorder": "Ubah urutan #{{ref}}",
+    "moreActions": "Tindakan lain untuk #{{ref}}",
+    "notEstimated": "Belum diestimasi",
+    "statusLabel": "Status: {{name}}. Ubah status",
+    "assignedTo": "Ditugaskan ke {{name}}",
+    "changeAssignee": "{{label}}. Ubah penanggung jawab",
+    "unassign": "Hapus penanggung jawab",
+    "quickAdd": {
+      "placeholder": "Tambahkan story",
+      "enterKey": "Enter"
+    }
+  }
+}
