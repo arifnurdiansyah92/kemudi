@@ -1,14 +1,17 @@
-import { useMemo, useRef, useState } from 'react'
+import { Fragment, useMemo, useRef, useState } from 'react'
 import {
   closestCenter,
   DndContext,
+  pointerWithin,
+  type CollisionDetection,
+  DragOverlay,
   KeyboardSensor,
+  useDroppable,
   PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import {
   arrayMove,
   SortableContext,
@@ -19,10 +22,12 @@ import { Plus } from 'lucide-react'
 import {
   useBacklogReorder,
   useMilestones,
+  useMoveToSprint,
   useStories,
 } from '@/lib/taiga/queries'
-import { useClosedSprints } from '@/lib/taiga/sprints'
+import { useClosedSprints, useProjectStats } from '@/lib/taiga/sprints'
 import type { UserStory } from '@/lib/taiga/types'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AppHeader } from '@/components/layout/app-header'
@@ -41,7 +46,7 @@ import {
 import { FilterBar } from '@/features/filters/filter-bar'
 import { can, useProject } from '@/features/project/use-project'
 import { QuickAdd } from '@/features/story/quick-add'
-import { between, sumPoints } from '@/features/story/utils'
+import { between, forecastIndex, sumPoints } from '@/features/story/utils'
 import { BulkAddDialog } from './bulk-add-dialog'
 import { NewSprintDialog } from './new-sprint-dialog'
 import { ProjectStats } from './project-stats'
@@ -53,6 +58,7 @@ export function Backlog() {
   const stories = useStories(project.id)
   const milestones = useMilestones(project.id)
   const reorder = useBacklogReorder(project)
+  const move = useMoveToSprint(project)
   const addRef = useRef<HTMLInputElement>(null)
   const [filters, setFilters] = useState(emptyFilters)
   const [showClosed, setShowClosed] = useState(false)
@@ -109,8 +115,37 @@ export function Backlog() {
     [backlog, facets, filters]
   )
 
+  const [dragging, setDragging] = useState<number | null>(null)
+  const byId = useMemo(
+    () => new Map((stories.data ?? []).map((s) => [s.id, s])),
+    [stories.data]
+  )
+  const dragged = dragging ? byId.get(dragging) : undefined
+  const stats = useProjectStats(project.id)
+  // Index of the last backlog story that fits the next sprint at the
+  // team speed; the forecast line goes after it.
+  const forecastAfter = useMemo(
+    () => forecastIndex(shown, stats.data?.speed ?? 0),
+    [shown, stats.data?.speed]
+  )
+
   function onDragEnd({ active, over }: DragEndEvent) {
+    setDragging(null)
     if (!over || active.id === over.id) return
+    const story = byId.get(Number(active.id))
+    if (!story) return
+    // Where it was dropped: a sprint panel, the backlog, or another story.
+    const overId = String(over.id)
+    const target = overId.startsWith('sprint:')
+      ? Number(overId.slice(7))
+      : overId === 'backlog'
+        ? null
+        : (byId.get(Number(over.id))?.milestone ?? null)
+    if (target !== story.milestone) {
+      if (can(project, 'modify_us')) move.mutate({ story, milestoneId: target })
+      return
+    }
+    if (story.milestone !== null) return
     const from = backlog.findIndex((s) => s.id === active.id)
     const to = backlog.findIndex((s) => s.id === over.id)
     if (from < 0 || to < 0) return
@@ -176,138 +211,191 @@ export function Backlog() {
             </button>
           </p>
         ) : (
-          <div className='mt-8 grid grid-cols-[minmax(0,1fr)] items-start gap-8 xl:grid-cols-[minmax(0,1fr)_24rem]'>
-            <section aria-labelledby='backlog-heading' className='min-w-0'>
-              <h2 id='backlog-heading' className='sr-only'>
-                Stories not in a sprint
-              </h2>
-              <FilterBar
-                savedKey={`${project.id}:kemudi-filters-backlog`}
-                items={backlog}
-                facets={facets}
-                value={filters}
-                onChange={setFilters}
-                className='mb-3'
-              />
-              <div className='overflow-hidden rounded-lg border bg-card'>
-                {canAdd && (
-                  <QuickAdd
-                    project={project}
-                    inputRef={addRef}
-                    className='rounded-none border-b'
-                  />
-                )}
-                {loading ? (
-                  <div className='space-y-px p-2'>
-                    {[0, 1, 2, 3].map((i) => (
-                      <Skeleton key={i} className='h-9 w-full' />
-                    ))}
-                  </div>
-                ) : backlog.length === 0 ? (
-                  <p className='px-4 py-10 text-center text-sm text-muted-foreground'>
-                    The backlog is empty.{' '}
-                    {canAdd && 'Add the first story above.'}
-                  </p>
-                ) : shown.length === 0 ? (
-                  <p className='px-4 py-10 text-center text-sm text-muted-foreground'>
-                    No stories match these filters.
-                  </p>
-                ) : (
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    modifiers={[restrictToVerticalAxis]}
-                    onDragEnd={onDragEnd}
-                  >
+          <DndContext
+            sensors={sensors}
+            collisionDetection={pointerFirst}
+            onDragStart={({ active }) => setDragging(Number(active.id))}
+            onDragCancel={() => setDragging(null)}
+            onDragEnd={onDragEnd}
+          >
+            <div className='mt-8 grid grid-cols-[minmax(0,1fr)] items-start gap-8 xl:grid-cols-[minmax(0,1fr)_24rem]'>
+              <section aria-labelledby='backlog-heading' className='min-w-0'>
+                <h2 id='backlog-heading' className='sr-only'>
+                  Stories not in a sprint
+                </h2>
+                <FilterBar
+                  savedKey={`${project.id}:kemudi-filters-backlog`}
+                  items={backlog}
+                  facets={facets}
+                  value={filters}
+                  onChange={setFilters}
+                  className='mb-3'
+                />
+                <BacklogDrop>
+                  {canAdd && (
+                    <QuickAdd
+                      project={project}
+                      inputRef={addRef}
+                      className='rounded-none border-b'
+                    />
+                  )}
+                  {loading ? (
+                    <div className='space-y-px p-2'>
+                      {[0, 1, 2, 3].map((i) => (
+                        <Skeleton key={i} className='h-9 w-full' />
+                      ))}
+                    </div>
+                  ) : backlog.length === 0 ? (
+                    <p className='px-4 py-10 text-center text-sm text-muted-foreground'>
+                      The backlog is empty.{' '}
+                      {canAdd && 'Add the first story above.'}
+                    </p>
+                  ) : shown.length === 0 ? (
+                    <p className='px-4 py-10 text-center text-sm text-muted-foreground'>
+                      No stories match these filters.
+                    </p>
+                  ) : (
                     <SortableContext
                       items={shown.map((s) => s.id)}
                       strategy={verticalListSortingStrategy}
                     >
                       <ul className='divide-y'>
-                        {shown.map((story) => (
-                          <StoryRow
-                            key={story.id}
-                            project={project}
-                            story={story}
-                            sprints={sprints}
-                            // Reordering a filtered list would place stories
-                            // relative to ones you cannot see.
-                            sortable={!filtering}
-                          />
+                        {shown.map((story, i) => (
+                          <Fragment key={story.id}>
+                            <StoryRow
+                              project={project}
+                              story={story}
+                              sprints={sprints}
+                              // Reordering a filtered list would place stories
+                              // relative to ones you cannot see.
+                              sortable={!filtering}
+                            />
+                            {!filtering && i === forecastAfter && (
+                              <li
+                                role='separator'
+                                className='flex items-center gap-2 bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground'
+                              >
+                                <span className='h-px flex-1 bg-brass/60' />
+                                Above this line fits the next sprint, at{' '}
+                                {stats.data?.speed} points per sprint
+                                <span className='h-px flex-1 bg-brass/60' />
+                              </li>
+                            )}
+                          </Fragment>
                         ))}
                       </ul>
                     </SortableContext>
-                  </DndContext>
-                )}
-              </div>
-            </section>
+                  )}
+                </BacklogDrop>
+              </section>
 
-            <section
-              aria-labelledby='sprints-heading'
-              className='space-y-3 xl:sticky xl:top-20'
-            >
-              <div className='flex items-center justify-between'>
-                <h2 id='sprints-heading' className='font-semibold'>
-                  Open sprints
-                </h2>
-                {can(project, 'add_milestone') && (
-                  <NewSprintDialog project={project} sprints={sprints} />
-                )}
-              </div>
-              {loading ? (
-                <Skeleton className='h-24 w-full' />
-              ) : sprints.length === 0 ? (
-                <p className='rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground'>
-                  No open sprints. Create one to plan the next stretch of work.
-                </p>
-              ) : (
-                sprints.map((sprint, i) => (
-                  <SprintPanel
-                    key={sprint.id}
-                    project={project}
-                    sprint={sprint}
-                    sprints={sprints}
-                    stories={bySprint.get(sprint.id) ?? []}
-                    defaultOpen={i === 0}
-                  />
-                ))
-              )}
-              {showClosed ? (
-                <div className='space-y-3 pt-3'>
-                  <h2 className='font-semibold'>Closed sprints</h2>
-                  {closedSprints.isPending ? (
-                    <Skeleton className='h-16 w-full' />
-                  ) : (closedSprints.data ?? []).length === 0 ? (
-                    <p className='text-sm text-muted-foreground'>
-                      No sprint has been closed yet.
-                    </p>
-                  ) : (
-                    closedSprints.data!.map((sprint) => (
-                      <SprintPanel
-                        key={sprint.id}
-                        project={project}
-                        sprint={sprint}
-                        sprints={sprints}
-                        stories={bySprint.get(sprint.id) ?? []}
-                        defaultOpen={false}
-                      />
-                    ))
+              <section
+                aria-labelledby='sprints-heading'
+                className='space-y-3 xl:sticky xl:top-20'
+              >
+                <div className='flex items-center justify-between'>
+                  <h2 id='sprints-heading' className='font-semibold'>
+                    Open sprints
+                  </h2>
+                  {can(project, 'add_milestone') && (
+                    <NewSprintDialog project={project} sprints={sprints} />
                   )}
                 </div>
-              ) : (
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  className='text-muted-foreground'
-                  onClick={() => setShowClosed(true)}
-                >
-                  Show closed sprints
-                </Button>
+                {loading ? (
+                  <Skeleton className='h-24 w-full' />
+                ) : sprints.length === 0 ? (
+                  <p className='rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground'>
+                    No open sprints. Create one to plan the next stretch of
+                    work.
+                  </p>
+                ) : (
+                  sprints.map((sprint, i) => (
+                    <SprintPanel
+                      key={sprint.id}
+                      project={project}
+                      sprint={sprint}
+                      sprints={sprints}
+                      stories={bySprint.get(sprint.id) ?? []}
+                      defaultOpen={i === 0}
+                    />
+                  ))
+                )}
+                {showClosed ? (
+                  <div className='space-y-3 pt-3'>
+                    <h2 className='font-semibold'>Closed sprints</h2>
+                    {closedSprints.isPending ? (
+                      <Skeleton className='h-16 w-full' />
+                    ) : (closedSprints.data ?? []).length === 0 ? (
+                      <p className='text-sm text-muted-foreground'>
+                        No sprint has been closed yet.
+                      </p>
+                    ) : (
+                      closedSprints.data!.map((sprint) => (
+                        <SprintPanel
+                          key={sprint.id}
+                          project={project}
+                          sprint={sprint}
+                          sprints={sprints}
+                          stories={bySprint.get(sprint.id) ?? []}
+                          defaultOpen={false}
+                        />
+                      ))
+                    )}
+                  </div>
+                ) : (
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    className='text-muted-foreground'
+                    onClick={() => setShowClosed(true)}
+                  >
+                    Show closed sprints
+                  </Button>
+                )}
+              </section>
+            </div>
+            <DragOverlay>
+              {dragged && (
+                <div className='rounded-md border bg-card px-3 py-2 text-sm shadow-lg'>
+                  <span className='me-2 text-xs text-muted-foreground tabular-nums'>
+                    #{dragged.ref}
+                  </span>
+                  {dragged.subject}
+                </div>
               )}
-            </section>
-          </div>
+            </DragOverlay>
+          </DndContext>
         )}
       </Main>
     </>
+  )
+}
+
+/**
+ * What is under the pointer decides the drop, stories before the boxes
+ * that hold them. The dragged row's centre can sit far from the pointer
+ * (rows are wide and grabbed at their left edge), which made a plain
+ * centre-distance check pick a sprint for an in-list move.
+ */
+const pointerFirst: CollisionDetection = (args) => {
+  const under = pointerWithin(args)
+  if (under.length === 0) return closestCenter(args)
+  const stories = under.filter((c) => typeof c.id === 'number')
+  return stories.length ? stories : under
+}
+
+/** The backlog box; sprint stories dropped on it go back to the backlog. */
+function BacklogDrop({ children }: { children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: 'backlog' })
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'overflow-hidden rounded-lg border bg-card transition-shadow',
+        isOver && 'ring-2 ring-ring'
+      )}
+    >
+      {children}
+    </div>
   )
 }

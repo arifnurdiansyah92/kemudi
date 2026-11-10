@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { format, parseISO } from 'date-fns'
 import { Link } from '@tanstack/react-router'
+import { useDroppable } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { ChevronRight, LayoutGrid } from 'lucide-react'
 import type { Milestone, Project, UserStory } from '@/lib/taiga/types'
 import { cn } from '@/lib/utils'
@@ -37,6 +39,7 @@ export function SprintPanel({
   defaultOpen = true,
 }: SprintPanelProps) {
   const [open, setOpen] = useState(defaultOpen)
+  const { setNodeRef, isOver } = useDroppable({ id: `sprint:${sprint.id}` })
   const total = sumPoints(stories)
   const done = sumPoints(stories.filter((s) => s.is_closed))
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
@@ -45,7 +48,11 @@ export function SprintPanel({
     <Collapsible
       open={open}
       onOpenChange={setOpen}
-      className='overflow-hidden rounded-lg border bg-card'
+      ref={setNodeRef}
+      className={cn(
+        'overflow-hidden rounded-lg border bg-card transition-shadow',
+        isOver && 'ring-2 ring-ring'
+      )}
     >
       <div className='flex items-center pe-2'>
         <CollapsibleTrigger className='flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-start outline-none hover:bg-accent/50 focus-visible:bg-accent'>
@@ -97,21 +104,26 @@ export function SprintPanel({
       </div>
       <CollapsibleContent>
         {stories.length > 0 ? (
-          <ul className='divide-y border-b'>
-            {stories.map((story) => (
-              <StoryRow
-                key={story.id}
-                project={project}
-                story={story}
-                sprints={sprints}
-                compact
-              />
-            ))}
-          </ul>
+          <SortableContext
+            items={stories.map((s) => s.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <ul className='divide-y border-b'>
+              {stories.map((story) => (
+                <StoryRow
+                  key={story.id}
+                  project={project}
+                  story={story}
+                  sprints={sprints}
+                  compact
+                  sortable
+                />
+              ))}
+            </ul>
+          </SortableContext>
         ) : (
           <p className='border-b px-4 py-4 text-sm text-muted-foreground'>
-            No stories in this sprint. Move some here from the backlog with each
-            story's menu.
+            No stories in this sprint. Drag some here from the backlog.
           </p>
         )}
         {can(project, 'add_us') && (

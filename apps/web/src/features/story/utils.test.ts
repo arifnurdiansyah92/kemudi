@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { UserStory } from '@/lib/taiga/types'
-import { between, sumPoints } from './utils'
+import { between, forecastIndex, sumPoints } from './utils'
 
 describe('between', () => {
   it('sits halfway between two neighbours', () => {
@@ -25,5 +25,23 @@ describe('sumPoints', () => {
       { total_points: 5.5 },
     ] as UserStory[]
     expect(sumPoints(stories)).toBe(8.5)
+  })
+})
+
+describe('forecastIndex', () => {
+  const s = (...pts: (number | null)[]) =>
+    pts.map((total_points) => ({ total_points }))
+
+  it('marks the last story that fits the speed', () => {
+    expect(forecastIndex(s(3, 5, 8, 2), 10)).toBe(1)
+  })
+
+  it('counts unestimated stories as free', () => {
+    expect(forecastIndex(s(3, null, 5, 8), 8)).toBe(2)
+  })
+
+  it('draws no line without a speed or when everything fits', () => {
+    expect(forecastIndex(s(3, 5), 0)).toBe(-1)
+    expect(forecastIndex(s(3, 5), 20)).toBe(-1)
   })
 })

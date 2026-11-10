@@ -56,11 +56,11 @@ export function StoryRow({
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
         'group relative flex items-center gap-3 bg-card px-3 py-2 text-sm',
-        isDragging && 'z-10 shadow-lg ring-1 ring-border',
+        isDragging && 'opacity-40',
         story.is_closed && 'text-muted-foreground'
       )}
     >
-      {compact ? null : sortable && editable ? (
+      {sortable && editable ? (
         <button
           ref={setActivatorNodeRef}
           {...attributes}

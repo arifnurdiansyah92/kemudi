@@ -192,3 +192,21 @@ export function useBulkCreateStories(project: Project) {
     onSettled: refresh,
   })
 }
+
+export interface ProjectStatsData {
+  total_points: number | null
+  closed_points: number
+  defined_points: number
+  assigned_points: number
+  speed: number
+  total_milestones: number | null
+}
+
+/** Points closed, defined and assigned, and the team's speed per sprint. */
+export function useProjectStats(projectId: Id) {
+  return useQuery({
+    queryKey: ['project-stats', projectId],
+    queryFn: async () =>
+      (await api.get<ProjectStatsData>(`/projects/${projectId}/stats`)).data,
+  })
+}

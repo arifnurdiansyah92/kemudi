@@ -116,7 +116,7 @@ its own small commit. Source of truth for the API: `services/kemudi-back/taiga/r
 - [x] Wiki page history
 - [x] Mentions: @people and #refs suggested while typing comments and descriptions
 - [x] Saved filters on backlog, kanban and issues
-- [ ] Backlog: drag stories into a sprint; forecast of what fits the next sprint
+- [x] Backlog: drag stories into a sprint; forecast of what fits the next sprint
 - [ ] Kanban: card density (zoom)
 - [ ] Projects list: reorder your projects
 - [x] Due date reason; epic client and team requirement flags

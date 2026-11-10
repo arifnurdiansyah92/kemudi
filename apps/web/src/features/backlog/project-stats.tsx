@@ -1,25 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/taiga/client'
+import { useProjectStats } from '@/lib/taiga/sprints'
 import type { Project } from '@/lib/taiga/types'
-
-interface ProjectStatsData {
-  total_points: number | null
-  closed_points: number
-  defined_points: number
-  assigned_points: number
-  speed: number
-  total_milestones: number | null
-}
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
 
 /** Closed against total points, and the team's speed per sprint. */
 export function ProjectStats({ project }: { project: Project }) {
-  const { data } = useQuery({
-    queryKey: ['project-stats', project.id],
-    queryFn: async () =>
-      (await api.get<ProjectStatsData>(`/projects/${project.id}/stats`)).data,
-  })
+  const { data } = useProjectStats(project.id)
   if (!data) return null
   // Without a target set in admin, measure against estimated work.
   const total = data.total_points ?? data.defined_points
