@@ -19,7 +19,6 @@
     "noBlockReason": "No reason given.",
     "colour": "Colour",
     "requirement": "Requirement",
-    "flags": "Flags",
     "created": "Created",
     "createdBy": "{{date}} by {{name}}"
   },
@@ -45,8 +44,6 @@
     "notEstimated": "not estimated",
     "clientRequirement": "Client requirement",
     "teamRequirement": "Team requirement",
-    "iocaine": "Iocaine",
-    "iocaineHint": "A task that is hard, risky or new to the team",
     "epicColour": "Epic colour"
   },
   "description": {
@@ -127,7 +124,6 @@
       "description_diff": "description",
       "client_requirement": "client requirement",
       "team_requirement": "team requirement",
-      "is_iocaine": "iocaine",
       "user_story": "story",
       "custom_attributes": "custom fields",
       "subject": "subject",

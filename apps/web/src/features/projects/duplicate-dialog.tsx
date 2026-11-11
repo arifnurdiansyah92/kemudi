@@ -20,7 +20,6 @@ type Source = {
   id: number
   name: string
   description: string
-  is_private: boolean
   members?: { id: number; full_name_display: string; is_active?: boolean }[]
 }
 
@@ -56,7 +55,6 @@ export function DuplicateProjectDialog({
                 project,
                 name: name.trim(),
                 description: project.description || name.trim(),
-                is_private: project.is_private,
                 users,
               },
               {

@@ -7,7 +7,7 @@
     "empty": "Backlog masih kosong.",
     "emptyAddFirst": "Tambahkan story pertama di atas.",
     "noMatch": "Tidak ada story yang cocok dengan filter ini.",
-    "forecastLine": "Story di atas garis ini cukup untuk sprint berikutnya, dengan {{speed}} poin per sprint",
+    "forecastLine": "Story di atas garis ini muat dalam sprint berikutnya, dengan {{speed}} poin per sprint",
     "stats": {
       "closed": "<strong>{{closed}}</strong><muted> dari {{total}} poin selesai</muted>",
       "speed": "Velocity {{speed}} poin per sprint",
@@ -66,7 +66,7 @@
     "close": {
       "title": "Tutup {{name}}?",
       "summary": "{{done}} dari {{total}} story selesai, {{points}} dari {{totalPoints}} poin.",
-      "openStories_other": "{{count}} story belum selesai. Mau dipindahkan ke mana?",
+      "openStories_other": "{{count}} story belum selesai. Pindahkan ke mana?",
       "toNext": "Pindahkan ke {{name}}",
       "toBacklog": "Kembalikan ke backlog",
       "stay": "Biarkan di sprint ini",
@@ -82,8 +82,7 @@
     "stats": {
       "pointsDone": "Poin selesai",
       "storiesClosed": "Story selesai",
-      "tasksClosed": "Tugas selesai",
-      "iocaineDoses": "Dosis iocaine"
+      "tasksClosed": "Tugas selesai"
     },
     "pointsUnit": "poin",
     "noStoryRow": "Tugas tanpa story",
@@ -97,8 +96,7 @@
     },
     "task": {
       "draggable": "Tugas yang dapat diseret",
-      "blocked": "Terblokir",
-      "iocaine": "Iocaine"
+      "blocked": "Terblokir"
     }
   },
   "burndown": {
@@ -115,7 +113,7 @@
     "moreActions": "Tindakan lain untuk #{{ref}}",
     "notEstimated": "Belum diestimasi",
     "statusLabel": "Status: {{name}}. Ubah status",
-    "assignedTo": "Ditugaskan ke {{name}}",
+    "assignedTo": "Ditugaskan kepada {{name}}",
     "changeAssignee": "{{label}}. Ubah penanggung jawab",
     "unassign": "Hapus penanggung jawab",
     "quickAdd": {

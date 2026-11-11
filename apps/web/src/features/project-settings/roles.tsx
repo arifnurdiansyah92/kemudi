@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useUpdateProject } from '@/lib/taiga/admin'
 import { api } from '@/lib/taiga/client'
 import { onFail } from '@/lib/taiga/items'
 import type { Id, Project } from '@/lib/taiga/types'
@@ -232,7 +231,6 @@ export function RolesSettings() {
           </div>
         )}
       </SettingsSection>
-      {!project.is_private && <PublicPermissions project={project} />}
     </div>
   )
 }
@@ -384,63 +382,5 @@ function RoleEditor({
         </p>
       )}
     </div>
-  )
-}
-
-/** What signed-in non-members and anonymous visitors may do on a public project. */
-function PublicPermissions({ project }: { project: Project }) {
-  const { t } = useTranslation(['admin', 'common'])
-  const update = useUpdateProject(project)
-  const p = project as Project & {
-    public_permissions: string[]
-    anon_permissions: string[]
-  }
-  const groups = [
-    [
-      'public_permissions',
-      t('permissions.public.signedIn'),
-      p.public_permissions ?? [],
-    ],
-    [
-      'anon_permissions',
-      t('permissions.public.anonymous'),
-      p.anon_permissions ?? [],
-    ],
-  ] as const
-  return (
-    <SettingsSection
-      title={t('permissions.public.title')}
-      description={t('permissions.public.description')}
-    >
-      <div className='grid gap-6'>
-        {groups.map(([key, label, perms]) => (
-          <fieldset key={key}>
-            <legend className='mb-2 text-sm font-medium'>{label}</legend>
-            <div className='flex flex-wrap gap-x-5 gap-y-2'>
-              {AREAS.map((area) => {
-                const view = area.perms.view!
-                return (
-                  <label key={view} className='flex items-center gap-2 text-sm'>
-                    <Checkbox
-                      checked={perms.includes(view)}
-                      onCheckedChange={(v) =>
-                        update.mutate({
-                          [key]: v
-                            ? [...new Set([...perms, 'view_project', view])]
-                            : perms.filter((x) => x !== view),
-                        })
-                      }
-                    />
-                    {t('permissions.public.see', {
-                      area: t(`permissions.areas.${area.area}`).toLowerCase(),
-                    })}
-                  </label>
-                )
-              })}
-            </div>
-          </fieldset>
-        ))}
-      </div>
-    </SettingsSection>
   )
 }

@@ -17,7 +17,6 @@ export interface SprintStats {
   completed_userstories: number
   total_tasks: number
   completed_tasks: number
-  iocaine_doses: number
   days: { day: string; open_points: number; optimal_points: number }[]
 }
 

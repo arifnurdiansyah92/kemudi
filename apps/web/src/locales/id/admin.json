@@ -28,13 +28,6 @@
       "plannedSprints": "Rencana jumlah sprint",
       "plannedPoints": "Rencana total story point",
       "burndownHint": "Keduanya dipakai untuk burndown proyek di backlog.",
-      "private": "Proyek privat",
-      "privateHint": "Jika dimatikan, proyek menjadi publik: siapa pun dapat melihat dan menemukannya di Discover.",
-      "lookingForPeople": "Mencari kontributor",
-      "lookingForPeopleHint": "Menampilkan di Discover bahwa proyek ini membutuhkan kontributor.",
-      "contactable": "Dapat dihubungi",
-      "contactableHint": "Orang di luar proyek dapat mengirim pesan ke admin melalui Discover.",
-      "lookingForNote": "Siapa yang Anda cari",
       "save": "Simpan detail"
     },
     "logo": {
@@ -63,9 +56,9 @@
       "saveMeeting": "Simpan pengaturan rapat"
     },
     "duplicate": {
-      "title": "Duplikat",
+      "title": "Duplikasi",
       "description": "Mulai proyek baru dengan pengaturan, status, peran, dan kolom kustom dari proyek ini.",
-      "action": "Duplikat proyek"
+      "action": "Duplikasi proyek"
     },
     "transfer": {
       "title": "Alihkan kepemilikan",
@@ -97,7 +90,7 @@
     "admin": "Admin",
     "removeNamed": "Keluarkan {{name}}",
     "pending": {
-      "title": "Undangan tertunda ({{total}})",
+      "title": "Undangan belum diterima ({{total}})",
       "description": "Orang-orang ini belum menerima undangan.",
       "actionsFor": "Tindakan untuk {{email}}",
       "resend": "Kirim ulang undangan",
@@ -142,7 +135,7 @@
       "view": "lihat",
       "add": "tambah",
       "modify": "ubah",
-      "comment": "komentar",
+      "comment": "komentari",
       "delete": "hapus"
     },
     "areas": {
@@ -153,13 +146,6 @@
       "issues": "Isu",
       "wikiPages": "Halaman wiki",
       "wikiLinks": "Tautan wiki"
-    },
-    "public": {
-      "title": "Di luar tim",
-      "description": "Proyek ini publik. Tentukan apa yang dapat dilihat dan dilakukan orang di luar proyek.",
-      "signedIn": "Pengguna yang sudah masuk tetapi bukan anggota",
-      "anonymous": "Pengunjung yang belum masuk",
-      "see": "Lihat {{area}}"
     }
   },
   "values": {
@@ -228,7 +214,7 @@
     "valueOf": "Nilai {{name}}",
     "noValue": "Tanpa nilai",
     "daysBeforeFor": "Jumlah hari sebelum tenggat untuk {{name}}",
-    "daysBefore": "hari sebelumnya",
+    "daysBefore": "hari sebelum tenggat",
     "wip": "WIP",
     "wipLimitOf": "Batas WIP untuk {{name}}",
     "wipNone": "tidak ada",

@@ -53,7 +53,7 @@
   },
   "notifications": {
     "title": "Notifikasi per proyek",
-    "description": "Pilih kabar apa saja dari setiap proyek yang dikirim ke email Anda, dan apakah kabar itu muncul di lonceng notifikasi. Item yang melibatkan Anda adalah item yang Anda buat, Anda tangani, atau Anda pantau.",
+    "description": "Pilih notifikasi apa saja dari setiap proyek yang dikirim ke email Anda dan yang muncul di lonceng. Item yang melibatkan Anda adalah item yang Anda buat, yang ditugaskan kepada Anda, atau yang Anda pantau.",
     "email": "Email",
     "bell": "Di lonceng",
     "emailFrom": "Email dari {{project}}",
@@ -72,7 +72,7 @@
   },
   "appearance": {
     "title": "Tampilan",
-    "description": "Pilih fon dan tema yang digunakan Kemudi di perangkat ini.",
+    "description": "Pilih font dan tema yang digunakan Kemudi di perangkat ini.",
     "languageHelp": "Kemudi dan email yang dikirimkan kepada Anda memakai bahasa ini. Tersimpan di akun Anda, jadi berlaku di semua perangkat.",
     "font": "Font",
     "fontHelp": "Font yang digunakan Kemudi untuk semua teks.",

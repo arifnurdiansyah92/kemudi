@@ -11,14 +11,12 @@
   },
   "projects": {
     "intro": "Every project you are a member of; drag to put them in your order.",
-    "discoverLink": "Discover public projects",
     "newProject": "New project",
     "loadFailed": "Projects could not be loaded.",
     "emptyTitle": "No projects yet",
     "emptyHint": "Create one, or ask a project admin to invite you.",
     "list": {
       "move": "Move {{name}}",
-      "private": "Private",
       "updated": "Updated {{time}}"
     },
     "new": {
@@ -30,11 +28,6 @@
       "templatesLater": "Both can be switched on later in project settings.",
       "name": "Name",
       "descriptionPlaceholder": "What the project is for, in a sentence or two.",
-      "visibility": "Who can see it",
-      "private": "Private",
-      "privateHint": "Only members see the project.",
-      "public": "Public",
-      "publicHint": "Anyone can view it and find it in Discover; only members can change it.",
       "submit": "Create project"
     },
     "import": {
@@ -44,14 +37,6 @@
       "started": "Import started. You get an email when the project is ready.",
       "failed": "That file could not be imported."
     },
-    "contact": {
-      "title": "Contact {{name}}",
-      "description": "The project admins get your message by email, with your name and address so they can reply.",
-      "message": "Message",
-      "placeholder": "I would like to help with…",
-      "send": "Send message",
-      "sent": "Message sent to the {{name}} admins"
-    },
     "duplicate": {
       "copyName": "{{name}} (copy)",
       "title": "Duplicate {{name}}",
@@ -59,18 +44,6 @@
       "nameLabel": "Name of the copy",
       "membersLegend": "Members to bring along",
       "submit": "Duplicate project"
-    },
-    "discover": {
-      "title": "Discover",
-      "intro": "Public projects on this server, most liked first.",
-      "search": "Search public projects",
-      "noMatch": "No public project matches.",
-      "empty": "No public projects yet. Make a project public in its settings to list it here.",
-      "contact": "Contact",
-      "like": "Like {{name}}",
-      "unlike": "Unlike {{name}}",
-      "watch": "Watch {{name}}",
-      "unwatch": "Stop watching {{name}}"
     }
   },
   "profile": {
@@ -144,8 +117,6 @@
       "createdBugs_other": "issues reported",
       "closedBugs_one": "issue closed",
       "closedBugs_other": "issues closed",
-      "iocaineTasks_one": "iocaine task",
-      "iocaineTasks_other": "iocaine tasks",
       "wikiChanges_one": "wiki edit",
       "wikiChanges_other": "wiki edits"
     },

@@ -23,7 +23,6 @@ import {
   ColorField,
   DueDateField,
   FlagsField,
-  IocaineField,
   PointsField,
   SprintField,
   StatusField,
@@ -262,14 +261,6 @@ function ItemBody({
               </dt>
               <dd>
                 <FlagsField {...field} />
-              </dd>
-            </>
-          )}
-          {kind === 'task' && (
-            <>
-              <dt className='text-muted-foreground'>{t('sheet.flags')}</dt>
-              <dd>
-                <IocaineField {...field} />
               </dd>
             </>
           )}

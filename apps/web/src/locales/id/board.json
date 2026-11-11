@@ -13,7 +13,7 @@
       "inLane": "{{status}} di {{lane}}",
       "folded": "{{label}} (diciutkan)",
       "fold": "Ciutkan {{status}}",
-      "unfold": "Bentangkan {{status}}",
+      "unfold": "Luaskan {{status}}",
       "overWip": "Melebihi batas pekerjaan berjalan (WIP)",
       "points_other": "{{points}} poin",
       "addTo": "Tambah ke {{status}}"
@@ -72,11 +72,11 @@
   },
   "filters": {
     "searchPlaceholder": "Cari berdasarkan judul atau #ref",
-    "clear": "Bersihkan filter",
+    "clear": "Hapus filter",
     "active": "Filter aktif",
     "remove": "Hapus filter {{facet}}: {{value}}",
-    "filterBy": "Filter menurut {{facet}}",
-    "filterBySelected": "Filter menurut {{facet}}, {{count}} dipilih",
+    "filterBy": "Filter berdasarkan {{facet}}",
+    "filterBySelected": "Filter berdasarkan {{facet}}, {{count}} dipilih",
     "find": "Cari {{facet}}",
     "nothingMatches": "Tidak ada yang cocok.",
     "noEpic": "Tanpa epic",

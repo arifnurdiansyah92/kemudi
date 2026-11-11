@@ -11,30 +11,23 @@
   },
   "projects": {
     "intro": "Semua proyek tempat Anda menjadi anggota; seret untuk mengatur urutannya.",
-    "discoverLink": "Jelajahi proyek publik",
     "newProject": "Proyek baru",
     "loadFailed": "Proyek tidak dapat dimuat.",
     "emptyTitle": "Belum ada proyek",
     "emptyHint": "Buat proyek baru, atau minta admin proyek untuk mengundang Anda.",
     "list": {
       "move": "Pindahkan {{name}}",
-      "private": "Privat",
       "updated": "Diperbarui {{time}}"
     },
     "new": {
       "templateLegend": "Cara kerja tim",
       "templates": {
-        "scrum": "Backlog berprioritas yang direncanakan dalam sprint berjangka waktu, lengkap dengan taskboard.",
+        "scrum": "Backlog yang diprioritaskan, direncanakan dalam sprint berdurasi tetap, lengkap dengan taskboard.",
         "kanban": "Papan berisi kolom tempat pekerjaan mengalir, dengan batas jumlah pekerjaan yang sedang berjalan."
       },
       "templatesLater": "Keduanya dapat diaktifkan nanti di pengaturan proyek.",
       "name": "Nama",
       "descriptionPlaceholder": "Tujuan proyek ini, dalam satu atau dua kalimat.",
-      "visibility": "Siapa yang dapat melihat",
-      "private": "Privat",
-      "privateHint": "Hanya anggota yang dapat melihat proyek ini.",
-      "public": "Publik",
-      "publicHint": "Siapa pun dapat melihat dan menemukannya di Jelajahi; hanya anggota yang dapat mengubahnya.",
       "submit": "Buat proyek"
     },
     "import": {
@@ -44,14 +37,6 @@
       "started": "Impor dimulai. Anda akan menerima email saat proyek siap.",
       "failed": "File tersebut tidak dapat diimpor."
     },
-    "contact": {
-      "title": "Hubungi {{name}}",
-      "description": "Admin proyek akan menerima pesan Anda melalui email, beserta nama dan alamat email Anda agar mereka dapat membalas.",
-      "message": "Pesan",
-      "placeholder": "Saya ingin membantu dalam…",
-      "send": "Kirim pesan",
-      "sent": "Pesan terkirim ke admin {{name}}"
-    },
     "duplicate": {
       "copyName": "{{name}} (salinan)",
       "title": "Duplikasi {{name}}",
@@ -59,18 +44,6 @@
       "nameLabel": "Nama salinan",
       "membersLegend": "Anggota yang diikutsertakan",
       "submit": "Duplikasi proyek"
-    },
-    "discover": {
-      "title": "Jelajahi",
-      "intro": "Proyek publik di server ini, diurutkan dari yang paling banyak disukai.",
-      "search": "Cari proyek publik",
-      "noMatch": "Tidak ada proyek publik yang cocok.",
-      "empty": "Belum ada proyek publik. Jadikan proyek publik di pengaturannya agar tampil di sini.",
-      "contact": "Hubungi",
-      "like": "Sukai {{name}}",
-      "unlike": "Batal menyukai {{name}}",
-      "watch": "Pantau {{name}}",
-      "unwatch": "Berhenti memantau {{name}}"
     }
   },
   "profile": {
@@ -100,7 +73,7 @@
     "unread": "Belum dibaca",
     "meta": "{{time}} di {{project}}",
     "events": {
-      "assigned": "<user>{{user}}</user> <muted>menunjuk Anda sebagai penanggung jawab</muted> <target>{{target}}</target>",
+      "assigned": "<user>{{user}}</user> <muted>menugaskan Anda ke</muted> <target>{{target}}</target>",
       "mentioned": "<user>{{user}}</user> <muted>menyebut Anda di</muted> <target>{{target}}</target>",
       "addedWatcher": "<user>{{user}}</user> <muted>menambahkan Anda sebagai pemantau</muted> <target>{{target}}</target>",
       "addedToProject": "<user>{{user}}</user> <muted>menambahkan Anda ke proyek</muted> <target>{{target}}</target>",
@@ -141,7 +114,6 @@
       "closedTasks_other": "tugas ditutup",
       "createdBugs_other": "isu dilaporkan",
       "closedBugs_other": "isu ditutup",
-      "iocaineTasks_other": "tugas iocaine",
       "wikiChanges_other": "suntingan wiki"
     },
     "leave": {

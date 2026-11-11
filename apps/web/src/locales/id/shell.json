@@ -4,7 +4,6 @@
   "nav": {
     "workspace": "Ruang kerja",
     "home": "Beranda",
-    "discover": "Jelajahi",
     "you": "Anda"
   },
   "header": {
@@ -82,8 +81,8 @@
       "select": "Pilih gaya tata letak",
       "default": "Bawaan",
       "compact": "Ringkas",
-      "full": "Layar penuh",
-      "help": "Pilih antara tata letak bawaan, ringkas (ikon saja), atau layar penuh"
+      "full": "Lebar penuh",
+      "help": "Pilih antara tata letak bawaan, ringkas (ikon saja), atau lebar penuh"
     },
     "direction": {
       "label": "Arah teks",
@@ -160,7 +159,7 @@
   },
   "transfer": {
     "crumb": "Kepemilikan",
-    "title": "Jadi pemilik {{project}}?",
+    "title": "Menjadi pemilik {{project}}?",
     "invalidLink": "Tautan ini sudah tidak berlaku.",
     "invalid": "{{error}} Mintalah pemilik saat ini untuk menawarkannya kembali.",
     "explain": "Pemilik dapat mengubah semua pengaturan, menghapus proyek, dan mengalihkan kepemilikan. Pemilik saat ini tetap menjadi anggota.",

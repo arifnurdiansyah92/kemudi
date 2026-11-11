@@ -494,28 +494,6 @@ export function FlagsField(props: FieldProps) {
   )
 }
 
-export function IocaineField(props: FieldProps) {
-  const { t } = useTranslation('item')
-  const save = useSave(props)
-  const on = !!props.item.is_iocaine
-  return (
-    <button
-      disabled={!props.editable}
-      aria-pressed={on}
-      onClick={() => save({ is_iocaine: !on })}
-      title={t('fields.iocaineHint')}
-      className={cn(
-        'h-7 rounded-full border px-2.5 text-xs',
-        on
-          ? 'border-primary bg-primary text-primary-foreground'
-          : 'text-muted-foreground hover:bg-accent'
-      )}
-    >
-      {t('fields.iocaine')}
-    </button>
-  )
-}
-
 export function ColorField(props: FieldProps) {
   const { t } = useTranslation('item')
   const save = useSave(props)

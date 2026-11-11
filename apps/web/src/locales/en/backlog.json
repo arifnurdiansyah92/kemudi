@@ -84,8 +84,7 @@
     "stats": {
       "pointsDone": "Points done",
       "storiesClosed": "Stories closed",
-      "tasksClosed": "Tasks closed",
-      "iocaineDoses": "Iocaine doses"
+      "tasksClosed": "Tasks closed"
     },
     "pointsUnit": "pts",
     "noStoryRow": "Tasks without a story",
@@ -100,8 +99,7 @@
     },
     "task": {
       "draggable": "Draggable task",
-      "blocked": "Blocked",
-      "iocaine": "Iocaine"
+      "blocked": "Blocked"
     }
   },
   "burndown": {

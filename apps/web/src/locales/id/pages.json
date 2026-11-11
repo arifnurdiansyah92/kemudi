@@ -82,12 +82,11 @@
       "scrum": "Scrum (backlog dan sprint)",
       "kanban": "Kanban (papan)"
     },
-    "private": "Proyek privat",
     "keepReference": "Simpan tautan ke setiap item asli di {{service}}",
     "importProject": "Impor proyek",
     "useAnotherAccount": "Gunakan akun {{service}} lain",
     "links": {
-      "title": "Bawa proyek dari aplikasi lain",
+      "title": "Pindahkan proyek dari aplikasi lain",
       "desc": "Menyalin item, anggota, dan riwayatnya ke proyek Kemudi baru."
     }
   }

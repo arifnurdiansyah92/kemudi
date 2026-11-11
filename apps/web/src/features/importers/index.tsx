@@ -191,7 +191,6 @@ function Wizard({
     name: '',
     description: '',
     template: 'scrum',
-    is_private: true,
     keep_external_reference: true,
   })
 
@@ -229,7 +228,7 @@ function Wizard({
               form.description || picked!.description || picked!.name,
             template: form.template,
             project_type: form.template,
-            is_private: form.is_private,
+            is_private: true,
             keep_external_reference: form.keep_external_reference,
             users_bindings: Object.fromEntries(
               Object.entries(bindings).filter(([, v]) => v)
@@ -381,15 +380,6 @@ function Wizard({
               </label>
             ))}
           </div>
-          <label className='flex items-center gap-2 text-sm'>
-            <Checkbox
-              checked={form.is_private}
-              onCheckedChange={(v) =>
-                setForm({ ...form, is_private: v === true })
-              }
-            />
-            {t('importers.private')}
-          </label>
           <label className='flex items-center gap-2 text-sm'>
             <Checkbox
               checked={form.keep_external_reference}

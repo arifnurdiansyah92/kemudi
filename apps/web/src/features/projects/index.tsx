@@ -22,13 +22,7 @@ export function Projects() {
               {t('common:terms.project_other')}
             </h1>
             <p className='mt-1 text-sm text-muted-foreground'>
-              {t('projects.intro')}{' '}
-              <Link
-                to='/discover'
-                className='text-foreground underline-offset-4 hover:underline'
-              >
-                {t('projects.discoverLink')}
-              </Link>
+              {t('projects.intro')}
             </p>
           </div>
           <Button size='sm' asChild>

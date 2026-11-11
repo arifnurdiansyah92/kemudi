@@ -32,7 +32,6 @@ export function NewProject() {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [template, setTemplate] = useState<number | null>(null)
-  const [isPrivate, setPrivate] = useState(true)
   const chosen = template ?? templates.data?.[0]?.id ?? null
 
   return (
@@ -57,7 +56,6 @@ export function NewProject() {
                 name: name.trim(),
                 description: description.trim() || name.trim(),
                 creation_template: chosen,
-                is_private: isPrivate,
               },
               {
                 onSuccess: (p) =>
@@ -127,34 +125,6 @@ export function NewProject() {
               placeholder={t('projects.new.descriptionPlaceholder')}
             />
           </div>
-          <fieldset className='grid gap-2'>
-            <legend className='mb-1 text-sm font-medium'>
-              {t('projects.new.visibility')}
-            </legend>
-            {[
-              [true, t('projects.new.private'), t('projects.new.privateHint')],
-              [false, t('projects.new.public'), t('projects.new.publicHint')],
-            ].map(([value, label, hint]) => (
-              <label
-                key={String(value)}
-                className='flex items-start gap-2 text-sm'
-              >
-                <input
-                  type='radio'
-                  name='privacy'
-                  className='mt-1'
-                  checked={isPrivate === value}
-                  onChange={() => setPrivate(value as boolean)}
-                />
-                <span>
-                  <span className='font-medium'>{label as string}</span>
-                  <span className='block text-muted-foreground'>
-                    {hint as string}
-                  </span>
-                </span>
-              </label>
-            ))}
-          </fieldset>
           <div>
             <Button
               type='submit'

@@ -13,13 +13,12 @@
     "ref": "{{kind}} #{{ref}}",
     "inStory": "{{kind}} #{{ref}} dalam <parent>#{{parentRef}} {{parentSubject}}</parent>",
     "inSprint": "{{kind}} #{{ref}} di {{sprint}}",
-    "inBacklog": "{{kind}} #{{ref}} di Backlog",
+    "inBacklog": "{{kind}} #{{ref}} di backlog",
     "subject": "Judul",
     "blocked": "Terblokir.",
     "noBlockReason": "Tidak ada alasan yang diberikan.",
     "colour": "Warna",
     "requirement": "Kebutuhan",
-    "flags": "Penanda",
     "created": "Dibuat",
     "createdBy": "{{date}} oleh {{name}}"
   },
@@ -29,8 +28,8 @@
   "fields": {
     "closedSprint": "Sprint yang sudah ditutup",
     "changeAssignee": "Ubah penanggung jawab",
-    "unassign": "Lepas penanggung jawab",
-    "unassignAll": "Lepas semua penanggung jawab",
+    "unassign": "Hapus penanggung jawab",
+    "unassignAll": "Hapus semua penanggung jawab",
     "removeTag": "Hapus tag {{name}}",
     "tagName": "Nama tag",
     "newTag": "Tag baru",
@@ -45,8 +44,6 @@
     "notEstimated": "belum diestimasi",
     "clientRequirement": "Kebutuhan klien",
     "teamRequirement": "Kebutuhan tim",
-    "iocaine": "Iocaine",
-    "iocaineHint": "Tugas yang sulit, berisiko, atau baru bagi tim",
     "epicColour": "Warna epic"
   },
   "description": {
@@ -83,7 +80,7 @@
   "attachments": {
     "delete": "Hapus {{name}}",
     "uploading": "Mengunggah…",
-    "attach": "Lampirkan file atau letakkan di sini",
+    "attach": "Lampirkan file atau seret ke sini",
     "empty": "Belum ada lampiran."
   },
   "conversation": {
@@ -118,13 +115,12 @@
       "assigned_users": "penanggung jawab",
       "milestone": "sprint",
       "is_blocked": "status terblokir",
-      "blocked_note": "alasan terblokir",
+      "blocked_note": "alasan blokir",
       "due_date": "tenggat",
       "due_date_reason": "alasan tenggat",
       "description_diff": "deskripsi",
       "client_requirement": "kebutuhan klien",
       "team_requirement": "kebutuhan tim",
-      "is_iocaine": "iocaine",
       "user_story": "story",
       "custom_attributes": "kolom kustom",
       "subject": "judul",
@@ -155,7 +151,7 @@
     "delete": "Hapus {{kind}}",
     "deleteTitle": "Hapus {{kind}} #{{ref}}?",
     "deleteDesc": "\"{{subject}}\" beserta komentar dan lampirannya akan dihapus untuk semua orang. Tindakan ini tidak dapat dibatalkan.",
-    "blockDesc": "Jelaskan apa yang menghambat, agar orang yang bisa membukanya tahu.",
+    "blockDesc": "Jelaskan apa yang menghambat, agar orang yang dapat membuka blokirnya tahu.",
     "blockReason": "Apa yang menghambatnya",
     "blockPlaceholder": "Menunggu perubahan API di #42"
   }

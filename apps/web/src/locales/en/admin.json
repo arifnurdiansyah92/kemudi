@@ -28,13 +28,6 @@
       "plannedSprints": "Planned sprints",
       "plannedPoints": "Planned story points",
       "burndownHint": "Both feed the project burndown in the backlog.",
-      "private": "Private project",
-      "privateHint": "Off makes it public: anyone can view it and find it in Discover.",
-      "lookingForPeople": "Looking for people",
-      "lookingForPeopleHint": "Shows in Discover that the project wants contributors.",
-      "contactable": "Can be contacted",
-      "contactableHint": "People outside the project can send the admins a message from Discover.",
-      "lookingForNote": "Who you are looking for",
       "save": "Save details"
     },
     "logo": {
@@ -155,13 +148,6 @@
       "issues": "Issues",
       "wikiPages": "Wiki pages",
       "wikiLinks": "Wiki links"
-    },
-    "public": {
-      "title": "Outside the team",
-      "description": "This project is public. Choose what people outside it can see and do.",
-      "signedIn": "Signed-in people who are not members",
-      "anonymous": "Visitors who are not signed in",
-      "see": "See {{area}}"
     }
   },
   "values": {

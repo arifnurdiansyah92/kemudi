@@ -21,7 +21,6 @@ type MemberStats = Record<
   | 'closed_bugs'
   | 'created_bugs'
   | 'closed_tasks'
-  | 'iocaine_tasks'
   | 'wiki_changes',
   Record<string, number>
 >
@@ -30,7 +29,6 @@ const STATS = [
   ['closed_tasks', 'team.stats.closedTasks'],
   ['created_bugs', 'team.stats.createdBugs'],
   ['closed_bugs', 'team.stats.closedBugs'],
-  ['iocaine_tasks', 'team.stats.iocaineTasks'],
   ['wiki_changes', 'team.stats.wikiChanges'],
 ] as const satisfies readonly (readonly [keyof MemberStats, string])[]
 

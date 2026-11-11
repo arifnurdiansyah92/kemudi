@@ -20,7 +20,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, Lock } from 'lucide-react'
+import { GripVertical } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/taiga/client'
 import { onFail } from '@/lib/taiga/items'
@@ -136,12 +136,6 @@ function Row({
         <span className='min-w-0 flex-1'>
           <span className='flex items-center gap-1.5 font-medium'>
             {project.name}
-            {project.is_private && (
-              <Lock
-                className='size-3.5 text-muted-foreground'
-                aria-label={t('projects.list.private')}
-              />
-            )}
           </span>
           {project.description && (
             <span className='mt-0.5 line-clamp-1 block text-sm text-muted-foreground'>

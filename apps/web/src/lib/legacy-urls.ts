@@ -73,5 +73,5 @@ export async function resolveLegacyProjectPath(
 
 /** Same-origin taiga-front paths that the app can open itself. */
 export function isLegacyPath(pathname: string) {
-  return /^\/(project|profile|login|invitation|discover)(\/|$)/.test(pathname)
+  return /^\/(project|profile|login|invitation)(\/|$)/.test(pathname)
 }

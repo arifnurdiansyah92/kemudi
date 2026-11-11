@@ -23,7 +23,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Ban, Check, ChevronDown, Flame, Plus } from 'lucide-react'
+import { Ban, Check, ChevronDown, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useMilestones, useStories } from '@/lib/taiga/queries'
 import {
@@ -245,10 +245,6 @@ export function Taskboard({ sprintId }: { sprintId: Id }) {
                     done: number(stats.data.completed_tasks),
                     total: number(stats.data.total_tasks),
                   })}
-                />
-                <Stat
-                  label={t('taskboard.stats.iocaineDoses')}
-                  value={number(stats.data.iocaine_doses)}
                 />
               </dl>
             )}
@@ -696,12 +692,6 @@ function TaskFace({
             <Ban aria-hidden className='size-3' />
             {t('taskboard.task.blocked')}
           </span>
-        )}
-        {task.is_iocaine && (
-          <Flame
-            className='size-3 text-foreground/70'
-            aria-label={t('taskboard.task.iocaine')}
-          />
         )}
         {assignee && <UserAvatar user={assignee} className='ms-auto size-5' />}
       </div>

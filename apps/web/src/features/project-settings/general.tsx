@@ -38,19 +38,12 @@ function Details({ project }: { project: Project }) {
   const { t } = useTranslation(['admin', 'common'])
   const update = useUpdateProject(project)
   const p = project as Project & {
-    is_looking_for_people: boolean
-    looking_for_people_note: string
-    is_contact_activated: boolean
     total_milestones: number | null
     total_story_points: number | null
   }
   const [form, setForm] = useState({
     name: p.name,
     description: p.description,
-    is_private: p.is_private,
-    is_looking_for_people: p.is_looking_for_people,
-    is_contact_activated: p.is_contact_activated,
-    looking_for_people_note: p.looking_for_people_note ?? '',
     total_milestones: p.total_milestones ?? '',
     total_story_points: p.total_story_points ?? '',
   })
@@ -122,54 +115,6 @@ function Details({ project }: { project: Project }) {
         <p className='-mt-2 text-xs text-muted-foreground'>
           {t('general.details.burndownHint')}
         </p>
-        <label className='flex items-center justify-between gap-4 text-sm'>
-          <span>
-            <span className='font-medium'>{t('general.details.private')}</span>
-            <span className='block text-muted-foreground'>
-              {t('general.details.privateHint')}
-            </span>
-          </span>
-          <Switch
-            checked={form.is_private}
-            onCheckedChange={(v) => set({ is_private: v })}
-          />
-        </label>
-        <label className='flex items-center justify-between gap-4 text-sm'>
-          <span>
-            <span className='font-medium'>
-              {t('general.details.lookingForPeople')}
-            </span>
-            <span className='block text-muted-foreground'>
-              {t('general.details.lookingForPeopleHint')}
-            </span>
-          </span>
-          <Switch
-            checked={form.is_looking_for_people}
-            onCheckedChange={(v) => set({ is_looking_for_people: v })}
-          />
-        </label>
-        <label className='flex items-center justify-between gap-4 text-sm'>
-          <span>
-            <span className='font-medium'>
-              {t('general.details.contactable')}
-            </span>
-            <span className='block text-muted-foreground'>
-              {t('general.details.contactableHint')}
-            </span>
-          </span>
-          <Switch
-            checked={form.is_contact_activated}
-            onCheckedChange={(v) => set({ is_contact_activated: v })}
-          />
-        </label>
-        {form.is_looking_for_people && (
-          <Input
-            aria-label={t('general.details.lookingForNote')}
-            placeholder={t('general.details.lookingForNote')}
-            value={form.looking_for_people_note}
-            onChange={(e) => set({ looking_for_people_note: e.target.value })}
-          />
-        )}
         <div>
           <Button
             type='submit'

@@ -84,7 +84,6 @@
       "scrum": "Scrum (backlog and sprints)",
       "kanban": "Kanban (board)"
     },
-    "private": "Private project",
     "keepReference": "Keep a link to each original {{service}} item",
     "importProject": "Import project",
     "useAnotherAccount": "Use another {{service}} account",

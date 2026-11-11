@@ -36,7 +36,6 @@ const FIELDS = [
   'description_diff',
   'client_requirement',
   'team_requirement',
-  'is_iocaine',
   'user_story',
   'custom_attributes',
   'subject',
