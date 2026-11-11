@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import JSON, ForeignKey, String, Text, create_engine
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -120,12 +121,12 @@ def make_session(db_url: str) -> sessionmaker[Session]:
         Path(db_url.removeprefix("sqlite:///")).parent.mkdir(
             parents=True, exist_ok=True
         )
-    engine = create_engine(
-        db_url,
-        connect_args={"check_same_thread": False}
-        if db_url.startswith("sqlite")
-        else {},
-    )
+    kwargs: dict[str, Any] = {}
+    if db_url.startswith("sqlite"):
+        kwargs["connect_args"] = {"check_same_thread": False}
+    if ":memory:" in db_url:
+        kwargs["poolclass"] = StaticPool  # one shared in-memory database
+    engine = create_engine(db_url, **kwargs)
     init_db(engine)
     return sessionmaker(engine, expire_on_commit=False)
 
