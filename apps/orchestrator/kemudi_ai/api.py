@@ -198,6 +198,8 @@ def generate_draft(
         items = draft_baseline(llm, [Section.model_validate(s) for s in c.sections], c.lang)
     except LLMError as e:
         raise HTTPException(502, f"AI call failed: {e}") from e
+    if not items:
+        raise HTTPException(502, "the AI returned no usable baseline items; try again")
     draft = _draft(db, c) or BaselineVersion(contract_id=c.id)
     draft.items = [i.model_dump() for i in items]
     db.add(draft)

@@ -72,3 +72,14 @@ def test_unknown_role_in_effort_maps_to_error():
     }]})
     with pytest.raises(LLMError, match="designer"):
         classify(llm, "x", BASELINE, RC)
+
+
+def test_draft_accepts_strings_for_lists_and_prices():
+    llm = FakeLLM({"baseline": [{"items": [
+        {"kind": "term", "title": "Garansi", "acceptance": "Garansi 1 tahun.",
+         "clauses": "S7: Masa Garansi", "price_idr": "Rp 30.000.000"},
+    ]}]})
+    [item] = draft_baseline(llm, SECTIONS)
+    assert item.acceptance == ["Garansi 1 tahun."]
+    assert item.clauses == ["S7: Masa Garansi"]
+    assert item.price_idr == 30_000_000

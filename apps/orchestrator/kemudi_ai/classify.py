@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from .baseline import BaselineItem
 from .llm import LLM, LLMError
@@ -19,6 +19,27 @@ class Classification(BaseModel):
     effort_days: dict[str, float] = Field(default_factory=dict)
     price_idr: int = 0
     question: str | None = None
+
+    @field_validator("effort_days", mode="before")
+    @classmethod
+    def _effort(cls, v):
+        if not v:
+            return {}
+        if not isinstance(v, dict):
+            raise ValueError("effort_days must be an object of role: days")
+        out = {}
+        for role, days in v.items():
+            if isinstance(days, str):
+                days = days.replace(",", ".").split()[0] if days.strip() else 0
+            out[str(role).strip().lower()] = float(days or 0)
+        return out
+
+    @field_validator("clause", "reason", mode="before")
+    @classmethod
+    def _text(cls, v):
+        if isinstance(v, list):
+            return "; ".join(map(str, v))
+        return "" if v is None else str(v)
 
 
 SYSTEM = {

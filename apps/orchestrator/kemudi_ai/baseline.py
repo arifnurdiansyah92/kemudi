@@ -3,7 +3,7 @@
 import logging
 from typing import Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from .documents import Section
 from .llm import LLM
@@ -22,6 +22,37 @@ class BaselineItem(BaseModel):
     clauses: list[str] = Field(default_factory=list)
     price_idr: int | None = None
     parent: str | None = None
+
+    # Models often send one string where a list is asked for, or a price as
+    # text; accept those rather than drop the item.
+    @field_validator("acceptance", "clauses", mode="before")
+    @classmethod
+    def _listify(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [line.strip(" -•") for line in v.splitlines() if line.strip(" -•")]
+        return [str(x) for x in v]
+
+    @field_validator("price_idr", mode="before")
+    @classmethod
+    def _price(cls, v):
+        if v in (None, "", 0):
+            return None
+        if isinstance(v, str):
+            digits = "".join(ch for ch in v if ch.isdigit())
+            return int(digits) if digits else None
+        return int(v)
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _text(cls, v):
+        return "" if v is None else str(v)
+
+    @field_validator("parent", mode="before")
+    @classmethod
+    def _parent(cls, v):
+        return None if v in (None, "") else str(v)
 
 
 SYSTEM = {
