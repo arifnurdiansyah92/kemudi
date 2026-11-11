@@ -1,0 +1,20 @@
+SURAT PERINTAH KERJA (SPK) Contohvilla.id PT Vendor Contoh
+SURAT PERINTAH KERJA
+No: 001/SPK/CONTOH/II/2026
+PARA PIHAK
+Pihak Pertama: PT Contoh lndah (Contohvilla.id)
+Pihak Kedua: PT Vendor Contoh
+RUANG LINGKUP PEKERJAAN
+No Nama Modul Fitur Utama Tingkat Estimasi Biaya
+1 Public Booking • Pencarian Ketersediaan High Rp 30 .000.000
+2 Dashboard • Manajemen lnventori Kamar Very High Rp 40.000.000
+3 Payment • lntegrasi Payment Gateway (VA/ORIS) High Rp 20.000.000
+SURAT PERINTAH KERJA (SPK) Contohvi11a.id PT Vendor Contoh
+NILAI PEKERJAAN & TERMIN PEMBAYARAN
+Tennin 1 10% Rp 9.000.000
+SURAT PERINTAH KERJA (SPK) Contohv1lla.id PT Vendor Contoh
+HAK DAN KEWAJIBAN PARA PIHAK
+3. Melakukan perbaikan bug dan error selama masa garansi (1 tahun setelah Go Live).
+KETENTUAN TAMBAHAN
+1. Perubahan ruang lingkup pekerjaan (Change Request) di luar yang tercantum dalam SPK ini akan
+dikenakan biaya tambahan.
