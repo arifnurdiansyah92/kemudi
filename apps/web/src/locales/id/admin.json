@@ -1,0 +1,352 @@
+{
+  "nav": {
+    "title": "Pengaturan proyek",
+    "sectionsLabel": "Bagian pengaturan",
+    "notAdmin": "Hanya admin proyek yang dapat mengubah pengaturan. Hubungi admin {{project}} jika ada yang perlu diubah.",
+    "general": "Umum",
+    "members": "Anggota",
+    "roles": "Peran dan izin",
+    "values": "Status dan nilai",
+    "customFields": "Kolom kustom",
+    "tags": "Tag",
+    "webhooks": "Webhook",
+    "integrations": "Integrasi",
+    "exportImport": "Impor dan ekspor",
+    "sprintAccess": "Akses sprint"
+  },
+  "shared": {
+    "name": "Nama",
+    "moveUp": "Pindahkan {{name}} ke atas",
+    "moveDown": "Pindahkan {{name}} ke bawah",
+    "colourOf": "Warna {{name}}",
+    "deleteNamed": "Hapus {{name}}",
+    "deleteTitle": "Hapus {{name}}?"
+  },
+  "general": {
+    "details": {
+      "title": "Detail",
+      "plannedSprints": "Rencana jumlah sprint",
+      "plannedPoints": "Rencana total story point",
+      "burndownHint": "Keduanya dipakai untuk burndown proyek di backlog.",
+      "save": "Simpan detail"
+    },
+    "logo": {
+      "title": "Logo",
+      "description": "Gambar persegi paling cocok. PNG, JPEG, atau GIF.",
+      "upload": "Unggah logo",
+      "remove": "Hapus"
+    },
+    "modules": {
+      "title": "Modul",
+      "description": "Aktifkan atau nonaktifkan bagian Kemudi untuk proyek ini.",
+      "epics": "Epic",
+      "epicsHint": "Kelompokkan story menjadi pekerjaan yang lebih besar.",
+      "scrum": "Scrum",
+      "scrumHint": "Backlog, sprint, dan taskboard.",
+      "kanban": "Kanban",
+      "kanbanHint": "Papan story berdasarkan status.",
+      "issues": "Isu",
+      "issuesHint": "Bug, pertanyaan, dan usulan perbaikan.",
+      "wiki": "Wiki",
+      "wikiHint": "Halaman untuk pengetahuan bersama tim.",
+      "meetingService": "Layanan rapat",
+      "customLink": "Tautan kustom",
+      "meetingLink": "Tautan rapat",
+      "roomName": "Nama ruang",
+      "saveMeeting": "Simpan pengaturan rapat"
+    },
+    "duplicate": {
+      "title": "Duplikasi",
+      "description": "Mulai proyek baru dengan pengaturan, status, peran, dan kolom kustom dari proyek ini.",
+      "action": "Duplikasi proyek"
+    },
+    "transfer": {
+      "title": "Alihkan kepemilikan",
+      "description": "Pemilik baru akan menerima email dan harus menyetujuinya. Sampai saat itu, Anda tetap pemiliknya.",
+      "inviteFirst": "Undang anggota terlebih dahulu.",
+      "newOwner": "Pemilik baru",
+      "chooseMember": "Pilih anggota",
+      "message": "Pesan",
+      "offer": "Tawarkan kepemilikan"
+    },
+    "delete": {
+      "title": "Hapus proyek",
+      "description": "Semua story, tugas, isu, epic, halaman wiki, dan lampiran di dalamnya akan dihapus. Tindakan ini tidak dapat dibatalkan.",
+      "action": "Hapus {{name}}",
+      "confirmTitle": "Hapus {{name}}?",
+      "typeName": "Ketik nama proyek untuk mengonfirmasi.",
+      "nameLabel": "Nama proyek"
+    }
+  },
+  "members": {
+    "inviteSent": "Undangan terkirim ke {{email}}",
+    "invitesSent_other": "{{count}} undangan terkirim",
+    "resent": "Undangan dikirim ulang ke {{email}}",
+    "title": "Anggota ({{total}})",
+    "description": "Peran menentukan apa yang dapat dilihat dan diubah anggota. Admin juga dapat mengubah pengaturan ini.",
+    "owner": "pemilik",
+    "deactivated": "nonaktif",
+    "roleOf": "Peran {{name}}",
+    "admin": "Admin",
+    "removeNamed": "Keluarkan {{name}}",
+    "pending": {
+      "title": "Undangan belum diterima ({{total}})",
+      "description": "Orang-orang ini belum menerima undangan.",
+      "actionsFor": "Tindakan untuk {{email}}",
+      "resend": "Kirim ulang undangan",
+      "cancel": "Batalkan undangan"
+    },
+    "remove": {
+      "title": "Keluarkan {{name}}?",
+      "description": "Mereka tidak lagi dapat mengakses proyek ini. Story, tugas, dan komentar mereka tetap ada.",
+      "confirm": "Keluarkan anggota"
+    },
+    "invite": {
+      "title": "Undang orang",
+      "description": "Orang yang sudah memiliki akun langsung bergabung; yang lain akan menerima email untuk mendaftar.",
+      "emails": "Email atau nama pengguna",
+      "emailsPlaceholder": "ana@example.com, budi@example.com",
+      "note": "Catatan pribadi (opsional)",
+      "send": "Kirim undangan",
+      "inviteMany_other": "Undang {{count}} orang"
+    },
+    "promote": {
+      "title": "Jadikan {{name}} admin proyek?",
+      "description": "Admin dapat mengubah semua pengaturan proyek, mengelola anggota dan peran, serta menghapus proyek.",
+      "confirm": "Jadikan admin"
+    }
+  },
+  "roles": {
+    "title": "Peran",
+    "description": "Setiap anggota memiliki satu peran. Peran yang dihitung untuk poin mendapat estimasi tersendiri di setiap story.",
+    "new": "Peran baru",
+    "newLabel": "Nama peran baru",
+    "add": "Tambah peran",
+    "computable": "Dihitung untuk poin",
+    "area": "Area",
+    "permissionLabel": "{{role}}: {{action}} {{area}}",
+    "delete": "Hapus peran",
+    "deleteTitle": "Hapus peran {{name}}?",
+    "moveMembers": "Anggota dengan peran ini dipindahkan ke:",
+    "moveMembersLabel": "Pindahkan anggota ke"
+  },
+  "permissions": {
+    "actions": {
+      "view": "lihat",
+      "add": "tambah",
+      "modify": "ubah",
+      "comment": "komentari",
+      "delete": "hapus"
+    },
+    "areas": {
+      "epics": "Epic",
+      "sprints": "Sprint",
+      "stories": "Story",
+      "tasks": "Tugas",
+      "issues": "Isu",
+      "wikiPages": "Halaman wiki",
+      "wikiLinks": "Tautan wiki"
+    }
+  },
+  "values": {
+    "lists": {
+      "storyStatuses": {
+        "title": "Status",
+        "description": "Kolom di Kanban dan tahapan yang dilalui sebuah story.",
+        "new": "Status baru"
+      },
+      "points": {
+        "title": "Poin",
+        "description": "Nilai yang dapat dipakai untuk mengestimasi story.",
+        "new": "Poin baru"
+      },
+      "swimlanes": {
+        "title": "Swimlane",
+        "description": "Baris di papan Kanban.",
+        "new": "Swimlane baru"
+      },
+      "storyDueDates": {
+        "title": "Peringatan tenggat",
+        "description": "Tandai story sekian hari sebelum tenggatnya.",
+        "new": "Peringatan tenggat baru"
+      },
+      "taskStatuses": {
+        "title": "Status",
+        "description": "Kolom di taskboard.",
+        "new": "Status baru"
+      },
+      "taskDueDates": {
+        "title": "Peringatan tenggat",
+        "description": "Tandai tugas sekian hari sebelum tenggatnya.",
+        "new": "Peringatan tenggat baru"
+      },
+      "issueStatuses": {
+        "title": "Status",
+        "description": "Tahapan yang dilalui sebuah isu.",
+        "new": "Status baru"
+      },
+      "issueTypes": {
+        "title": "Jenis",
+        "description": "Jenis isu, misalnya bug atau pertanyaan.",
+        "new": "Jenis baru"
+      },
+      "priorities": {
+        "title": "Prioritas",
+        "description": "Seberapa cepat sebuah isu perlu ditangani.",
+        "new": "Prioritas baru"
+      },
+      "severities": {
+        "title": "Tingkat keparahan",
+        "description": "Seberapa besar dampak sebuah isu.",
+        "new": "Tingkat keparahan baru"
+      },
+      "issueDueDates": {
+        "title": "Peringatan tenggat",
+        "description": "Tandai isu sekian hari sebelum tenggatnya.",
+        "new": "Peringatan tenggat baru"
+      },
+      "epicStatuses": {
+        "title": "Status",
+        "description": "Tahapan yang dilalui sebuah epic.",
+        "new": "Status baru"
+      }
+    },
+    "valueOf": "Nilai {{name}}",
+    "noValue": "Tanpa nilai",
+    "daysBeforeFor": "Jumlah hari sebelum tenggat untuk {{name}}",
+    "daysBefore": "hari sebelum tenggat",
+    "wip": "WIP",
+    "wipLimitOf": "Batas WIP untuk {{name}}",
+    "wipNone": "tidak ada",
+    "closed": "Ditutup",
+    "closedHint": "Item dengan status ini dihitung selesai",
+    "archived": "Diarsipkan",
+    "archivedHint": "Disembunyikan dari Kanban kecuali item arsip ditampilkan",
+    "moveTo": "Semua yang memakainya dipindahkan ke:",
+    "moveToLabel": "Pindahkan ke",
+    "removed": "Nilai ini akan dihapus dari proyek ini."
+  },
+  "customFields": {
+    "kinds": {
+      "epic": {
+        "description": "Kolom tambahan di setiap epic.",
+        "new": "Kolom epic baru"
+      },
+      "userstory": {
+        "description": "Kolom tambahan di setiap story.",
+        "new": "Kolom story baru"
+      },
+      "task": {
+        "description": "Kolom tambahan di setiap tugas.",
+        "new": "Kolom tugas baru"
+      },
+      "issue": {
+        "description": "Kolom tambahan di setiap isu.",
+        "new": "Kolom isu baru"
+      }
+    },
+    "types": {
+      "text": "Teks singkat",
+      "multiline": "Teks panjang",
+      "richtext": "Teks berformat",
+      "number": "Angka",
+      "date": "Tanggal",
+      "url": "Tautan",
+      "checkbox": "Kotak centang",
+      "dropdown": "Daftar pilihan"
+    },
+    "empty": "Belum ada kolom kustom.",
+    "fieldName": "Nama kolom",
+    "typeOf": "Jenis {{name}}",
+    "helpTextFor": "Teks bantuan untuk {{name}}",
+    "helpText": "Teks bantuan (opsional)",
+    "choicesFor": "Pilihan untuk {{name}}",
+    "choices": "Pilihan, pisahkan dengan koma",
+    "newName": "Nama kolom baru",
+    "newType": "Jenis kolom baru",
+    "add": "Tambah kolom",
+    "deleteTitle": "Hapus kolom {{name}}?",
+    "deleteDescription": "Nilainya akan dihapus dari semua item.",
+    "confirm": "Hapus kolom"
+  },
+  "tags": {
+    "description": "Ganti nama tag di semua item, beri warna, gabungkan tag duplikat, atau hapus tag dari semua item.",
+    "empty": "Belum ada tag. Tag akan muncul di sini setelah dipakai di item.",
+    "selectToMerge": "Pilih {{tag}} untuk digabungkan",
+    "nameOf": "Nama {{tag}}",
+    "mergeCount_other": "Gabungkan {{count}} tag menjadi",
+    "mergeInto": "Gabungkan menjadi",
+    "merge": "Gabungkan tag",
+    "new": "Tag baru",
+    "add": "Tambah tag",
+    "deleteTitle": "Hapus tag {{tag}}?",
+    "deleteDescription": "Tag ini akan dihapus dari semua story, tugas, isu, dan epic.",
+    "confirm": "Hapus tag"
+  },
+  "webhooks": {
+    "title": "Webhook",
+    "description": "Kemudi mengirim event JSON (POST) ke setiap URL setiap kali story, tugas, isu, epic, sprint, atau halaman wiki berubah. Kunci dipakai untuk menandatangani setiap permintaan (X-TAIGA-WEBHOOK-SIGNATURE, HMAC-SHA1).",
+    "testOk": "Tes terkirim (HTTP {{status}})",
+    "testFailed": "Tes gagal: HTTP {{status}}",
+    "noResponse": "tidak ada respons",
+    "add": "Tambah webhook",
+    "sendTest": "Kirim tes",
+    "deliveries": "Pengiriman ({{total}})",
+    "deleteTitle": "Hapus webhook {{name}}?",
+    "deleteDescription": "Kemudi tidak akan lagi mengirim event ke URL ini.",
+    "confirm": "Hapus webhook",
+    "nothingSent": "Belum ada yang terkirim.",
+    "failed": "gagal",
+    "duration": "{{ms}} ms",
+    "resend": "Kirim ulang",
+    "secret": "Kunci rahasia",
+    "url": "URL",
+    "urlPlaceholder": "https://example.com/hooks/kemudi",
+    "save": "Simpan webhook"
+  },
+  "integrations": {
+    "copied": "{{label}} tersalin",
+    "saved": "Integrasi tersimpan",
+    "intro": {
+      "title": "Commit dan isu dari layanan hosting kode",
+      "description": "Sebut item di pesan commit untuk menautkannya, lalu tambahkan status untuk memindahkannya: <code>TG-12 #done</code> menutup item 12 dengan status yang slug-nya <em>done</em>. Isu yang dibuka di layanan hosting kode juga dapat membuat isu di Kemudi."
+    },
+    "services": {
+      "github": "Pengaturan repositori, Webhooks: content type application/json, kunci rahasia di bawah, event \"push\", \"issues\", dan \"issue comment\".",
+      "gitlab": "Pengaturan proyek, Webhooks: URL di bawah (sudah memuat kunci), trigger \"push\", \"issues\", dan \"comments\".",
+      "bitbucket": "Pengaturan repositori, Webhooks: URL di bawah, trigger \"repository push\" dan event isu.",
+      "gogs": "Pengaturan repositori, Webhooks: content type application/json, kunci rahasia di bawah."
+    },
+    "webhookUrl": "URL webhook",
+    "secret": "Kunci rahasia",
+    "originIps": "Terima hook hanya dari alamat berikut",
+    "anyAddress": "Alamat apa pun",
+    "originIpsHint": "Alamat IP atau rentang (CIDR), pisahkan dengan koma. Kosongkan untuk menerima semua alamat."
+  },
+  "exportImport": {
+    "export": {
+      "title": "Ekspor",
+      "description": "Salinan lengkap proyek (item, komentar, lampiran, pengaturan) dalam bentuk file ekspor Taiga. Impor ke Kemudi atau Taiga untuk memulihkan atau memindahkan proyek.",
+      "action": "Ekspor proyek",
+      "started": "Ekspor dimulai. Anda akan menerima email berisi tautan unduhan setelah file siap."
+    },
+    "feeds": {
+      "title": "Feed CSV",
+      "description": "Tautan rahasia untuk setiap daftar yang selalu mengunduh data terkini dalam format CSV, untuk spreadsheet dan laporan. Siapa pun yang memiliki tautan dapat membacanya; buat tautan baru untuk menonaktifkan tautan lama.",
+      "linkLabel": "Tautan CSV {{label}}",
+      "copied": "Tautan tersalin",
+      "newLink": "Tautan baru",
+      "turnOff": "Nonaktifkan",
+      "create": "Buat tautan"
+    }
+  },
+  "sprintAccess": {
+    "title": "Akses sprint",
+    "description": "Batasi peran ke sprint tertentu. Anggotanya hanya akan melihat sprint tersebut beserta story, tugas, dan isu di dalamnya; backlog tetap terlihat. Admin proyek selalu dapat melihat semuanya.",
+    "empty": "Proyek ini belum memiliki sprint.",
+    "members_other": "{{count}} anggota",
+    "only_other": "Hanya {{count}} sprint",
+    "all": "Semua sprint",
+    "closed": "ditutup"
+  }
+}

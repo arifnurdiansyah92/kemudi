@@ -1,0 +1,128 @@
+{
+  "backlog": {
+    "summary_one": "{{count}} story, {{points}} points waiting for a sprint",
+    "summary_other": "{{count}} stories, {{points}} points waiting for a sprint",
+    "newStory": "New story",
+    "loadError": "Stories could not be loaded.",
+    "heading": "Stories not in a sprint",
+    "empty": "The backlog is empty.",
+    "emptyAddFirst": "Add the first story above.",
+    "noMatch": "No stories match these filters.",
+    "forecastLine": "Above this line fits the next sprint, at {{speed}} points per sprint",
+    "stats": {
+      "closed": "<strong>{{closed}}</strong><muted> of {{total}} points closed</muted>",
+      "speed": "Speed {{speed}} pts per sprint",
+      "progress": "Project progress"
+    },
+    "bulkAdd": {
+      "trigger": "Add several",
+      "title": "Add several stories",
+      "description": "One story per line. They go to the end of the backlog.",
+      "inputLabel": "Stories, one per line",
+      "placeholder": "Export the report as CSV\nShow totals per team",
+      "submitOne": "Add story",
+      "submitMany": "Add {{lines}} stories"
+    }
+  },
+  "sprint": {
+    "openSprints": "Open sprints",
+    "closedSprints": "Closed sprints",
+    "noOpen": "No open sprints. Create one to plan the next stretch of work.",
+    "noClosed": "No sprint has been closed yet.",
+    "showClosed": "Show closed sprints",
+    "form": {
+      "defaultName": "Sprint {{number}}",
+      "name": "Name",
+      "start": "Starts",
+      "end": "Ends",
+      "endBeforeStart": "The end date must be on or after the start date."
+    },
+    "new": {
+      "trigger": "New sprint",
+      "title": "New sprint",
+      "description": "Stories join a sprint from the backlog.",
+      "submit": "Create sprint"
+    },
+    "edit": {
+      "title": "Edit {{name}}",
+      "description": "Change the name or the dates.",
+      "submit": "Save sprint"
+    },
+    "panel": {
+      "points": "{{done}} of {{total}} pts",
+      "openTaskboard": "Open the {{name}} taskboard",
+      "progress": "{{name}} progress",
+      "empty": "No stories in this sprint. Drag some here from the backlog.",
+      "addStory": "Add a story to {{name}}"
+    },
+    "menu": {
+      "actions": "Actions for {{name}}",
+      "edit": "Edit sprint",
+      "close": "Close sprint",
+      "reopen": "Reopen sprint",
+      "delete": "Delete sprint",
+      "deleteTitle": "Delete {{name}}?",
+      "deleteDescription": "Its stories go back to the backlog. Its tasks stay with their stories. This cannot be undone."
+    },
+    "close": {
+      "title": "Close {{name}}?",
+      "summary": "{{done}} of {{total}} stories done, {{points}} of {{totalPoints}} points.",
+      "openStories_one": "{{count}} story is not done yet. Where should it go?",
+      "openStories_other": "{{count}} stories are not done yet. Where should they go?",
+      "toNext": "Move to {{name}}",
+      "toBacklog": "Back to the backlog",
+      "stay": "Leave them in this sprint",
+      "confirm": "Close sprint"
+    }
+  },
+  "taskboard": {
+    "notFound": "This sprint does not exist.",
+    "backToBacklog": "Back to the backlog",
+    "closedSuffix": ", closed",
+    "noSprint": "There is no open sprint. <link>Create one in the backlog</link>.",
+    "ofTotal": "{{done}} of {{total}}",
+    "stats": {
+      "pointsDone": "Points done",
+      "storiesClosed": "Stories closed",
+      "tasksClosed": "Tasks closed"
+    },
+    "pointsUnit": "pts",
+    "noStoryRow": "Tasks without a story",
+    "tasksDone_one": "{{done}} of {{count}} task done",
+    "tasksDone_other": "{{done}} of {{count}} tasks done",
+    "noStory": "No story",
+    "cell": "{{row}}, {{status}}",
+    "addTasks": {
+      "trigger": "Add tasks",
+      "inputLabel": "New tasks, one per line",
+      "placeholder": "One task per line"
+    },
+    "task": {
+      "draggable": "Draggable task",
+      "blocked": "Blocked"
+    }
+  },
+  "burndown": {
+    "ariaProgress": "Burndown: {{points}} points open on {{date}}, out of {{max}}",
+    "ariaNotStarted": "Burndown: not started, out of {{max}}",
+    "openPoints": "Open points",
+    "ideal": "Ideal"
+  },
+  "story": {
+    "count_one": "{{count}} story",
+    "count_other": "{{count}} stories",
+    "open": "Open story",
+    "moveTo": "Move to",
+    "reorder": "Reorder #{{ref}}",
+    "moreActions": "More actions for #{{ref}}",
+    "notEstimated": "Not estimated",
+    "statusLabel": "Status: {{name}}. Change status",
+    "assignedTo": "Assigned to {{name}}",
+    "changeAssignee": "{{label}}. Change assignee",
+    "unassign": "Unassign",
+    "quickAdd": {
+      "placeholder": "Add a story",
+      "enterKey": "Enter"
+    }
+  }
+}

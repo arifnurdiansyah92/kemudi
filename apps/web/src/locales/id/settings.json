@@ -1,0 +1,86 @@
+{
+  "nav": {
+    "title": "Pengaturan Anda",
+    "label": "Bagian pengaturan",
+    "sections": {
+      "profile": "Profil",
+      "account": "Kata sandi dan email",
+      "notifications": "Notifikasi",
+      "apps": "Aplikasi terhubung",
+      "appearance": "Tampilan"
+    }
+  },
+  "photo": {
+    "title": "Foto",
+    "description": "Ditampilkan di samping nama Anda di seluruh Kemudi.",
+    "upload": "Unggah foto",
+    "remove": "Hapus"
+  },
+  "profile": {
+    "title": "Tentang Anda",
+    "fullName": "Nama lengkap",
+    "username": "Nama pengguna",
+    "bio": "Bio",
+    "bioPlaceholder": "Pekerjaan Anda, dalam satu atau dua kalimat.",
+    "language": "Bahasa akun",
+    "timezone": "Zona waktu",
+    "serverDefault": "Bawaan server",
+    "save": "Simpan profil",
+    "timezoneIndonesia": "Indonesia",
+    "timezoneOther": "Zona waktu lainnya"
+  },
+  "password": {
+    "title": "Kata sandi",
+    "current": "Kata sandi saat ini",
+    "new": "Kata sandi baru",
+    "again": "Ulangi kata sandi baru",
+    "mismatch": "Kata sandi tidak cocok.",
+    "submit": "Ubah kata sandi"
+  },
+  "email": {
+    "title": "Email",
+    "description": "Kemudi akan mengirim tautan konfirmasi ke alamat baru; perubahan berlaku setelah Anda membuka tautan tersebut.",
+    "label": "Email",
+    "submit": "Ubah email",
+    "unverified": "Alamat ini belum dikonfirmasi. Silakan cari tautannya di kotak masuk Anda."
+  },
+  "deleteAccount": {
+    "title": "Hapus akun Anda",
+    "description": "Anda akan dikeluarkan dari semua proyek dan tidak dapat masuk lagi. Story, komentar, dan pekerjaan lain yang Anda buat tetap ada, tanpa nama Anda. Proyek milik Anda harus dialihkan atau dihapus terlebih dahulu.",
+    "submit": "Hapus akun saya",
+    "confirmTitle": "Hapus akun Anda?",
+    "confirmDesc": "Tindakan ini tidak dapat dibatalkan."
+  },
+  "notifications": {
+    "title": "Notifikasi per proyek",
+    "description": "Pilih notifikasi apa saja dari setiap proyek yang dikirim ke email Anda dan yang muncul di lonceng. Item yang melibatkan Anda adalah item yang Anda buat, yang ditugaskan kepada Anda, atau yang Anda pantau.",
+    "email": "Email",
+    "bell": "Di lonceng",
+    "emailFrom": "Email dari {{project}}",
+    "bellFrom": "Notifikasi lonceng dari {{project}}",
+    "levels": {
+      "all": "Semua aktivitas",
+      "involved": "Hanya item yang melibatkan saya",
+      "none": "Tidak ada"
+    }
+  },
+  "apps": {
+    "title": "Aplikasi terhubung",
+    "description": "Aplikasi yang Anda izinkan menggunakan Kemudi atas nama Anda. Cabut izin aplikasi untuk memutus aksesnya.",
+    "empty": "Belum ada aplikasi yang terhubung ke akun Anda.",
+    "revoke": "Cabut"
+  },
+  "appearance": {
+    "title": "Tampilan",
+    "description": "Pilih font dan tema yang digunakan Kemudi di perangkat ini.",
+    "languageHelp": "Kemudi dan email yang dikirimkan kepada Anda memakai bahasa ini. Tersimpan di akun Anda, jadi berlaku di semua perangkat.",
+    "font": "Font",
+    "fontHelp": "Font yang digunakan Kemudi untuk semua teks.",
+    "theme": "Tema",
+    "themeHelp": "Terang atau gelap.",
+    "light": "Terang",
+    "dark": "Gelap",
+    "save": "Simpan tampilan",
+    "saved": "Tampilan tersimpan"
+  }
+}

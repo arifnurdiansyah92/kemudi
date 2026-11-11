@@ -1,0 +1,86 @@
+{
+  "nav": {
+    "title": "Your settings",
+    "label": "Settings sections",
+    "sections": {
+      "profile": "Profile",
+      "account": "Password and email",
+      "notifications": "Notifications",
+      "apps": "Connected apps",
+      "appearance": "Appearance"
+    }
+  },
+  "photo": {
+    "title": "Photo",
+    "description": "Shown next to your name everywhere in Kemudi.",
+    "upload": "Upload photo",
+    "remove": "Remove"
+  },
+  "profile": {
+    "title": "About you",
+    "fullName": "Full name",
+    "username": "Username",
+    "bio": "Bio",
+    "bioPlaceholder": "What you work on, in a line or two.",
+    "language": "Account language",
+    "timezone": "Time zone",
+    "serverDefault": "Server default",
+    "save": "Save profile",
+    "timezoneIndonesia": "Indonesia",
+    "timezoneOther": "Other time zones"
+  },
+  "password": {
+    "title": "Password",
+    "current": "Current password",
+    "new": "New password",
+    "again": "Repeat the new password",
+    "mismatch": "The passwords do not match.",
+    "submit": "Change password"
+  },
+  "email": {
+    "title": "Email",
+    "description": "Kemudi sends a confirmation link to the new address; the change applies once you open it.",
+    "label": "Email",
+    "submit": "Change email",
+    "unverified": "This address is not confirmed yet. Look for the link in your inbox."
+  },
+  "deleteAccount": {
+    "title": "Delete your account",
+    "description": "You are removed from every project and can no longer sign in. Stories, comments and other work you did stay, without your name. Projects you own must be transferred or deleted first.",
+    "submit": "Delete my account",
+    "confirmTitle": "Delete your account?",
+    "confirmDesc": "This cannot be undone."
+  },
+  "notifications": {
+    "title": "Notifications per project",
+    "description": "Choose what each project emails you about, and whether it shows in the bell. Involved means items you created, are assigned to or watch.",
+    "email": "Email",
+    "bell": "In the bell",
+    "emailFrom": "Email from {{project}}",
+    "bellFrom": "Bell notifications from {{project}}",
+    "levels": {
+      "all": "All activity",
+      "involved": "Only items I am involved in",
+      "none": "Nothing"
+    }
+  },
+  "apps": {
+    "title": "Connected apps",
+    "description": "Applications you allowed to use Kemudi on your behalf. Revoke one to cut off its access.",
+    "empty": "No apps are connected to your account.",
+    "revoke": "Revoke"
+  },
+  "appearance": {
+    "title": "Appearance",
+    "description": "Choose the font and theme Kemudi uses on this device.",
+    "languageHelp": "Kemudi and the emails it sends you use this language. Saved to your account, so it follows you to every device.",
+    "font": "Font",
+    "fontHelp": "The font Kemudi uses for all text.",
+    "theme": "Theme",
+    "themeHelp": "Light or dark.",
+    "light": "Light",
+    "dark": "Dark",
+    "save": "Save appearance",
+    "saved": "Appearance saved"
+  }
+}

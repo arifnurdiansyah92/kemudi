@@ -1,0 +1,93 @@
+{
+  "wiki": {
+    "missing": {
+      "title": "Halaman ini belum ada",
+      "hint": "Tautan ke halaman ini langsung berfungsi begitu seseorang menulisnya.",
+      "write": "Tulis halaman ini"
+    },
+    "view": {
+      "edited_other": "Disunting {{when}}, {{count}} suntingan",
+      "editedBy_other": "Disunting {{when}} oleh {{name}}, {{count}} suntingan",
+      "watch": "Pantau",
+      "watching": "Dipantau",
+      "editPage": "Ubah halaman",
+      "moreActions": "Tindakan lain untuk halaman",
+      "bookmark": "Tambahkan ke penanda di sidebar",
+      "removeBookmark": "Hapus dari penanda",
+      "deletePage": "Hapus halaman",
+      "empty": "Halaman ini masih kosong."
+    },
+    "deleteDialog": {
+      "title": "Hapus \"{{title}}\"?",
+      "desc": "Halaman beserta riwayat dan lampirannya akan dihapus. Tautan ke halaman ini akan menawarkan untuk menulisnya kembali."
+    },
+    "editor": {
+      "titleEdit": "Ubah {{title}}",
+      "titleWrite": "Tulis {{title}}",
+      "write": "Tulis",
+      "preview": "Pratinjau",
+      "contentLabel": "Isi halaman",
+      "placeholder": "# Judul\n\nTautkan ke halaman lain dengan [[nama-halaman]], ke story dengan #12.",
+      "help": "Markdown. [[nama-halaman]] menautkan ke halaman wiki; #12 menautkan ke story, tugas, atau isu nomor 12.",
+      "nothingToPreview": "Belum ada yang bisa dipratinjau.",
+      "save": "Simpan halaman"
+    },
+    "nav": {
+      "bookmarks": "Penanda",
+      "bookmarksEmpty": "Tambahkan halaman ke penanda dari menu halaman.",
+      "allPages": "Semua halaman",
+      "newPage": "Halaman baru"
+    },
+    "newPage": {
+      "desc": "Beri nama, lalu tulis isinya. Tautkan dari tempat lain dengan [[{{slug}}]].",
+      "slugFallback": "nama-halaman",
+      "nameLabel": "Nama halaman",
+      "namePlaceholder": "Daftar periksa rilis",
+      "create": "Buat halaman"
+    },
+    "history": {
+      "title": "Riwayat",
+      "empty": "Belum ada suntingan sejak halaman ini ditulis.",
+      "edited": "menyunting {{when}}"
+    }
+  },
+  "importers": {
+    "title": "Impor dari {{service}}",
+    "notSetUp": "Fitur impor {{service}} belum disiapkan di server ini. Administrator dapat mengaktifkannya dengan mengatur <code>{{env}}=True</code> beserta kredensial API {{service}} di environment kemudi-back.",
+    "connecting": "Menghubungkan ke {{service}}…",
+    "signInHint": "Masuk ke {{service}} dan izinkan Kemudi membaca proyek Anda. Setelah itu, Anda akan kembali ke sini untuk memilih yang akan diimpor.",
+    "jiraUrl": "Alamat Jira",
+    "jiraUrlPlaceholder": "https://tim-anda.atlassian.net",
+    "connect": "Hubungkan ke {{service}}",
+    "connectAgain": "Hubungkan lagi",
+    "started": "Impor dari {{service}} sudah dimulai. Anda akan menerima email setelah selesai.",
+    "errors": {
+      "connect": "Tidak dapat terhubung ke {{service}}.",
+      "authorize": "{{service}} tidak menerima proses masuk. Silakan coba lagi.",
+      "start": "Impor tidak dapat dimulai.",
+      "listProjects": "Tidak dapat memuat daftar proyek {{service}} Anda."
+    },
+    "steps": {
+      "project": "1. Pilih proyek {{service}}",
+      "people": "2. Cocokkan pengguna",
+      "newProject": "3. Proyek baru"
+    },
+    "peopleHint": "Masukkan email Kemudi setiap pengguna {{service}} agar pekerjaan mereka tetap tercatat atas nama mereka. Kosongkan untuk mengimpor tanpa pemilik.",
+    "matchedTo": "Dicocokkan dengan {{name}}",
+    "matchedToUnknown": "Dicocokkan dengan pengguna Kemudi",
+    "emailFor": "Email Kemudi untuk {{name}}",
+    "emailPlaceholder": "nama@contoh.com",
+    "name": "Nama",
+    "templates": {
+      "scrum": "Scrum (backlog dan sprint)",
+      "kanban": "Kanban (papan)"
+    },
+    "keepReference": "Simpan tautan ke setiap item asli di {{service}}",
+    "importProject": "Impor proyek",
+    "useAnotherAccount": "Gunakan akun {{service}} lain",
+    "links": {
+      "title": "Pindahkan proyek dari aplikasi lain",
+      "desc": "Menyalin item, anggota, dan riwayatnya ke proyek Kemudi baru."
+    }
+  }
+}

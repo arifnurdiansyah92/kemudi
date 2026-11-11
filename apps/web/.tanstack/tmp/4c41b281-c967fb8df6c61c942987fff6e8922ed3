@@ -1,0 +1,11 @@
+import { createFileRoute } from '@tanstack/react-router'
+
+export const Route = createFileRoute(
+  '/_authenticated/p/$slug/taskboard/$sprint',
+)({
+  component: RouteComponent,
+})
+
+function RouteComponent() {
+  return <div>Hello "/_authenticated/p/$slug/taskboard/$sprint"!</div>
+}

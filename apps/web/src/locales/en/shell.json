@@ -1,0 +1,209 @@
+{
+  "brand": "Kemudi",
+  "skipToMain": "Skip to main content",
+  "nav": {
+    "workspace": "Workspace",
+    "home": "Home",
+    "you": "You"
+  },
+  "header": {
+    "breadcrumb": "Breadcrumb",
+    "jumpTo": "Jump to…"
+  },
+  "userMenu": {
+    "profile": "Your profile",
+    "settings": "Your settings",
+    "appearance": "Appearance",
+    "signOut": "Sign out"
+  },
+  "projectSwitcher": {
+    "choose": "Choose a project",
+    "yours": "Your projects",
+    "none": "You are not a member of any project yet.",
+    "all": "All projects"
+  },
+  "signOut": {
+    "title": "Sign out of Kemudi?",
+    "description": "You will need your username and password to sign in again.",
+    "confirm": "Sign out"
+  },
+  "sidebar": {
+    "title": "Sidebar",
+    "description": "Displays the mobile sidebar.",
+    "toggle": "Toggle sidebar"
+  },
+  "theme": {
+    "label": "Theme",
+    "toggle": "Toggle theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "matchSystem": "Match system"
+  },
+  "commandMenu": {
+    "title": "Command palette",
+    "description": "Jump to a view or project, or search this project.",
+    "placeholder": "Jump to a view or project",
+    "placeholderProject": "Search {{project}}, or jump to a view",
+    "empty": "Nothing matches.",
+    "resultsIn": {
+      "userstories": "Stories in {{project}}",
+      "tasks": "Tasks in {{project}}",
+      "issues": "Issues in {{project}}",
+      "epics": "Epics in {{project}}",
+      "wikipages": "Wiki pages in {{project}}"
+    }
+  },
+  "configDrawer": {
+    "open": "Open theme settings",
+    "title": "Theme Settings",
+    "description": "Adjust the appearance and layout to suit your preferences.",
+    "resetAll": "Reset all settings to default values",
+    "selectOption": "Select {{label}}",
+    "optionPreview": "{{label}} option preview",
+    "theme": {
+      "reset": "Reset theme preference to default",
+      "select": "Select theme preference",
+      "help": "Choose between system preference, light mode, or dark mode"
+    },
+    "sidebar": {
+      "label": "Sidebar",
+      "reset": "Reset sidebar style to default",
+      "select": "Select sidebar style",
+      "inset": "Inset",
+      "floating": "Floating",
+      "standard": "Sidebar",
+      "help": "Choose between inset, floating, or standard sidebar layout"
+    },
+    "layout": {
+      "label": "Layout",
+      "reset": "Reset layout options to default",
+      "select": "Select layout style",
+      "default": "Default",
+      "compact": "Compact",
+      "full": "Full layout",
+      "help": "Choose between default expanded, compact icon-only, or full layout mode"
+    },
+    "direction": {
+      "label": "Direction",
+      "reset": "Reset text direction to default",
+      "select": "Select site direction",
+      "ltr": "Left to Right",
+      "rtl": "Right to Left",
+      "help": "Choose between left-to-right or right-to-left site direction"
+    }
+  },
+  "password": {
+    "show": "Show password",
+    "hide": "Hide password"
+  },
+  "mention": {
+    "people": "People",
+    "items": "Items"
+  },
+  "dataTable": {
+    "filterPlaceholder": "Filter…",
+    "view": "View",
+    "toggleColumns": "Toggle columns",
+    "sortAsc": "Asc",
+    "sortDesc": "Desc",
+    "hideColumn": "Hide",
+    "clearFilters": "Clear filters",
+    "selectedCount": "{{count}} selected",
+    "pageOf": "Page {{page}} of {{total}}",
+    "rowsPerPage": "Rows per page",
+    "firstPage": "Go to first page",
+    "previousPage": "Go to previous page",
+    "goToPage": "Go to page {{page}}",
+    "nextPage": "Go to next page",
+    "lastPage": "Go to last page",
+    "bulk": {
+      "announce_one": "{{count}} {{entity}} selected. Bulk actions toolbar is available.",
+      "announce_other": "{{count}} {{entity}}s selected. Bulk actions toolbar is available.",
+      "toolbar_one": "Bulk actions for {{count}} selected {{entity}}",
+      "toolbar_other": "Bulk actions for {{count}} selected {{entity}}s",
+      "entity_one": "{{entity}}",
+      "entity_other": "{{entity}}s",
+      "selected": "selected",
+      "clear": "Clear selection",
+      "clearHint": "Clear selection (Escape)"
+    }
+  },
+  "errorPage": {
+    "goBack": "Go back",
+    "home": "Back to home",
+    "forbidden": {
+      "title": "Access forbidden",
+      "description": "You don't have permission <br/>to view this page."
+    },
+    "notFound": {
+      "title": "Page not found",
+      "description": "The page you're looking for <br/>doesn't exist or has been removed."
+    },
+    "unauthorized": {
+      "title": "Unauthorized",
+      "description": "Sign in with the right account <br/>to see this page."
+    },
+    "general": {
+      "title": "Something went wrong",
+      "description": "Sorry for the inconvenience. <br/>Please try again later."
+    },
+    "maintenance": {
+      "title": "Kemudi is under maintenance",
+      "description": "The site is unavailable at the moment. <br/>We'll be back online shortly.",
+      "learnMore": "Learn more"
+    }
+  },
+  "projectError": {
+    "notFound": "Project not found",
+    "notFoundHelp": "The link may be wrong, or you are not a member of this project.",
+    "loadFailed": "This project could not be loaded",
+    "loadFailedHelp": "Check that the Kemudi server is running, then try again."
+  },
+  "transfer": {
+    "crumb": "Ownership",
+    "title": "Become the owner of {{project}}?",
+    "invalidLink": "This link is no longer valid.",
+    "invalid": "{{error}} Ask the current owner to offer it again.",
+    "explain": "The owner can change every setting, delete the project, and pass ownership on. The current owner stays a member.",
+    "message": "Message to the current owner (optional)",
+    "accept": "Accept ownership",
+    "decline": "Decline",
+    "accepted": "You now own {{project}}",
+    "declined": "Ownership declined"
+  },
+  "tokenLinks": {
+    "cancelAccount": {
+      "title": "Delete your account",
+      "done": "Your account is deleted.",
+      "failed": "This link is invalid or has expired.",
+      "confirm": "Delete my account",
+      "confirmText": "You will be removed from every project and cannot sign in again. Your past work stays, without your name."
+    },
+    "email": {
+      "title": "Confirm your email",
+      "done": "Your email address is confirmed.",
+      "failed": "This link is invalid or was already used."
+    }
+  },
+  "serverError": {
+    "generic": "Something went wrong!",
+    "noContent": "No content."
+  },
+  "toast": {
+    "notSaved": "The change was not saved.",
+    "profileSaved": "Profile saved",
+    "emailChangePending": "Check your new address for a link to confirm the change.",
+    "imageInvalid": "That image could not be used.",
+    "passwordChanged": "Password changed",
+    "projectSaved": "Project settings saved",
+    "logoInvalid": "That image could not be used as a logo.",
+    "deleted": "{{name}} deleted",
+    "ownershipOffered": "Ownership offered. They get an email to accept or decline.",
+    "epicCreated": "Epic #{{ref}} created",
+    "issueCreated": "Issue #{{ref}} created",
+    "itemDeleted": "{{kind}} #{{ref}} deleted",
+    "uploadFailed": "{{file}} could not be uploaded.",
+    "wikiPageDeleted": "Page \"{{page}}\" deleted"
+  }
+}

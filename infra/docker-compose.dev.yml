@@ -7,8 +7,9 @@
 #
 # Open http://localhost:${KEMUDI_PORT:-9100}
 #
-# kemudi-back and kemudi-events are built from services/. Until apps/web exists the
-# UI is the stock taiga-front image (no Aegis front patches).
+# kemudi-back, kemudi-events and kemudi-web (apps/web) are built from source.
+# The stock taiga-front stays on http://localhost:${KEMUDI_LEGACY_PORT:-9101}
+# for screens apps/web does not have yet.
 
 name: kemudi-dev
 
@@ -115,7 +116,12 @@ services:
       MAX_AGE: "360"
       SECRET_KEY: "${SECRET_KEY}"
 
-  # Interim UI until apps/web replaces it.
+  kemudi-web:
+    build:
+      context: ../apps/web
+    image: kemudi/kemudi-web:dev
+
+  # Legacy UI, for screens apps/web does not cover yet. Remove once it does.
   kemudi-front:
     image: taigaio/taiga-front:latest
     environment:
@@ -127,11 +133,13 @@ services:
     image: nginx:1.19-alpine
     ports:
       - "${KEMUDI_PORT:-9100}:80"
+      - "${KEMUDI_LEGACY_PORT:-9101}:81"
     volumes:
       - ./gateway/kemudi.conf:/etc/nginx/conf.d/default.conf:ro
       - kemudi-static-data:/taiga/static
       - kemudi-media-data:/taiga/media
     depends_on:
+      - kemudi-web
       - kemudi-front
       - kemudi-back
       - kemudi-events

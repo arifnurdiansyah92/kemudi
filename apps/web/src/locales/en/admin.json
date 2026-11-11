@@ -1,0 +1,357 @@
+{
+  "nav": {
+    "title": "Project settings",
+    "sectionsLabel": "Settings sections",
+    "notAdmin": "Only project admins can change settings. Ask an admin of {{project}} if something needs changing.",
+    "general": "General",
+    "members": "Members",
+    "roles": "Roles and permissions",
+    "values": "Statuses and values",
+    "customFields": "Custom fields",
+    "tags": "Tags",
+    "webhooks": "Webhooks",
+    "integrations": "Integrations",
+    "exportImport": "Import and export",
+    "sprintAccess": "Sprint access"
+  },
+  "shared": {
+    "name": "Name",
+    "moveUp": "Move {{name}} up",
+    "moveDown": "Move {{name}} down",
+    "colourOf": "Colour of {{name}}",
+    "deleteNamed": "Delete {{name}}",
+    "deleteTitle": "Delete {{name}}?"
+  },
+  "general": {
+    "details": {
+      "title": "Details",
+      "plannedSprints": "Planned sprints",
+      "plannedPoints": "Planned story points",
+      "burndownHint": "Both feed the project burndown in the backlog.",
+      "save": "Save details"
+    },
+    "logo": {
+      "title": "Logo",
+      "description": "Square images work best. PNG, JPEG or GIF.",
+      "upload": "Upload logo",
+      "remove": "Remove"
+    },
+    "modules": {
+      "title": "Modules",
+      "description": "Turn parts of Kemudi on or off for this project.",
+      "epics": "Epics",
+      "epicsHint": "Group stories into larger pieces of work.",
+      "scrum": "Scrum",
+      "scrumHint": "Backlog, sprints and the taskboard.",
+      "kanban": "Kanban",
+      "kanbanHint": "A board of stories by status.",
+      "issues": "Issues",
+      "issuesHint": "Bugs, questions and improvements.",
+      "wiki": "Wiki",
+      "wikiHint": "Pages for the team’s shared knowledge.",
+      "meetingService": "Meeting service",
+      "customLink": "Custom link",
+      "meetingLink": "Meeting link",
+      "roomName": "Room name",
+      "saveMeeting": "Save meeting"
+    },
+    "duplicate": {
+      "title": "Duplicate",
+      "description": "Start a new project with this one’s settings, statuses, roles and custom fields.",
+      "action": "Duplicate project"
+    },
+    "transfer": {
+      "title": "Transfer ownership",
+      "description": "The new owner gets an email and must accept. Until then you stay the owner.",
+      "inviteFirst": "Invite a member first.",
+      "newOwner": "New owner",
+      "chooseMember": "Choose a member",
+      "message": "Message",
+      "offer": "Offer ownership"
+    },
+    "delete": {
+      "title": "Delete project",
+      "description": "Deletes every story, task, issue, epic, wiki page and attachment in it. This cannot be undone.",
+      "action": "Delete {{name}}",
+      "confirmTitle": "Delete {{name}}?",
+      "typeName": "Type the project name to confirm.",
+      "nameLabel": "Project name"
+    }
+  },
+  "members": {
+    "inviteSent": "Invitation sent to {{email}}",
+    "invitesSent_one": "{{count}} invitation sent",
+    "invitesSent_other": "{{count}} invitations sent",
+    "resent": "Invitation sent again to {{email}}",
+    "title": "Members ({{total}})",
+    "description": "Roles decide what members can see and change. Admins can also change these settings.",
+    "owner": "owner",
+    "deactivated": "deactivated",
+    "roleOf": "Role of {{name}}",
+    "admin": "Admin",
+    "removeNamed": "Remove {{name}}",
+    "pending": {
+      "title": "Invitations waiting ({{total}})",
+      "description": "These people have not accepted yet.",
+      "actionsFor": "Actions for {{email}}",
+      "resend": "Send the invitation again",
+      "cancel": "Cancel invitation"
+    },
+    "remove": {
+      "title": "Remove {{name}}?",
+      "description": "They lose access to the project. Their stories, tasks and comments stay.",
+      "confirm": "Remove member"
+    },
+    "invite": {
+      "title": "Invite people",
+      "description": "People with an account join at once; others get an email to sign up.",
+      "emails": "Emails or usernames",
+      "emailsPlaceholder": "ana@example.com, budi@example.com",
+      "note": "Personal note (optional)",
+      "send": "Send invitation",
+      "inviteMany_one": "Invite {{count}} person",
+      "inviteMany_other": "Invite {{count}} people"
+    },
+    "promote": {
+      "title": "Make {{name}} a project admin?",
+      "description": "Admins can change every project setting, manage members and roles, and delete the project.",
+      "confirm": "Make admin"
+    }
+  },
+  "roles": {
+    "title": "Roles",
+    "description": "Every member has one role. Roles that count for points get their own estimate on each story.",
+    "new": "New role",
+    "newLabel": "New role name",
+    "add": "Add role",
+    "computable": "Counts for points",
+    "area": "Area",
+    "permissionLabel": "{{role}}: {{action}} {{area}}",
+    "delete": "Delete role",
+    "deleteTitle": "Delete the {{name}} role?",
+    "moveMembers": "Members with this role move to:",
+    "moveMembersLabel": "Move members to"
+  },
+  "permissions": {
+    "actions": {
+      "view": "view",
+      "add": "add",
+      "modify": "modify",
+      "comment": "comment",
+      "delete": "delete"
+    },
+    "areas": {
+      "epics": "Epics",
+      "sprints": "Sprints",
+      "stories": "Stories",
+      "tasks": "Tasks",
+      "issues": "Issues",
+      "wikiPages": "Wiki pages",
+      "wikiLinks": "Wiki links"
+    }
+  },
+  "values": {
+    "lists": {
+      "storyStatuses": {
+        "title": "Statuses",
+        "description": "The columns of the kanban and the steps a story goes through.",
+        "new": "New status"
+      },
+      "points": {
+        "title": "Points",
+        "description": "The values people can estimate a story with.",
+        "new": "New point"
+      },
+      "swimlanes": {
+        "title": "Swimlanes",
+        "description": "Rows on the kanban board.",
+        "new": "New swimlane"
+      },
+      "storyDueDates": {
+        "title": "Due date warnings",
+        "description": "Highlight stories this many days before they are due.",
+        "new": "New due date warning"
+      },
+      "taskStatuses": {
+        "title": "Statuses",
+        "description": "The columns of the taskboard.",
+        "new": "New status"
+      },
+      "taskDueDates": {
+        "title": "Due date warnings",
+        "description": "Highlight tasks this many days before they are due.",
+        "new": "New due date warning"
+      },
+      "issueStatuses": {
+        "title": "Statuses",
+        "description": "The steps an issue goes through.",
+        "new": "New status"
+      },
+      "issueTypes": {
+        "title": "Types",
+        "description": "Kinds of issue, such as bug or question.",
+        "new": "New type"
+      },
+      "priorities": {
+        "title": "Priorities",
+        "description": "How soon an issue should be dealt with.",
+        "new": "New priority"
+      },
+      "severities": {
+        "title": "Severities",
+        "description": "How bad the effect of an issue is.",
+        "new": "New severity"
+      },
+      "issueDueDates": {
+        "title": "Due date warnings",
+        "description": "Highlight issues this many days before they are due.",
+        "new": "New due date warning"
+      },
+      "epicStatuses": {
+        "title": "Statuses",
+        "description": "The steps an epic goes through.",
+        "new": "New status"
+      }
+    },
+    "valueOf": "Value of {{name}}",
+    "noValue": "No value",
+    "daysBeforeFor": "Days before due for {{name}}",
+    "daysBefore": "days before",
+    "wip": "WIP",
+    "wipLimitOf": "Work in progress limit of {{name}}",
+    "wipNone": "none",
+    "closed": "Closed",
+    "closedHint": "Items in this status count as done",
+    "archived": "Archived",
+    "archivedHint": "Hidden from the kanban unless archived is shown",
+    "moveTo": "Everything using it moves to:",
+    "moveToLabel": "Move to",
+    "removed": "It is removed from this project."
+  },
+  "customFields": {
+    "kinds": {
+      "epic": {
+        "description": "Extra fields on every epic.",
+        "new": "New epic field"
+      },
+      "userstory": {
+        "description": "Extra fields on every story.",
+        "new": "New story field"
+      },
+      "task": {
+        "description": "Extra fields on every task.",
+        "new": "New task field"
+      },
+      "issue": {
+        "description": "Extra fields on every issue.",
+        "new": "New issue field"
+      }
+    },
+    "types": {
+      "text": "Short text",
+      "multiline": "Long text",
+      "richtext": "Formatted text",
+      "number": "Number",
+      "date": "Date",
+      "url": "Link",
+      "checkbox": "Checkbox",
+      "dropdown": "List of choices"
+    },
+    "empty": "No custom fields yet.",
+    "fieldName": "Field name",
+    "typeOf": "Type of {{name}}",
+    "helpTextFor": "Help text for {{name}}",
+    "helpText": "Help text (optional)",
+    "choicesFor": "Choices for {{name}}",
+    "choices": "Choices, separated by commas",
+    "newName": "New field name",
+    "newType": "New field type",
+    "add": "Add field",
+    "deleteTitle": "Delete the {{name}} field?",
+    "deleteDescription": "Its values are deleted from every item.",
+    "confirm": "Delete field"
+  },
+  "tags": {
+    "description": "Rename a tag everywhere, give it a colour, merge duplicates, or delete it from every item.",
+    "empty": "No tags yet. They appear here once items use them.",
+    "selectToMerge": "Select {{tag}} to merge",
+    "nameOf": "Name of {{tag}}",
+    "mergeCount_one": "Merge {{count}} tag into",
+    "mergeCount_other": "Merge {{count}} tags into",
+    "mergeInto": "Merge into",
+    "merge": "Merge tags",
+    "new": "New tag",
+    "add": "Add tag",
+    "deleteTitle": "Delete the tag {{tag}}?",
+    "deleteDescription": "It is removed from every story, task, issue and epic.",
+    "confirm": "Delete tag"
+  },
+  "webhooks": {
+    "title": "Webhooks",
+    "description": "Kemudi POSTs a JSON event to each URL whenever a story, task, issue, epic, sprint or wiki page changes. The key signs each request (X-TAIGA-WEBHOOK-SIGNATURE, HMAC-SHA1).",
+    "testOk": "Test delivered (HTTP {{status}})",
+    "testFailed": "Test failed: HTTP {{status}}",
+    "noResponse": "no response",
+    "add": "Add webhook",
+    "sendTest": "Send test",
+    "deliveries": "Deliveries ({{total}})",
+    "deleteTitle": "Delete the {{name}} webhook?",
+    "deleteDescription": "Kemudi stops sending events to this URL.",
+    "confirm": "Delete webhook",
+    "nothingSent": "Nothing sent yet.",
+    "failed": "failed",
+    "duration": "{{ms}} ms",
+    "resend": "Resend",
+    "secret": "Secret key",
+    "url": "URL",
+    "urlPlaceholder": "https://example.com/hooks/kemudi",
+    "save": "Save webhook"
+  },
+  "integrations": {
+    "copied": "{{label}} copied",
+    "saved": "Integration saved",
+    "intro": {
+      "title": "Commits and issues from code hosting",
+      "description": "Mention an item in a commit message to link it, and add a status to move it: <code>TG-12 #done</code> closes item 12 with the status whose slug is <em>done</em>. Issues opened on the code host can create Kemudi issues too."
+    },
+    "services": {
+      "github": "Repository settings, Webhooks: content type application/json, the secret below, events \"push\", \"issues\" and \"issue comment\".",
+      "gitlab": "Project settings, Webhooks: the URL below (it carries the key), triggers \"push\", \"issues\" and \"comments\".",
+      "bitbucket": "Repository settings, Webhooks: the URL below, triggers \"repository push\" and issue events.",
+      "gogs": "Repository settings, Webhooks: content type application/json, the secret below."
+    },
+    "webhookUrl": "Webhook URL",
+    "secret": "Secret key",
+    "originIps": "Accept hooks only from these addresses",
+    "anyAddress": "Any address",
+    "originIpsHint": "IP addresses or ranges (CIDR), separated by commas. Empty accepts any."
+  },
+  "exportImport": {
+    "export": {
+      "title": "Export",
+      "description": "A full copy of the project (items, comments, attachments, settings) as a Taiga export file. Import it into Kemudi or Taiga to restore or move the project.",
+      "action": "Export project",
+      "started": "Export started. You get an email with the download link when it is ready."
+    },
+    "feeds": {
+      "title": "CSV feeds",
+      "description": "A secret link per list that always downloads the current data as CSV, for spreadsheets and reports. Anyone with the link can read it; make a new link to cut off the old one.",
+      "linkLabel": "{{label}} CSV link",
+      "copied": "Link copied",
+      "newLink": "New link",
+      "turnOff": "Turn off",
+      "create": "Create link"
+    }
+  },
+  "sprintAccess": {
+    "title": "Sprint access",
+    "description": "Limit a role to some sprints. Its members then see only those sprints, and the stories, tasks and issues in them; the backlog stays visible. Project admins always see everything.",
+    "empty": "This project has no sprints yet.",
+    "members_one": "{{count}} member",
+    "members_other": "{{count}} members",
+    "only_one": "Only {{count}} sprint",
+    "only_other": "Only {{count}} sprints",
+    "all": "All sprints",
+    "closed": "closed"
+  }
+}

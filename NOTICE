@@ -17,6 +17,12 @@ services/kemudi-events
   Copyright (c) 2021-present Kaleidos INC
   Mozilla Public License 2.0 (LICENSES/MPL-2.0.txt, services/kemudi-events/LICENSE)
 
+apps/web
+  Started from shadcn-admin (https://github.com/satnaing/shadcn-admin), version 2.2.1
+  Copyright (c) 2024 Sat Naing
+  MIT License (LICENSES/MIT.txt, apps/web/LICENSE.shadcn-admin)
+  Kemudi's own changes and additions in apps/web are AGPL-3.0-or-later.
+
 services/awak (git submodule)
   Fork of hermes-agent (https://github.com/NousResearch/hermes-agent)
   MIT License (LICENSES/MIT.txt, services/awak/LICENSE)

@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-11T00:00:00Z",
+  "title": "Design System: Kemudi",
+  "extensions": {
+    "colorMeta": {
+      "helm-ink": { "role": "neutral", "displayName": "Helm Ink", "canonical": "oklch(0.22 0.045 255)", "tonalRamp": ["oklch(0.14 0.03 255)", "oklch(0.18 0.04 255)", "oklch(0.22 0.045 255)", "oklch(0.285 0.05 255)", "oklch(0.32 0.04 255)", "oklch(0.5 0.03 255)", "oklch(0.86 0.02 250)", "oklch(0.97 0.008 250)"] },
+      "brass": { "role": "primary", "displayName": "Brass", "canonical": "oklch(0.62 0.12 75)", "tonalRamp": ["oklch(0.3 0.06 75)", "oklch(0.42 0.09 75)", "oklch(0.52 0.11 75)", "oklch(0.62 0.12 75)", "oklch(0.7 0.12 77)", "oklch(0.76 0.12 78)", "oklch(0.86 0.08 80)", "oklch(0.95 0.03 82)"] },
+      "deep-navy": { "role": "primary", "displayName": "Deep Navy", "canonical": "oklch(0.33 0.07 252)", "tonalRamp": ["oklch(0.18 0.04 252)", "oklch(0.25 0.06 252)", "oklch(0.33 0.07 252)", "oklch(0.45 0.07 252)", "oklch(0.58 0.06 252)", "oklch(0.72 0.04 252)", "oklch(0.86 0.02 252)", "oklch(0.95 0.01 252)"] },
+      "harbour-teal": { "role": "secondary", "displayName": "Harbour Teal", "canonical": "oklch(0.52 0.09 185)" },
+      "signal-red": { "role": "tertiary", "displayName": "Signal Red", "canonical": "oklch(0.56 0.2 27)" },
+      "mist": { "role": "neutral", "displayName": "Mist", "canonical": "oklch(0.975 0.004 250)" },
+      "slate-ink": { "role": "neutral", "displayName": "Slate Ink", "canonical": "oklch(0.24 0.04 258)" }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "Page titles." },
+      "title": { "displayName": "Title", "purpose": "Section, sheet and dialog titles." },
+      "body": { "displayName": "Body", "purpose": "Rows, fields, buttons." },
+      "label": { "displayName": "Label", "purpose": "Metadata, counts, chips, pills, refs." }
+    },
+    "shadows": [
+      { "name": "xs", "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "purpose": "Buttons, inputs, kanban cards." },
+      { "name": "lg", "value": "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)", "purpose": "Floating layers and dragged cards only." }
+    ],
+    "motion": [
+      { "name": "collapsible", "value": "300ms ease-out", "purpose": "Collapsible sections open and close." }
+    ],
+    "breakpoints": [
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one main action on a view.",
+      "html": "<button class=\"ds-btn-primary\">+ New story</button>",
+      "css": ".ds-btn-primary{font:500 14px/1.43 'Schibsted Grotesk Variable',system-ui,sans-serif;background:var(--primary,oklch(0.33 0.07 252));color:var(--primary-foreground,oklch(0.98 0.004 250));height:36px;padding:0 16px;border:0;border-radius:6px;box-shadow:0 1px 2px rgb(0 0 0/.05);cursor:pointer;transition:background .15s}.ds-btn-primary:hover{background:color-mix(in oklch,var(--primary,oklch(0.33 0.07 252)) 90%,transparent)}.ds-btn-primary:focus-visible{outline:none;box-shadow:0 0 0 3px color-mix(in oklch,oklch(0.62 0.12 75) 50%,transparent)}"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary actions beside a primary.",
+      "html": "<button class=\"ds-btn-outline\">Add several</button>",
+      "css": ".ds-btn-outline{font:500 14px/1.43 'Schibsted Grotesk Variable',system-ui,sans-serif;background:var(--background,oklch(0.975 0.004 250));color:var(--foreground,oklch(0.24 0.04 258));height:36px;padding:0 16px;border:1px solid var(--border,oklch(0.905 0.01 250));border-radius:6px;box-shadow:0 1px 2px rgb(0 0 0/.05);cursor:pointer}.ds-btn-outline:hover{background:var(--accent,oklch(0.94 0.012 250))}.ds-btn-outline:focus-visible{outline:none;box-shadow:0 0 0 3px color-mix(in oklch,oklch(0.62 0.12 75) 50%,transparent)}"
+    },
+    {
+      "name": "Search Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Search and text fields.",
+      "html": "<input class=\"ds-input\" placeholder=\"Search by subject or #ref\">",
+      "css": ".ds-input{font:400 14px/1.43 'Schibsted Grotesk Variable',system-ui,sans-serif;background:var(--card,#fff);color:var(--foreground,oklch(0.24 0.04 258));height:36px;padding:0 12px;border:1px solid var(--input,oklch(0.88 0.012 250));border-radius:6px;box-shadow:0 1px 2px rgb(0 0 0/.05);width:260px}.ds-input::placeholder{color:var(--muted-foreground,oklch(0.5 0.03 255))}.ds-input:focus-visible{outline:none;border-color:oklch(0.62 0.12 75);box-shadow:0 0 0 3px color-mix(in oklch,oklch(0.62 0.12 75) 50%,transparent)}"
+    },
+    {
+      "name": "Helm Navigation",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "Sidebar items on Helm Ink; the active one carries the brass bar.",
+      "html": "<nav class=\"ds-helm\"><a class=\"ds-helm-item\">Epics</a><a class=\"ds-helm-item is-active\">Backlog</a><a class=\"ds-helm-item\">Kanban</a></nav>",
+      "css": ".ds-helm{background:oklch(0.22 0.045 255);padding:8px;width:240px;display:grid;gap:2px;font:400 14px/1.43 'Schibsted Grotesk Variable',system-ui,sans-serif}.ds-helm-item{color:oklch(0.86 0.02 250);padding:6px 10px;border-radius:6px;cursor:pointer}.ds-helm-item:hover{background:oklch(0.285 0.05 255)}.ds-helm-item.is-active{background:oklch(0.285 0.05 255);color:oklch(0.97 0.008 250);font-weight:600;box-shadow:inset 3px 0 0 oklch(0.76 0.12 78)}"
+    },
+    {
+      "name": "Status Pill",
+      "kind": "chip",
+      "refersTo": "status-pill",
+      "description": "A project-configured status with its own dot color.",
+      "html": "<span class=\"ds-pill\"><i style=\"background:#e6c229\"></i>Ready for test</span>",
+      "css": ".ds-pill{display:inline-flex;align-items:center;gap:6px;font:500 12px/1.33 'Schibsted Grotesk Variable',system-ui,sans-serif;color:oklch(0.24 0.04 258);background:#fff;border:1px solid oklch(0.905 0.01 250);border-radius:6px;padding:4px 10px}.ds-pill i{width:6px;height:6px;border-radius:50%;display:inline-block}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Helm",
+    "overview": "Kemudi is the helm of a delivery project. The sidebar is the wheelhouse: deep sea ink in both themes, with a single brass marker showing where you are. Everything to its right is the chart table, a quiet, cool work surface where the data (stories, sprints, statuses, people) does the talking.",
+    "keyCharacteristics": [
+      "Deep-ink sidebar (the helm) in light and dark themes alike; the work surface switches.",
+      "Brass marks you: your place, your focus, your watches and unread notifications.",
+      "Cool blue-grey neutrals with a slight 250° hue; no warm greys.",
+      "Flat surfaces separated by hairlines, with a light shadow only on raised, movable or floating things.",
+      "Compact, scannable rows; status colors come from each project's own configuration."
+    ],
+    "rules": [
+      { "name": "The Brass Means You Rule", "body": "Brass marks you: where you are and what is yours (watching, voted, unread). Never decoration, status or layout fill; the dark theme primary button is the one sanctioned fill.", "section": "colors" },
+      { "name": "The Meaning-Only Color Rule", "body": "Outside the helm, color carries state: a status, a type, success or danger.", "section": "colors" },
+      { "name": "The Two Sizes Rule", "body": "Working UI lives at 14px and 12px; size steps above that are for page and section titles only.", "section": "typography" },
+      { "name": "The Lift Means Movable Rule", "body": "A shadow larger than xs says this floats or can be moved. Static containers stay flat with a hairline.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep the sidebar Helm Ink in both themes and mark the active item with the 3px Brass bar.",
+      "Do get text sizes from the 14px / 12px pair and build hierarchy with weight and Slate Muted.",
+      "Do let buttons, tabs, pills and table headers grow with their label; Indonesian strings run 20–40% longer."
+    ],
+    "donts": [
+      "Don't use Brass for decoration, status or anything that isn't about the viewer.",
+      "Don't give static containers a drop shadow; shadows mean floating or movable.",
+      "Don't truncate action labels or fix button widths to fit English text."
+    ]
+  }
+}
