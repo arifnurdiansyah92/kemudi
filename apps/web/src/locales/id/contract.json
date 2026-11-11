@@ -1,0 +1,113 @@
+{
+  "title": "Kontrak",
+  "intro": "Kontrak adalah baseline untuk mengukur setiap permintaan. Kemudi AI hanya mengusulkan; keputusan ada di admin proyek.",
+  "tabs": {
+    "contract": "Kontrak",
+    "baseline": "Baseline",
+    "backtest": "Backtest"
+  },
+  "suggestion": "Saran AI",
+  "adminOnly": "Hanya admin proyek yang dapat mengubah ini.",
+  "unavailable": "Kemudi AI tidak dapat dihubungi. Pastikan orchestrator dan Hermes berjalan.",
+  "upload": {
+    "title": "Dokumen kontrak",
+    "description": "Unggah SOW atau SPK yang sudah ditandatangani (PDF atau DOCX). Kemudi membacanya menjadi bagian bernomor yang dirujuk oleh baseline.",
+    "file": "Dokumen",
+    "language": "Bahasa kerja",
+    "languageHint": "Teks AI untuk proyek ini ditulis dalam bahasa ini.",
+    "submit": "Baca dokumen",
+    "replace": "Ganti dokumen",
+    "current": "{{file}} · {{count}} bagian",
+    "empty": "Belum ada kontrak. Unggah dokumen untuk memulai.",
+    "sections": "Bagian",
+    "noSections": "Tidak ada teks yang ditemukan. Dokumen hasil scan tanpa lapisan teks belum dapat dibaca."
+  },
+  "rateCard": {
+    "title": "Rate card",
+    "description": "Tarif harian per peran. Effort Change Request dihitung dalam hari-orang dan diberi harga dengan tarif ini.",
+    "role": "Peran",
+    "rate": "Tarif per hari (IDR)",
+    "addRole": "Tambah peran",
+    "removeRole": "Hapus {{role}}",
+    "save": "Simpan rate card",
+    "rolePlaceholder": "backend"
+  },
+  "baseline": {
+    "title": "Baseline",
+    "description": "Lingkup yang dicakup kontrak, disusun dari bagian-bagiannya. Ubah draft, lalu setujui untuk menguncinya sebagai satu versi.",
+    "generate": "Buat draft",
+    "regenerate": "Buat ulang",
+    "generating": "Membaca kontrak… ini bisa memakan waktu sekitar satu menit.",
+    "needsContract": "Unggah kontrak terlebih dahulu.",
+    "draft": "Draft",
+    "save": "Simpan draft",
+    "approve": "Setujui baseline",
+    "approveTitle": "Setujui baseline ini?",
+    "approveDesc": "Baseline ini menjadi versi {{version}}. Setelah itu, baseline hanya berubah melalui Change Request yang disetujui.",
+    "approved": "Versi {{version}}, disetujui oleh {{by}} pada {{date}}",
+    "noDraft": "Belum ada draft.",
+    "history": "Riwayat versi",
+    "items_other": "{{count}} item",
+    "remove": "Hapus item",
+    "clauses": "Klausul kontrak",
+    "acceptance": "Acceptance criteria",
+    "titleLabel": "Judul",
+    "descriptionLabel": "Deskripsi",
+    "price": "Harga kontrak",
+    "kinds": {
+      "epic": "Modul",
+      "story": "Fitur",
+      "obligation": "Kewajiban",
+      "term": "Ketentuan"
+    }
+  },
+  "backtest": {
+    "title": "Backtest",
+    "description": "Jalankan ulang permintaan lama melalui pemeriksaan CR dan bandingkan dengan keputusan PM. Unggah dataset JSON berisi permintaan dan label yang diharapkan.",
+    "dataset": "Dataset (JSON)",
+    "start": "Jalankan backtest",
+    "needsBaseline": "Setujui baseline terlebih dahulu.",
+    "running": "Mengklasifikasikan {{done}} dari {{total}}…",
+    "runs": "Riwayat run",
+    "run": "Run {{id}} · {{dataset}} · {{date}}",
+    "empty": "Belum ada backtest.",
+    "failed": "Run berhenti: {{error}}",
+    "metrics": {
+      "accuracy": "Kesesuaian dengan PM",
+      "accuracyDetail": "{{correct}} dari {{total}} permintaan",
+      "crCaught": "CR tertangkap",
+      "crCaughtDetail": "ditandai sebagai CR atau perlu klarifikasi",
+      "falseCr": "CR keliru",
+      "falseCrDetail": "permintaan dalam lingkup yang ditandai CR",
+      "value": "Nilai di luar lingkup yang ditemukan",
+      "valueDetail": "Angka PM {{expected}}",
+      "verdicts": "Tinjauan PM: {{right}} benar, {{wrong}} salah, {{pending}} belum ditinjau"
+    },
+    "confusion": {
+      "title": "Harapan vs saran",
+      "expected": "Harapan",
+      "error": "Galat"
+    },
+    "table": {
+      "request": "Permintaan",
+      "expected": "Keputusan PM",
+      "suggested": "Saran",
+      "effort": "Effort",
+      "price": "Harga",
+      "review": "Tinjau",
+      "waived": "digratiskan",
+      "synthetic": "contoh",
+      "real": "nyata",
+      "days": "{{days}} hr",
+      "question": "Tanyakan ke klien: {{question}}",
+      "markRight": "Tandai saran benar",
+      "markWrong": "Tandai saran salah",
+      "error": "Galat AI: {{error}}"
+    }
+  },
+  "labels": {
+    "in_baseline": "Sesuai baseline",
+    "cr_candidate": "Kandidat CR",
+    "needs_clarification": "Perlu klarifikasi"
+  }
+}

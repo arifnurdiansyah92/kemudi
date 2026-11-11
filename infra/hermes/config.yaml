@@ -1,0 +1,119 @@
+# Kemudi: Hermes (services/awak) managed config for the dev stack.
+#
+# Mounted read-only at /etc/hermes/config.yaml, Hermes' "managed scope"
+# (website/docs/user-guide/managed-scope.md). Keys set here win over the
+# /opt/data/config.yaml that Hermes seeds in its data volume, so the runtime
+# cannot drift from this file.
+#
+# No secrets in this file. ${VAR} refs expand from the container environment,
+# which docker-compose fills from infra/.env.
+#
+# Purpose: a text-in/text-out LLM behind Hermes' OpenAI-compatible API server.
+# Every tool is off; memory, skills, compression, title generation and other
+# background LLM work are off; outbound catalog/telemetry/update checks are off.
+
+model:
+  provider: custom
+  base_url: ${KEMUDI_AI_BASE_URL}
+  api_key: ${KEMUDI_AI_API_KEY}
+  default: ${KEMUDI_AI_MODEL}
+
+# --- Tools: none --------------------------------------------------------------
+# An explicit EMPTY list for the api_server platform means "no toolsets"
+# (hermes_cli/tools_config.py::_get_platform_tools); no MCP servers are
+# defined. agent.disabled_toolsets is applied last as a second lock.
+platform_toolsets:
+  api_server: []
+toolsets: []
+mcp_servers: {}
+
+agent:
+  max_turns: 4
+  disabled_toolsets:
+    - bot_room
+    - browser
+    - catalog
+    - clarify
+    - code_execution
+    - computer_use
+    - connections
+    - context_engine
+    - cronjob
+    - delegation
+    - desktop_ui
+    - discord
+    - discord_admin
+    - feishu_doc
+    - feishu_drive
+    - file
+    - image_gen
+    - kanban
+    - memory
+    - onboarding
+    - project
+    - search
+    - session_search
+    - skills
+    - stt
+    - terminal
+    - todo
+    - tts
+    - video
+    - video_gen
+    - vision
+    - web
+    - x_search
+
+# --- No memory, skills or background LLM work --------------------------------
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+  nudge_interval: 0
+  provider: ""
+
+skills:
+  project_discovery: false
+  auto_load: []
+  inline_shell: false
+
+curator:
+  enabled: false
+
+compression:
+  enabled: false
+
+checkpoints:
+  enabled: false
+
+smart_model_routing:
+  enabled: false
+
+auxiliary:
+  title_generation:
+    enabled: false
+    model_upgrade_enabled: false
+  background_review:
+    enabled: false
+
+plugins:
+  enabled: []
+
+# --- No outbound housekeeping -------------------------------------------------
+model_catalog:
+  enabled: false
+
+updates:
+  check: false
+
+telemetry:
+  shared_metrics:
+    enabled: false
+    send: false
+
+# --- API server ---------------------------------------------------------------
+# Host, port and key come from API_SERVER_* env vars in docker-compose.
+gateway:
+  platforms:
+    api_server:
+      # Kemudi callers parse JSON; keep the SSE stream to standard chunks.
+      tool_progress_events: false

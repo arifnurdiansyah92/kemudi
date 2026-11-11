@@ -8,3 +8,6 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+
+# Contract files and backtest data are client-confidential.
+apps/orchestrator/data/

@@ -1,0 +1,114 @@
+{
+  "title": "Contract",
+  "intro": "The contract is the baseline every request is measured against. Kemudi AI suggests; a project admin decides.",
+  "tabs": {
+    "contract": "Contract",
+    "baseline": "Baseline",
+    "backtest": "Backtest"
+  },
+  "suggestion": "AI suggestion",
+  "adminOnly": "Only project admins can change this.",
+  "unavailable": "Kemudi AI isn't reachable. Check that the orchestrator and Hermes are running.",
+  "upload": {
+    "title": "Contract document",
+    "description": "Upload the signed SOW or SPK (PDF or DOCX). Kemudi reads it into numbered sections that the baseline cites.",
+    "file": "Document",
+    "language": "Working language",
+    "languageHint": "AI text for this project is written in this language.",
+    "submit": "Read document",
+    "replace": "Replace document",
+    "current": "{{file}} · {{count}} sections",
+    "empty": "No contract yet. Upload one to start.",
+    "sections": "Sections",
+    "noSections": "No text was found. A scanned document without a text layer can't be read yet."
+  },
+  "rateCard": {
+    "title": "Rate card",
+    "description": "Daily rate per role. Change Request effort is in person-days and priced with this card.",
+    "role": "Role",
+    "rate": "Rate per day (IDR)",
+    "addRole": "Add role",
+    "removeRole": "Remove {{role}}",
+    "save": "Save rate card",
+    "rolePlaceholder": "backend"
+  },
+  "baseline": {
+    "title": "Baseline",
+    "description": "The scope the contract covers, built from its sections. Edit the draft, then approve it to lock it as a version.",
+    "generate": "Generate draft",
+    "regenerate": "Generate again",
+    "generating": "Reading the contract… this can take a minute.",
+    "needsContract": "Upload a contract first.",
+    "draft": "Draft",
+    "save": "Save draft",
+    "approve": "Approve baseline",
+    "approveTitle": "Approve this baseline?",
+    "approveDesc": "It becomes version {{version}}. After that the baseline changes only through an approved Change Request.",
+    "approved": "Version {{version}}, approved by {{by}} on {{date}}",
+    "noDraft": "No draft yet.",
+    "history": "Version history",
+    "items_one": "{{count}} item",
+    "items_other": "{{count}} items",
+    "remove": "Remove item",
+    "clauses": "Contract clauses",
+    "acceptance": "Acceptance criteria",
+    "titleLabel": "Title",
+    "descriptionLabel": "Description",
+    "price": "Contract price",
+    "kinds": {
+      "epic": "Modules",
+      "story": "Features",
+      "obligation": "Obligations",
+      "term": "Terms"
+    }
+  },
+  "backtest": {
+    "title": "Backtest",
+    "description": "Replay past requests through the CR check and compare with what the PM decided. Upload a JSON dataset with the requests and the expected label.",
+    "dataset": "Dataset (JSON)",
+    "start": "Run backtest",
+    "needsBaseline": "Approve a baseline first.",
+    "running": "Classifying {{done}} of {{total}}…",
+    "runs": "Runs",
+    "run": "Run {{id}} · {{dataset}} · {{date}}",
+    "empty": "No backtest yet.",
+    "failed": "The run stopped: {{error}}",
+    "metrics": {
+      "accuracy": "Agreement with PM",
+      "accuracyDetail": "{{correct}} of {{total}} requests",
+      "crCaught": "CRs caught",
+      "crCaughtDetail": "flagged as CR or for clarification",
+      "falseCr": "False CR",
+      "falseCrDetail": "in-scope requests flagged as CR",
+      "value": "Out-of-scope value found",
+      "valueDetail": "PM's figure {{expected}}",
+      "verdicts": "PM review: {{right}} right, {{wrong}} wrong, {{pending}} to review"
+    },
+    "confusion": {
+      "title": "Expected vs suggested",
+      "expected": "Expected",
+      "error": "Error"
+    },
+    "table": {
+      "request": "Request",
+      "expected": "PM decision",
+      "suggested": "Suggested",
+      "effort": "Effort",
+      "price": "Price",
+      "review": "Review",
+      "waived": "waived",
+      "synthetic": "example",
+      "real": "real",
+      "days": "{{days}} d",
+      "question": "Ask the client: {{question}}",
+      "markRight": "Mark suggestion right",
+      "markWrong": "Mark suggestion wrong",
+      "error": "AI error: {{error}}"
+    }
+  },
+  "labels": {
+    "in_baseline": "In baseline",
+    "cr_candidate": "CR candidate",
+    "needs_clarification": "Needs clarification"
+  }
+}
