@@ -48,6 +48,7 @@ import { Route as AuthenticatedPSlugTeamRouteImport } from './routes/_authentica
 import { Route as AuthenticatedPSlugKanbanRouteImport } from './routes/_authenticated/p/$slug/kanban'
 import { Route as AuthenticatedPSlugIssuesRouteImport } from './routes/_authenticated/p/$slug/issues'
 import { Route as AuthenticatedPSlugEpicsRouteImport } from './routes/_authenticated/p/$slug/epics'
+import { Route as AuthenticatedPSlugContractRouteImport } from './routes/_authenticated/p/$slug/contract'
 import { Route as AuthenticatedPSlugBacklogRouteImport } from './routes/_authenticated/p/$slug/backlog'
 import { Route as AuthenticatedPSlugSettingsRouteRouteImport } from './routes/_authenticated/p/$slug/settings/route'
 import { Route as AuthenticatedPSlugWikiIndexRouteImport } from './routes/_authenticated/p/$slug/wiki/index'
@@ -280,6 +281,12 @@ const AuthenticatedPSlugEpicsRoute = AuthenticatedPSlugEpicsRouteImport.update({
   path: '/epics',
   getParentRoute: () => AuthenticatedPSlugRouteRoute,
 } as any)
+const AuthenticatedPSlugContractRoute =
+  AuthenticatedPSlugContractRouteImport.update({
+    id: '/contract',
+    path: '/contract',
+    getParentRoute: () => AuthenticatedPSlugRouteRoute,
+  } as any)
 const AuthenticatedPSlugBacklogRoute =
   AuthenticatedPSlugBacklogRouteImport.update({
     id: '/backlog',
@@ -426,6 +433,7 @@ export interface FileRoutesByFullPath {
   '/settings/': typeof AuthenticatedSettingsIndexRoute
   '/p/$slug/settings': typeof AuthenticatedPSlugSettingsRouteRouteWithChildren
   '/p/$slug/backlog': typeof AuthenticatedPSlugBacklogRoute
+  '/p/$slug/contract': typeof AuthenticatedPSlugContractRoute
   '/p/$slug/epics': typeof AuthenticatedPSlugEpicsRoute
   '/p/$slug/issues': typeof AuthenticatedPSlugIssuesRoute
   '/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
@@ -482,6 +490,7 @@ export interface FileRoutesByTo {
   '/projects': typeof AuthenticatedProjectsIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/p/$slug/backlog': typeof AuthenticatedPSlugBacklogRoute
+  '/p/$slug/contract': typeof AuthenticatedPSlugContractRoute
   '/p/$slug/epics': typeof AuthenticatedPSlugEpicsRoute
   '/p/$slug/issues': typeof AuthenticatedPSlugIssuesRoute
   '/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
@@ -543,6 +552,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/_authenticated/p/$slug/settings': typeof AuthenticatedPSlugSettingsRouteRouteWithChildren
   '/_authenticated/p/$slug/backlog': typeof AuthenticatedPSlugBacklogRoute
+  '/_authenticated/p/$slug/contract': typeof AuthenticatedPSlugContractRoute
   '/_authenticated/p/$slug/epics': typeof AuthenticatedPSlugEpicsRoute
   '/_authenticated/p/$slug/issues': typeof AuthenticatedPSlugIssuesRoute
   '/_authenticated/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
@@ -604,6 +614,7 @@ export interface FileRouteTypes {
     | '/settings/'
     | '/p/$slug/settings'
     | '/p/$slug/backlog'
+    | '/p/$slug/contract'
     | '/p/$slug/epics'
     | '/p/$slug/issues'
     | '/p/$slug/kanban'
@@ -660,6 +671,7 @@ export interface FileRouteTypes {
     | '/projects'
     | '/settings'
     | '/p/$slug/backlog'
+    | '/p/$slug/contract'
     | '/p/$slug/epics'
     | '/p/$slug/issues'
     | '/p/$slug/kanban'
@@ -720,6 +732,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/'
     | '/_authenticated/p/$slug/settings'
     | '/_authenticated/p/$slug/backlog'
+    | '/_authenticated/p/$slug/contract'
     | '/_authenticated/p/$slug/epics'
     | '/_authenticated/p/$slug/issues'
     | '/_authenticated/p/$slug/kanban'
@@ -1043,6 +1056,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPSlugEpicsRouteImport
       parentRoute: typeof AuthenticatedPSlugRouteRoute
     }
+    '/_authenticated/p/$slug/contract': {
+      id: '/_authenticated/p/$slug/contract'
+      path: '/contract'
+      fullPath: '/p/$slug/contract'
+      preLoaderRoute: typeof AuthenticatedPSlugContractRouteImport
+      parentRoute: typeof AuthenticatedPSlugRouteRoute
+    }
     '/_authenticated/p/$slug/backlog': {
       id: '/_authenticated/p/$slug/backlog'
       path: '/backlog'
@@ -1248,6 +1268,7 @@ const AuthenticatedPSlugSettingsRouteRouteWithChildren =
 interface AuthenticatedPSlugRouteRouteChildren {
   AuthenticatedPSlugSettingsRouteRoute: typeof AuthenticatedPSlugSettingsRouteRouteWithChildren
   AuthenticatedPSlugBacklogRoute: typeof AuthenticatedPSlugBacklogRoute
+  AuthenticatedPSlugContractRoute: typeof AuthenticatedPSlugContractRoute
   AuthenticatedPSlugEpicsRoute: typeof AuthenticatedPSlugEpicsRoute
   AuthenticatedPSlugIssuesRoute: typeof AuthenticatedPSlugIssuesRoute
   AuthenticatedPSlugKanbanRoute: typeof AuthenticatedPSlugKanbanRoute
@@ -1266,6 +1287,7 @@ const AuthenticatedPSlugRouteRouteChildren: AuthenticatedPSlugRouteRouteChildren
     AuthenticatedPSlugSettingsRouteRoute:
       AuthenticatedPSlugSettingsRouteRouteWithChildren,
     AuthenticatedPSlugBacklogRoute: AuthenticatedPSlugBacklogRoute,
+    AuthenticatedPSlugContractRoute: AuthenticatedPSlugContractRoute,
     AuthenticatedPSlugEpicsRoute: AuthenticatedPSlugEpicsRoute,
     AuthenticatedPSlugIssuesRoute: AuthenticatedPSlugIssuesRoute,
     AuthenticatedPSlugKanbanRoute: AuthenticatedPSlugKanbanRoute,

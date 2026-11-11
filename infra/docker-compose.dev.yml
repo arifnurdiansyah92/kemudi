@@ -121,6 +121,60 @@ services:
       context: ../apps/web
     image: kemudi/kemudi-web:dev
 
+  # Kemudi AI: Hermes (services/awak) as an OpenAI-compatible API server with
+  # every tool off. Config: infra/hermes/config.yaml (managed scope, read-only).
+  # In compose: ${KEMUDI_HERMES_URL} (http://kemudi-hermes:8642/v1).
+  # From the host: http://127.0.0.1:8642/v1. Bearer ${KEMUDI_HERMES_API_KEY}.
+  kemudi-hermes:
+    build:
+      context: ../services/awak
+    image: kemudi/kemudi-hermes:dev
+    command: ["gateway", "run"]
+    environment:
+      API_SERVER_ENABLED: "true"
+      API_SERVER_HOST: "0.0.0.0"
+      API_SERVER_PORT: "8642"
+      API_SERVER_KEY: "${KEMUDI_HERMES_API_KEY}"
+      API_SERVER_MODEL_NAME: "kemudi-hermes"
+      KEMUDI_AI_BASE_URL: "${KEMUDI_AI_BASE_URL}"
+      KEMUDI_AI_API_KEY: "${KEMUDI_AI_API_KEY}"
+      KEMUDI_AI_MODEL: "${KEMUDI_AI_MODEL}"
+    volumes:
+      - ./hermes/config.yaml:/etc/hermes/config.yaml:ro
+      # Named volume, not a bind mount: SQLite WAL is unsafe over Docker
+      # Desktop's Windows file sharing (website/docs/user-guide/docker.md).
+      - kemudi-hermes-data:/opt/data
+    ports:
+      - "127.0.0.1:8642:8642"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8642/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  # Kemudi AI service (apps/orchestrator): contract baseline, CR check,
+  # backtests. Served at /api/kemudi/ by the gateway; every model call goes
+  # through kemudi-hermes.
+  kemudi-orchestrator:
+    build:
+      context: ../apps/orchestrator
+    image: kemudi/kemudi-orchestrator:dev
+    environment:
+      KEMUDI_HERMES_URL: "${KEMUDI_HERMES_URL}"
+      KEMUDI_HERMES_API_KEY: "${KEMUDI_HERMES_API_KEY}"
+      KEMUDI_AI_MODEL: "${KEMUDI_AI_MODEL}"
+      KEMUDI_AI_DB_URL: "sqlite:////var/lib/kemudi-ai/kemudi-ai.db"
+      KEMUDI_TAIGA_API_URL: "http://kemudi-back:8000/api/v1"
+    volumes:
+      # Contracts are confidential: a named volume, never the repo.
+      - kemudi-ai-data:/var/lib/kemudi-ai
+    restart: unless-stopped
+    depends_on:
+      kemudi-back: { condition: service_started }
+      kemudi-hermes: { condition: service_healthy }
+
   # Legacy UI, for screens apps/web does not cover yet. Remove once it does.
   kemudi-front:
     image: taigaio/taiga-front:latest
@@ -143,6 +197,7 @@ services:
       - kemudi-front
       - kemudi-back
       - kemudi-events
+      - kemudi-orchestrator
 
 volumes:
   kemudi-static-data:
@@ -150,3 +205,5 @@ volumes:
   kemudi-db-data:
   kemudi-async-rabbitmq-data:
   kemudi-events-rabbitmq-data:
+  kemudi-hermes-data:
+  kemudi-ai-data:

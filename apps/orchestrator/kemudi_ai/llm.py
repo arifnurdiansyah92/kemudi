@@ -62,6 +62,8 @@ class HermesLLM:
             "messages": messages,
             "temperature": 0,
             "response_format": {"type": "json_object"},
+            # Hermes: no hidden reasoning for short structured tasks (faster).
+            "model_options": {"reasoning": {"enabled": False}},
         }
         prompt = "\n\n".join(f"[{m['role']}]\n{m['content']}" for m in messages)
         t0 = time.monotonic()

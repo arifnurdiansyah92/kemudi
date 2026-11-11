@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
 import {
+  FileSignature,
   UserCog,
   Settings,
   House,
@@ -20,7 +21,7 @@ import { type NavGroup } from './types'
 
 /** Sidebar groups: the workspace, then the open project's views. */
 export function useNavGroups(): NavGroup[] {
-  const { t } = useTranslation(['shell', 'common'])
+  const { t } = useTranslation(['shell', 'common', 'contract'])
   const { slug } = useParams({ strict: false }) as { slug?: string }
   const { data: project } = useQuery({
     ...projectQuery(slug ?? ''),
@@ -79,6 +80,11 @@ export function useNavGroups(): NavGroup[] {
         url: `/p/${project.slug}/wiki`,
         icon: BookOpen,
       })
+    items.push({
+      title: t('contract:title'),
+      url: `/p/${project.slug}/contract`,
+      icon: FileSignature,
+    })
     items.push({
       title: t('common:terms.team'),
       url: `/p/${project.slug}/team`,

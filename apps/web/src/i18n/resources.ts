@@ -8,6 +8,7 @@ import en_auth from '@/locales/en/auth.json'
 import en_backlog from '@/locales/en/backlog.json'
 import en_board from '@/locales/en/board.json'
 import en_common from '@/locales/en/common.json'
+import en_contract from '@/locales/en/contract.json'
 import en_home from '@/locales/en/home.json'
 import en_item from '@/locales/en/item.json'
 import en_pages from '@/locales/en/pages.json'
@@ -18,6 +19,7 @@ import id_auth from '@/locales/id/auth.json'
 import id_backlog from '@/locales/id/backlog.json'
 import id_board from '@/locales/id/board.json'
 import id_common from '@/locales/id/common.json'
+import id_contract from '@/locales/id/contract.json'
 import id_home from '@/locales/id/home.json'
 import id_item from '@/locales/id/item.json'
 import id_pages from '@/locales/id/pages.json'
@@ -38,6 +40,7 @@ export const resources = {
     item: en_item,
     pages: en_pages,
     admin: en_admin,
+    contract: en_contract,
   },
   id: {
     common: id_common,
@@ -50,5 +53,6 @@ export const resources = {
     item: id_item,
     pages: id_pages,
     admin: id_admin,
+    contract: id_contract,
   },
 } as const
