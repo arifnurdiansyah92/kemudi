@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     secret_key: str = ""
     ssh_dir: str = "/var/lib/kemudi-ai/ssh"
     repos_dir: str = "/var/lib/kemudi-ai/repos"
+    # Extra models offered in the role editor (comma-separated), besides
+    # awak_model and qa_model.
+    awak_models: str = ""
+
+    def model_choices(self) -> list[str]:
+        extra = [m.strip() for m in self.awak_models.split(",") if m.strip()]
+        return list(dict.fromkeys([self.awak_model, self.qa_model, *extra]))
 
     def awak_project_slugs(self) -> list[str]:
         return [s.strip() for s in self.awak_projects.split(",") if s.strip()]

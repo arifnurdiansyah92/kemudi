@@ -96,9 +96,11 @@ class FakeAgent:
         self.code = code or (lambda workdir, n: commit_file(workdir, f"feature{n}.txt", "x"))
         self.fail_with = fail_with or []
         self.calls: list[tuple[str, str]] = []
+        self.runs: list[dict] = []
 
     def run(self, purpose, model, system, task):
         self.calls.append((purpose, task))
+        self.runs.append({"purpose": purpose, "model": model, "system": system, "task": task})
         if self.fail_with:
             err = self.fail_with.pop(0)
             if err:

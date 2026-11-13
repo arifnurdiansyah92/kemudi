@@ -5,7 +5,8 @@ POST /install    {job, subdir?, commands?}  pnpm install (frozen, no scripts), o
 POST /commit     {job, message}             commit anything the agent left
 POST /gates      {job, subdir?, commands?}  tsc, eslint, vitest, vite build, or the commands
 POST /qa_reset   {job}                      empty .qa/ for a fresh spec
-POST /qa         {job, token, user, project} run .qa/spec twice against a dev server
+POST /qa         {job, token, user, project, subdir?}  run .qa/spec twice against a dev
+                                            server started in subdir (default apps/web)
 
 `commands` is [{name, argv, timeout}], run without a shell in `subdir` of the
 job workspace; argv[0] must be in ALLOWED_PROGRAMS. Without `commands`, the
@@ -218,7 +219,8 @@ def op_qa(body: dict) -> dict:
     spec_dir = d / ".qa" / "spec"
     if not any(spec_dir.glob("*.spec.ts")):
         return {"spec_error": "no spec file in .qa/spec"}
-    web = d / "apps" / "web"
+    # The repo's web app directory; iteration 1 callers send none (apps/web).
+    web = work_dir(body) if "subdir" in body else d / "apps" / "web"
     vite = subprocess.Popen(
         ["pnpm", "exec", "vite", "--port", str(QA_PORT), "--strictPort", "--host", "127.0.0.1"],
         cwd=web, env={**os.environ, "KEMUDI_DEV_GATEWAY": GATEWAY},

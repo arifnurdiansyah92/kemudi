@@ -18,13 +18,14 @@ from sqlalchemy.orm import Session, sessionmaker
 from ..config import Settings
 from ..store import AwakJob, AwakKey, record_event
 from . import config_store, secrets, ssh
-from .config_store import ProjectConfig, RepoConfig
+from .config_store import ProjectConfig, RepoConfig, RoleConfig
 from .crypto import SecretKeyMissing
 from .agent import Agent, AgentError
 from .gitops import GitError, Repo, branch_for
-from .intake import TAG
+from .intake import TAG, story_areas
+from .prompts import RoleScope, out_of_scope, prompt_version, render, render_role
 from .runner import Runner, RunnerError
-from .stories import CODE_SYSTEM, QA_SYSTEM, code_task, criteria, qa_task
+from .stories import code_task, criteria, qa_task
 from .taiga import Project, Taiga, TaigaError, tag_names
 from .verdict import Verdict, evaluate, safe_screenshot
 
@@ -32,7 +33,6 @@ log = logging.getLogger(__name__)
 
 DONE_TAG = "awaiting-merge"
 HUMAN_TAG = "needs-human"
-BACKEND_PREFIXES = ("services/kemudi-back/",)
 
 
 class Stop(Exception):
@@ -47,6 +47,16 @@ class Infra(Exception):
 class Fail:
     feedback: str
     comment: str
+
+
+@dataclass
+class Route:
+    """What a job runs with: pinned on the job at its first attempt."""
+
+    config: ProjectConfig
+    role: RoleConfig
+    rc: RepoConfig
+    repo: Repo
 
 
 def now() -> datetime:
@@ -139,7 +149,7 @@ class Worker:
                                       story_ref=st["ref"], branch=branch_for(st["ref"]))
                         db.add(job)
                     else:
-                        self._reset(job, "")
+                        self._reset(job, "", fresh=True)
                 elif job is None:
                     continue  # in progress by a human, not ours
                 elif job.state == "running":
@@ -162,9 +172,12 @@ class Worker:
                 return job.id, st
         return None
 
-    def _reset(self, job: AwakJob, feedback: str) -> None:
+    def _reset(self, job: AwakJob, feedback: str, fresh: bool = False) -> None:
         job.attempts, job.infra_errors, job.feedback = 0, 0, feedback
         job.started_at, job.cost_idr, job.phase = now(), 0.0, ""
+        if fresh:
+            # Back in Ready: route again (role, repo and prompt may have changed).
+            job.role_id, job.repo_id, job.prompt_version = None, None, ""
 
     def _human_feedback(self, story_id: int) -> str:
         bot = {self.taiga.username, self.s.qa_username}
@@ -209,7 +222,8 @@ class Worker:
     def _attempt(self, project: Project, job: AwakJob, story: dict) -> Fail | None:
         n = job.attempts + 1
         story = self._ours(story["id"], {"ready", "in-progress", "ready-for-test"}, project)
-        repo, rc = self._job_repo(job, project.slug)
+        route = self._route(job, story, project.slug)
+        repo, rc, role = route.repo, route.rc, route.role
         self.taiga.update_story(
             story["id"], version=story["version"],
             status=project.status("in-progress"),
@@ -241,7 +255,8 @@ class Worker:
             self._set(job.id, phase="code")
             task = code_task(str(workdir), job.story_ref, story["subject"],
                              story.get("description") or "", job.feedback)
-            report, cost = self.agent.run("awak.code", self.s.awak_model, CODE_SYSTEM, task)
+            system = render_role(role, route.config.repos)
+            report, cost = self.agent.run("awak.code", role.model, system, task)
             self._add_cost(job.id, cost)
             self._set(job.id, phase="collect")
             self._runner("commit", job=workdir.name,
@@ -257,12 +272,17 @@ class Worker:
                         "Awak tidak menghasilkan commit. Laporan Awak:\n\n"
                         + _quote(report))
         files = repo.changed_files(job.branch)
-        backend = [f for f in files if f.startswith(BACKEND_PREFIXES)]
-        if backend:
-            return Fail("Do not change services/kemudi-back; this story is frontend only. "
-                        "Revert: " + ", ".join(backend),
-                        "Awak mengubah backend, padahal story ini khusus frontend: "
-                        + ", ".join(f"`{f}`" for f in backend))
+        outside = out_of_scope(files, role.allowed_paths, role.denied_paths)
+        if outside:
+            limits = []
+            if role.allowed_paths:
+                limits.append("allowed: " + ", ".join(role.allowed_paths))
+            if role.denied_paths:
+                limits.append("never: " + ", ".join(role.denied_paths))
+            return Fail("These files are outside your role's scope ("
+                        + "; ".join(limits) + "). Revert: " + ", ".join(outside),
+                        f"Awak mengubah berkas di luar cakupan peran {role.name}: "
+                        + ", ".join(f"`{f}`" for f in outside))
         leaked = secrets.files_with_secrets(repo.diff_from_main(job.branch),
                                             self.secret_values)
         if leaked:
@@ -294,7 +314,7 @@ class Worker:
 
         # QA
         self._set(job.id, phase="qa")
-        verdict = self._qa(project, job, story, workdir)
+        verdict = self._qa(project, job, story, workdir, route)
         story = self._ours(story["id"], {"ready-for-test"}, project)
         evidence = self._upload(project, story["id"], verdict, workdir, f"us{job.story_ref}-a{n}")
         if verdict.outcome == "pass":
@@ -311,21 +331,29 @@ class Worker:
                     f"QA gagal untuk `{sha[:8]}`:\n{_table(verdict, evidence)}\n\n"
                     f"Kembali ke In progress; Awak akan memperbaiki.")
 
-    def _qa(self, project: Project, job: AwakJob, story: dict, workdir: Path) -> Verdict:
+    def _qa(self, project: Project, job: AwakJob, story: dict, workdir: Path,
+            route: Route) -> Verdict:
         texts = criteria(story.get("description") or "")
         if not texts:
             raise Stop("story tidak punya kriteria penerimaan; tambahkan bagian "
                        "'Acceptance criteria' berisi daftar poin.")
+        qa_role = route.config.qa_role()
+        if qa_role is not None:
+            model, system = qa_role.model, render_role(qa_role, route.config.repos)
+        else:
+            model = self.s.qa_model
+            system = render("qa", "", RoleScope(repos=[route.rc.name]))
         token = self.qa_taiga.login()
         spec_feedback = ""
         for _ in range(2):
             self._runner("qa_reset", job=workdir.name)
             task = qa_task(str(workdir), job.story_ref, story["subject"], texts,
-                           self.s.qa_project, spec_feedback)
-            _, cost = self.agent.run("awak.qa", self.s.qa_model, QA_SYSTEM, task)
+                           self.s.qa_project, spec_feedback, app_dir=route.rc.subdir)
+            _, cost = self.agent.run("awak.qa", model, system, task)
             self._add_cost(job.id, cost)
             report = self._runner("qa", job=workdir.name, token=token,
-                                  user=self.qa_taiga.me, project=self.s.qa_project)
+                                  user=self.qa_taiga.me, project=self.s.qa_project,
+                                  subdir=route.rc.subdir)
             verdict = evaluate(report, texts)
             self._event(job.id, "qa", {"outcome": verdict.outcome, "reason": verdict.reason})
             if verdict.outcome != "spec":
@@ -336,23 +364,46 @@ class Worker:
         return verdict
 
     # ------------------------------------------------------------- helpers
-    def _job_repo(self, job: AwakJob, slug: str) -> tuple[Repo, RepoConfig]:
-        """The job's repo, pinned on the job at its first attempt."""
+    def _route(self, job: AwakJob, story: dict, slug: str) -> Route:
+        """Role and repo by the story's area tag, pinned on the job at its first
+        attempt and kept for rework; the prompt version is what this attempt uses."""
         with self.sessions() as db:
             cfg = config_store.load(db, slug)
-            rc = cfg.repo(job.repo_id) if job.repo_id is not None else None
-            if rc is None:
-                if job.repo_id is not None:
+            row = db.get(AwakJob, job.id)
+            if row.role_id is None:
+                areas = story_areas(tag_names(story))
+                if len(areas) > 1:
+                    raise Stop("story punya lebih dari satu tag area ("
+                               + ", ".join(f"area-{a}" for a in areas) + "); sisakan satu.")
+                role = cfg.role_for_area(areas[0])
+                if role is None:
+                    raise Stop(f"tidak ada peran agen aktif untuk area {areas[0]}; aktifkan "
+                               f"di Pengaturan proyek → Agen.")
+                rc = cfg.repo(role.repo_ids[0]) if role.repo_ids else None
+                if rc is None:
+                    raise Stop(f"peran {role.name} belum punya repo; pilih di Pengaturan "
+                               f"proyek → Agen.")
+                row.role_id, row.repo_id = role.id, rc.id
+            else:
+                role = cfg.role(row.role_id)
+                if role is None or not role.enabled:
+                    raise Stop("peran agen untuk story ini sudah dihapus atau dimatikan.")
+                rc = cfg.repo(row.repo_id)
+                if rc is None:
                     raise Stop("repo untuk story ini sudah dihapus dari pengaturan Agen.")
-                if not cfg.repos:
-                    raise Stop("proyek belum punya repo; tambahkan di Pengaturan proyek → Agen.")
-                rc = cfg.repos[0]
-                db.get(AwakJob, job.id).repo_id = rc.id
-                db.commit()
+            version = prompt_version(role, cfg.repos)
+            changed = row.prompt_version != version
+            row.prompt_version = version
+            db.commit()
             key = config_store.key_row(db, rc.key_id)
+        if changed:
+            self._event(job.id, "routed", {"role_id": role.id, "repo_id": rc.id,
+                                           "prompt_version": version})
         if self.repo is not None and rc.url == self.s.host_git:
-            return self.repo, rc  # the injected Kemudi repo (iteration 1 wiring, tests)
-        return repo_for(cfg, rc, self.s, key), rc
+            repo = self.repo  # the injected Kemudi repo (iteration 1 wiring, tests)
+        else:
+            repo = repo_for(cfg, rc, self.s, key)
+        return Route(cfg, role, rc, repo)
 
     def _runner(self, op: str, **payload) -> dict:
         res = self.runner.call(op, **payload)

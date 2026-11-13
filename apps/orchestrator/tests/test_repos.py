@@ -9,7 +9,8 @@ from kemudi_ai.awak import agent_api, crypto, ssh
 from kemudi_ai.awak.detect import detect_commands
 from kemudi_ai.awak.worker import Worker
 from kemudi_ai.config import Settings
-from kemudi_ai.store import AwakJob, AwakKey, AwakProject, AwakRepo, Decision, make_session
+from kemudi_ai.store import (AwakJob, AwakKey, AwakProject, AwakRepo, AwakRole, Decision,
+                             make_session)
 
 from .awak_fakes import FakeAgent, FakeRunner, FakeTaiga, git
 from .conftest import ADMIN, MEMBER
@@ -109,7 +110,7 @@ def test_key_needs_secret_key(agent_client):
 
 
 def test_key_refused_for_local_repo_and_member(agent_client):
-    repo = add_repo(agent_client, url="/host-git")
+    repo = add_repo(agent_client, url=agent_client.settings.host_git)
     assert repo["local"] is True
     url = f"/projects/demo/agent/repos/{repo['id']}/key"
     assert agent_client.post(url, headers=MEMBER).status_code == 403
@@ -157,6 +158,7 @@ def test_check_local_remote_detects_commands(agent_client, tmp_path):
     pkg = json.dumps({"scripts": {"test": "vitest run", "build": "vite build"}})
     remote = make_remote(tmp_path, {"package.json": pkg, "pnpm-lock.yaml": "lock",
                                      "tsconfig.json": "{}"})
+    agent_client.settings.host_git = str(remote)  # local paths: only the Kemudi repo
     repo = add_repo(agent_client, url=str(remote), install_cmd="", build_cmd="make it")
     r = agent_client.post(f"/projects/demo/agent/repos/{repo['id']}/check", headers=ADMIN)
     assert r.status_code == 200, r.text
@@ -173,6 +175,7 @@ def test_check_local_remote_detects_commands(agent_client, tmp_path):
 
 def test_check_missing_branch_is_not_ok(agent_client, tmp_path):
     remote = make_remote(tmp_path, {"README.md": "hi"})
+    agent_client.settings.host_git = str(remote)
     repo = add_repo(agent_client, url=str(remote), default_branch="trunk")
     body = agent_client.post(f"/projects/demo/agent/repos/{repo['id']}/check",
                              headers=ADMIN).json()
@@ -256,8 +259,12 @@ def test_worker_uses_repo_default_branch(tmp_path):
     sessions = make_session(settings.ai_db_url)
     with sessions() as db:
         db.add(AwakProject(slug="demo", enabled=True, merge_mode="manual"))
-        db.add(AwakRepo(project_slug="demo", name="app", url=str(remote),
-                        default_branch="trunk", install_cmd="pnpm install", check_cmd="pnpm test"))
+        row = AwakRepo(project_slug="demo", name="app", url=str(remote),
+                       default_branch="trunk", install_cmd="pnpm install", check_cmd="pnpm test")
+        db.add(row)
+        db.flush()
+        db.add(AwakRole(project_slug="demo", template="frontend", name="FE", area="web",
+                        model="m", repo_ids=[row.id]))
         db.commit()
     taiga = FakeTaiga()
     runner = FakeRunner(tmp_path / "ws", qa=["pass"])

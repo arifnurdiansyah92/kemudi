@@ -10,6 +10,20 @@ from .taiga import Taiga
 
 TAG = "agent-ready"
 MAX_CRITERIA = 4
+# A story's area tag routes it to an agent role (`area-web`, `area-backend`).
+AREA_PREFIX = "area-"
+AREAS = ("web", "backend")
+
+
+def area_tag(area: str) -> str:
+    return f"{AREA_PREFIX}{area}"
+
+
+def story_areas(tags: list[str]) -> list[str]:
+    """The areas a story's tags name; no area tag means `web` (iteration 1)."""
+    found = [t[len(AREA_PREFIX):] for t in tags
+             if t.startswith(AREA_PREFIX) and t[len(AREA_PREFIX):] in AREAS]
+    return sorted(set(found)) or ["web"]
 
 
 class StoryDraft(BaseModel):

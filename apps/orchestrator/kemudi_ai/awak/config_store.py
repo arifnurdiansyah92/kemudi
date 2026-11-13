@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..config import Settings
 from ..store import AwakKey, AwakProject, AwakRepo, AwakRole
+from .prompts import KEMUDI_QA_OVERLAY, KEMUDI_WEB_OVERLAY  # noqa: F401 (re-exported)
 
 DEFAULTS = {
     "enabled": False,
@@ -31,12 +32,6 @@ KEMUDI_WEB_COMMANDS = {
     "build_cmd": "pnpm exec vite build",
     "run_cmd": "pnpm exec vite",
 }
-KEMUDI_WEB_OVERLAY = """This is the Kemudi monorepo. The web app is apps/web: React 19, TypeScript, TanStack Router/Query, Tailwind, shadcn/ui, i18next with keys in src/locales/{en,id}; never hardcode UI strings.
-- node_modules is installed in apps/web. You may run `pnpm exec tsc -b`, `pnpm exec eslint <files>` and `pnpm exec vitest run --browser.headless <file>` there to check your work. There is no internet access.
-- Before committing: delete any scratch, probe or debug files you created, remove console.log calls, and run `pnpm exec eslint <changed files>` and `pnpm exec tsc -b`; fix what they report. Tests you keep follow the repo's existing test conventions.
-- Do not touch services/kemudi-back, infra/, .github/ or any lockfile unless the story says so.
-- Commit messages: `<type>(web): <summary> (US #<ref>)`."""
-
 
 @dataclass(frozen=True)
 class RepoConfig:
@@ -85,6 +80,16 @@ class ProjectConfig:
     def repo(self, repo_id: int | None) -> RepoConfig | None:
         return next((r for r in self.repos if r.id == repo_id), None)
 
+    def role(self, role_id: int | None) -> RoleConfig | None:
+        return next((r for r in self.roles if r.id == role_id), None)
+
+    def role_for_area(self, area: str) -> RoleConfig | None:
+        """The first enabled role serving `area` (roles are ordered by id)."""
+        return next((r for r in self.roles if r.enabled and r.area == area), None)
+
+    def qa_role(self) -> RoleConfig | None:
+        return next((r for r in self.roles if r.enabled and r.template == "qa"), None)
+
 
 def now() -> datetime:
     return datetime.now(UTC)
@@ -111,7 +116,7 @@ def seed_from_env(db: Session, settings: Settings) -> None:
                      updated_by="seed"),
             AwakRole(project_slug=slug, template="qa", name="QA", area="qa",
                      model=settings.qa_model, repo_ids=[repo.id], enabled=True,
-                     updated_by="seed"),
+                     prompt_overlay=KEMUDI_QA_OVERLAY, updated_by="seed"),
         ])
         db.commit()
 

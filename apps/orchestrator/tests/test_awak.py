@@ -12,7 +12,7 @@ from kemudi_ai.awak.taiga import TaigaError, assert_local
 from kemudi_ai.awak.verdict import evaluate, safe_screenshot
 from kemudi_ai.awak.worker import Worker
 from kemudi_ai.config import Settings
-from kemudi_ai.store import AwakJob, AwakProject, AwakRepo, make_session
+from kemudi_ai.store import AwakJob, AwakProject, AwakRepo, AwakRole, make_session
 
 from .awak_fakes import PNG, FakeAgent, FakeRunner, FakeTaiga, commit_file, git, qa_report
 from .fakes import FakeLLM
@@ -256,7 +256,8 @@ def test_backend_change_is_rejected(tmp_path, repo):
     w, taiga, _ = make_worker(tmp_path, repo, FakeAgent(code=code), runner)
     taiga.add(1, 12, "Badge jumlah", DESC)
     w.tick()
-    assert any("mengubah backend" in t for t in taiga.texts(1))
+    assert any("di luar cakupan peran Frontend dev" in t and "services/kemudi-back/x.py" in t
+               for t in taiga.texts(1))
     assert taiga.status_of(1) == "done"
 
 
@@ -350,8 +351,12 @@ def test_worker_serves_db_enabled_projects(tmp_path, repo):
     sessions = make_session(settings.ai_db_url)
     with sessions() as db:
         db.add(AwakProject(slug="kemudi", enabled=True, merge_mode="manual"))
-        db.add(AwakRepo(project_slug="kemudi", name="kemudi", url=settings.host_git,
-                        subdir="apps/web"))
+        repo_row = AwakRepo(project_slug="kemudi", name="kemudi", url=settings.host_git,
+                            subdir="apps/web")
+        db.add(repo_row)
+        db.flush()
+        db.add(AwakRole(project_slug="kemudi", template="frontend", name="FE", area="web",
+                        model="m", repo_ids=[repo_row.id]))
         db.commit()
     taiga = FakeTaiga()
     w = Worker(settings, sessions, taiga, FakeTaiga("awak-qa"), FakeAgent(),

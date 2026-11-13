@@ -19,8 +19,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from ..auth import TaigaUser
 from ..config import Settings, get_settings
 from ..deps import actor, admin, get_db, get_sessions, member
-from ..store import AwakJob, AwakKey, AwakProject, AwakRepo, record_decision
-from . import config_store, crypto, gitops, secrets, ssh
+from ..store import AwakJob, AwakKey, AwakProject, AwakRepo, AwakRole, record_decision
+from . import config_store, crypto, gitops, prompts, secrets, ssh
 from .crypto import SecretKeyMissing
 from .detect import FIELDS as COMMAND_FIELDS
 from .detect import detect_commands
@@ -241,6 +241,15 @@ def _repo_out(db: Session, r: AwakRepo) -> dict:
     }
 
 
+def _allowed_local(settings: Settings, url: str) -> None:
+    """A local path may only be the Kemudi repo itself (settings.host_git):
+    anything else would let an admin read or push any path the orchestrator
+    can reach."""
+    if ssh.is_local_url(url) and (url.startswith("file://") or url != settings.host_git):
+        raise HTTPException(400, "a local path is only allowed for Kemudi's own repo "
+                                 f"({settings.host_git}); use an SSH URL")
+
+
 def _get_repo(db: Session, slug: str, repo_id: int) -> AwakRepo:
     r = db.get(AwakRepo, repo_id)
     if r is None or r.project_slug != slug:
@@ -262,7 +271,8 @@ def list_repos(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(
 
 @router.post("/repos")
 def create_repo(slug: str, body: RepoIn, user: TaigaUser = Depends(admin),
-                db: Session = Depends(get_db)):
+                db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
+    _allowed_local(settings, body.url)
     if _name_taken(db, slug, body.name):
         raise HTTPException(409, f"a repo named {body.name!r} already exists")
     last = (db.query(AwakRepo).filter_by(project_slug=slug)
@@ -280,6 +290,7 @@ def create_repo(slug: str, body: RepoIn, user: TaigaUser = Depends(admin),
 def update_repo(slug: str, repo_id: int, body: RepoIn, user: TaigaUser = Depends(admin),
                 db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
     r = _get_repo(db, slug, repo_id)
+    _allowed_local(settings, body.url)
     if _name_taken(db, slug, body.name, repo_id):
         raise HTTPException(409, f"a repo named {body.name!r} already exists")
     old_host = ssh.url_host(r.url)
@@ -430,6 +441,7 @@ def check_repo_access(slug: str, repo_id: int, user: TaigaUser = Depends(admin),
                       db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
                       run: CommandRunner = Depends(get_command_runner)):
     r = _get_repo(db, slug, repo_id)
+    _allowed_local(settings, r.url)
     key = config_store.key_row(db, r.key_id)
     if not ssh.is_local_url(r.url) and key is None:
         raise HTTPException(409, "generate a deploy key and add it to the git host first")
@@ -447,3 +459,142 @@ def check_repo_access(slug: str, repo_id: int, user: TaigaUser = Depends(admin),
     return res
 
 
+
+
+# --- roles -------------------------------------------------------------------
+
+# Fields whose change makes a different prompt (or model) -> version += 1.
+PROMPT_FIELDS = ("template", "prompt_overlay", "model", "repo_ids", "allowed_paths",
+                 "denied_paths")
+
+
+def _clean_paths(paths: list[str]) -> list[str]:
+    out = []
+    for p in paths:
+        p = p.strip().replace("\\", "/")
+        if not p:
+            continue
+        parts = p.strip("/").split("/")
+        if p.startswith("/") or ":" in p or any(x in ("..", ".") for x in parts) or len(p) > 200:
+            raise ValueError(f"{p!r}: use a relative path inside the repo, without '..'")
+        out.append(p)
+    if len(out) > 50:
+        raise ValueError("at most 50 paths")
+    return out
+
+
+class RoleIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    template: Literal["frontend", "backend", "qa"]
+    area: Literal["web", "backend", "qa"]
+    model: str = Field(pattern=r"^[A-Za-z0-9._:/-]{1,100}$")
+    repo_ids: list[int] = Field(default_factory=list, max_length=20)
+    allowed_paths: list[str] = Field(default_factory=list)
+    denied_paths: list[str] = Field(default_factory=list)
+    prompt_overlay: str = ""
+    enabled: bool = True
+
+    @field_validator("allowed_paths", "denied_paths")
+    @classmethod
+    def _paths(cls, v: list[str]) -> list[str]:
+        return _clean_paths(v)
+
+    @field_validator("prompt_overlay")
+    @classmethod
+    def _overlay(cls, v: str) -> str:
+        prompts.check_overlay(v, secrets.known_values())
+        return v
+
+
+def _role_out(db: Session, r: AwakRole) -> dict:
+    cfg = config_store.load(db, r.project_slug)
+    role = cfg.role(r.id)
+    return {
+        **{f: getattr(r, f) for f in RoleIn.model_fields},
+        "id": r.id,
+        "version": r.version,
+        "prompt_version": prompts.prompt_version(role, cfg.repos),
+        "updated_by": r.updated_by,
+        "updated_at": r.updated_at,
+    }
+
+
+def _get_role(db: Session, slug: str, role_id: int) -> AwakRole:
+    r = db.get(AwakRole, role_id)
+    if r is None or r.project_slug != slug:
+        raise HTTPException(404, "no such role")
+    return r
+
+
+def _check_repo_ids(db: Session, slug: str, repo_ids: list[int]) -> list[int]:
+    ids = list(dict.fromkeys(repo_ids))
+    known = {r.id for r in db.query(AwakRepo).filter_by(project_slug=slug)}
+    unknown = [i for i in ids if i not in known]
+    if unknown:
+        raise HTTPException(422, f"repos {unknown} do not belong to this project")
+    return ids
+
+
+@router.get("/roles")
+def list_roles(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(get_db),
+               settings: Settings = Depends(get_settings)):
+    rows = db.query(AwakRole).filter_by(project_slug=slug).order_by(AwakRole.id).all()
+    return {"roles": [_role_out(db, r) for r in rows], "models": settings.model_choices()}
+
+
+@router.post("/roles")
+def create_role(slug: str, body: RoleIn, user: TaigaUser = Depends(admin),
+                db: Session = Depends(get_db)):
+    data = body.model_dump()
+    data["repo_ids"] = _check_repo_ids(db, slug, body.repo_ids)
+    r = AwakRole(project_slug=slug, version=1, updated_by=actor(user), **data)
+    db.add(r)
+    db.commit()
+    out = _role_out(db, r)
+    record_decision(db, actor(user), "awak_role", slug,
+                    {"op": "create", "role": r.name, "role_id": r.id, "old_overlay": None,
+                     "new_overlay": r.prompt_overlay, "version": out["prompt_version"]})
+    return out
+
+
+@router.put("/roles/{role_id}")
+def update_role(slug: str, role_id: int, body: RoleIn, user: TaigaUser = Depends(admin),
+                db: Session = Depends(get_db)):
+    r = _get_role(db, slug, role_id)
+    new = body.model_dump()
+    new["repo_ids"] = _check_repo_ids(db, slug, body.repo_ids)
+    changed = sorted(k for k, v in new.items() if getattr(r, k) != v)
+    if not changed:
+        return _role_out(db, r)
+    old_overlay = r.prompt_overlay
+    old_version = _role_out(db, r)["prompt_version"]
+    for k in changed:
+        setattr(r, k, new[k])
+    if set(changed) & set(PROMPT_FIELDS):
+        r.version += 1
+    r.updated_by, r.updated_at = actor(user), config_store.now()
+    db.commit()
+    out = _role_out(db, r)
+    record_decision(db, actor(user), "awak_role", slug,
+                    {"op": "update", "role": r.name, "role_id": r.id, "changed": changed,
+                     "old_overlay": old_overlay, "new_overlay": r.prompt_overlay,
+                     "old_version": old_version, "version": out["prompt_version"]})
+    return out
+
+
+@router.get("/roles/{role_id}/prompt")
+def get_role_prompt(slug: str, role_id: int, _: TaigaUser = Depends(member),
+                    db: Session = Depends(get_db)):
+    _get_role(db, slug, role_id)
+    cfg = config_store.load(db, slug)
+    role = cfg.role(role_id)
+    scope = prompts.scope_for(role, cfg.repos)
+    return {
+        "fixed": prompts.KEMUDI_RULES,
+        "role": prompts.ROLE_TEMPLATES[role.template],
+        "scope": scope.__dict__,
+        "overlay": role.prompt_overlay,
+        "reminder": prompts.REMINDER,
+        "rendered": prompts.render_role(role, cfg.repos),
+        "version": prompts.prompt_version(role, cfg.repos),
+    }
