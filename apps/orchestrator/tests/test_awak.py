@@ -27,6 +27,10 @@ def test_criteria_roundtrip_and_human_formats():
     assert criteria("Intro\n\nKriteria penerimaan:\n- [ ] satu\n* dua\n\nCatatan:\n- bukan") == [
         "satu", "dua"]
     assert criteria("no criteria here") == []
+    # a plain-text heading, as people type it in the board
+    assert criteria("Acceptance Criteria\n- klik gambar membuka modal") == [
+        "klik gambar membuka modal"]
+    assert criteria("Intro\n\n**Acceptance criteria**\n- satu") == ["satu"]
 
 
 def test_auto_ready_rules():
