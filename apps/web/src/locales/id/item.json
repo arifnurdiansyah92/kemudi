@@ -78,6 +78,7 @@
     "empty": "Kosong"
   },
   "attachments": {
+    "preview": "Lihat {{name}}",
     "delete": "Hapus {{name}}",
     "uploading": "Mengunggah…",
     "attach": "Lampirkan file atau seret ke sini",
