@@ -442,3 +442,37 @@ def test_head_moved_after_gates_fails_the_attempt(tmp_path, repo):
     code_tasks = [t for p, t in agent.calls if p == "awak.code"]
     assert "HEAD was not your commit" in code_tasks[1]
     assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 2
+
+
+# --- one worker at a time --------------------------------------------------------
+
+def test_only_one_worker_holds_the_lease(tmp_path, repo):
+    from datetime import datetime
+
+    from kemudi_ai.store import AwakWorkerLease
+
+    w1, taiga, sessions = make_worker(tmp_path, repo, FakeAgent(),
+                                      FakeRunner(tmp_path / "ws", qa=["pass"]))
+    w2 = Worker(w1.s, sessions, taiga, FakeTaiga("awak-qa"), FakeAgent(),
+                FakeRunner(tmp_path / "ws", qa=["pass"]), repo,
+                secret_values=["super-secret-value"], sleep=lambda s: None)
+    assert w1.claim_lease() and not w2.claim_lease()
+    assert w1.claim_lease()  # renewing
+    # A crash-left running job: the worker without the lease neither recovers
+    # nor works on anything.
+    taiga.add(1, 12, "Badge jumlah", DESC, status="in-progress")
+    with sessions() as db:
+        db.add(AwakJob(project_slug="kemudi", story_id=1, story_ref=12,
+                       branch="awak/us-12", state="running"))
+        db.commit()
+    loops = iter([False, True])
+    w2.run_forever(stop_flag=lambda: next(loops))
+    assert job_of(sessions).state == "running" and taiga.status_of(1) == "in-progress"
+    # The holder's lease lapses (it crashed): the other takes over and recovers.
+    with sessions() as db:
+        db.get(AwakWorkerLease, 1).expires_at = datetime(2000, 1, 1)
+        db.commit()
+    loops = iter([False, True])
+    w2.run_forever(stop_flag=lambda: next(loops))
+    assert taiga.status_of(1) == "done"
+    assert w1.claim_lease()  # w2 released the lease when its loop ended

@@ -5,18 +5,24 @@ job row only remembers attempts, feedback and cost between ticks.
 """
 
 import logging
+import os
 import shlex
+import socket
+import threading
 import time
-from dataclasses import dataclass
-from datetime import UTC, datetime
-from pathlib import Path
+import uuid
 from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Callable, Iterator
 
+from sqlalchemy import or_, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import Settings
-from ..store import AwakJob, AwakKey, record_event
+from ..store import AwakJob, AwakKey, AwakWorkerLease, record_event
 from . import config_store, secrets, ssh
 from .config_store import ProjectConfig, RepoConfig, RoleConfig
 from .crypto import SecretKeyMissing
@@ -62,6 +68,15 @@ def now() -> datetime:
     return datetime.now(UTC)
 
 
+# Only one worker may run (the API's thread, `awak-tick --forever`, several
+# uvicorn workers...). A crashed holder's lease lapses after this long.
+LEASE_TTL_S = 120
+
+
+def _naive_now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
 class Worker:
     def __init__(
         self,
@@ -87,6 +102,7 @@ class Worker:
         self.sleep = sleep
         self.command_runner = command_runner  # deploy over SSH
         self._seeded = False
+        self.holder = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 
     # ------------------------------------------------------------------ loop
     def _seed(self) -> None:
@@ -134,15 +150,83 @@ class Worker:
         return False
 
     def run_forever(self, stop_flag: Callable[[], bool] = lambda: False) -> None:
-        self.recover()
-        while not stop_flag():
+        held = False
+        try:
+            while not stop_flag():
+                try:
+                    if not self.claim_lease():
+                        if held:
+                            log.warning("awak worker %s lost the lease", self.holder)
+                        held = False
+                        self.sleep(self.s.poll_interval_s)
+                        continue
+                    if not held:
+                        # Newly the only worker: whatever another left running is ours.
+                        self.recover()
+                        held = True
+                    with self.heartbeat():
+                        worked = self.tick()
+                except Exception:  # noqa: BLE001 - the loop must survive anything
+                    log.exception("awak tick failed")
+                    worked = False
+                if not worked:
+                    self.sleep(self.s.poll_interval_s)
+        finally:
+            if held:
+                self.release_lease()
+
+    # ----------------------------------------------------------------- lease
+    def claim_lease(self) -> bool:
+        """Take or renew the single worker lease; False if another holds it."""
+        t = _naive_now()
+        until = t + timedelta(seconds=LEASE_TTL_S)
+        with self.sessions() as db:
+            res = db.execute(
+                update(AwakWorkerLease)
+                .where(AwakWorkerLease.id == 1,
+                       or_(AwakWorkerLease.holder == self.holder,
+                           AwakWorkerLease.expires_at < t))
+                .values(holder=self.holder, expires_at=until))
+            db.commit()
+            if res.rowcount == 1:
+                return True
+            if db.get(AwakWorkerLease, 1) is not None:
+                return False
+            db.add(AwakWorkerLease(id=1, holder=self.holder, expires_at=until))
             try:
-                worked = self.tick()
-            except Exception:  # noqa: BLE001 - the loop must survive anything
-                log.exception("awak tick failed")
-                worked = False
-            if not worked:
-                self.sleep(self.s.poll_interval_s)
+                db.commit()
+                return True
+            except IntegrityError:
+                db.rollback()
+                return False
+
+    def release_lease(self) -> None:
+        with self.sessions() as db:
+            db.execute(update(AwakWorkerLease)
+                       .where(AwakWorkerLease.id == 1, AwakWorkerLease.holder == self.holder)
+                       .values(expires_at=datetime(1970, 1, 1)))
+            db.commit()
+
+    @contextmanager
+    def heartbeat(self) -> Iterator[None]:
+        """Renew the lease while a (possibly hour-long) tick runs."""
+        done = threading.Event()
+
+        def beat() -> None:
+            while not done.wait(LEASE_TTL_S / 4):
+                try:
+                    if not self.claim_lease():
+                        log.warning("awak worker %s lost the lease mid-tick", self.holder)
+                except Exception:  # noqa: BLE001
+                    log.exception("awak lease renewal failed")
+
+        t = threading.Thread(target=beat, name="awak-lease", daemon=True)
+        t.start()
+        try:
+            yield
+        finally:
+            done.set()
+            t.join(timeout=5)
 
     # ---------------------------------------------------------------- picking
     def _pick(self, project: Project) -> tuple[int, dict] | None:

@@ -32,6 +32,7 @@ __all__ = [
     "AwakProject",
     "AwakRepo",
     "AwakRole",
+    "AwakWorkerLease",
     "record_event",
     "make_session",
     "init_db",
@@ -223,6 +224,16 @@ class AwakRole(Base):
     version: Mapped[int] = mapped_column(default=1)
     updated_by: Mapped[str] = mapped_column(String(200), default="")
     updated_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class AwakWorkerLease(Base):
+    """One row: the Awak worker allowed to run. Claimed with a conditional
+    UPDATE (or the first INSERT); naive UTC times."""
+
+    __tablename__ = "awak_worker_lease"
+    id: Mapped[int] = mapped_column(primary_key=True)  # always 1
+    holder: Mapped[str] = mapped_column(String(200))
+    expires_at: Mapped[datetime] = mapped_column()
 
 
 class AwakEvent(Base):
