@@ -7,6 +7,8 @@ POST /gates      {job, subdir?, commands?}  tsc, eslint, vitest, vite build, or 
 POST /qa_reset   {job}                      empty .qa/ for a fresh spec
 POST /qa         {job, token, user, project, subdir?}  run .qa/spec twice against a dev
                                             server started in subdir (default apps/web)
+POST /deploy     {job, command}             the project's post-merge deploy command (sh -c)
+                                            in the job workspace at the merged commit
 
 `commands` is [{name, argv, timeout}], run without a shell in `subdir` of the
 job workspace; argv[0] must be in ALLOWED_PROGRAMS. Without `commands`, the
@@ -268,7 +270,25 @@ def op_qa(body: dict) -> dict:
             os.killpg(vite.pid, signal.SIGKILL)
 
 
-OPS = {"install": op_install, "commit": op_commit, "gates": op_gates,
+DEPLOY_TIMEOUT = 900
+
+
+def op_deploy(body: dict) -> dict:
+    """Run the admin's deploy command in the workspace. It runs here, in the
+    runner's sandbox (no Docker socket, no secrets, egress network only), so it
+    can only reach what the network allows; the output goes back redacted by
+    the orchestrator."""
+    d = job_dir(body)
+    command = str(body.get("command") or "").strip()
+    if not command:
+        raise ValueError("no deploy command")
+    if len(command) > 2000:
+        raise ValueError("deploy command too long")
+    code, out = run(["sh", "-c", command], d, DEPLOY_TIMEOUT)
+    return {"ok": code == 0, "exit": code, "output": out[-4000:]}
+
+
+OPS = {"install": op_install, "commit": op_commit, "gates": op_gates, "deploy": op_deploy,
        "qa_reset": op_qa_reset, "qa": op_qa}
 
 

@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import subprocess
+import uuid
 from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 from typing import Callable, Iterator
@@ -38,6 +39,14 @@ GitEnv = dict[str, str] | Callable[[], AbstractContextManager[dict[str, str]]] |
 
 class GitError(Exception):
     pass
+
+
+class MergeConflict(GitError):
+    """The branch does not merge cleanly onto the default branch."""
+
+
+class PushRejected(GitError):
+    """The remote refused a (non-forced) push: its branch moved."""
 
 
 def branch_for(ref: int) -> str:
@@ -76,7 +85,9 @@ def _git(*args: str, git_dir: str | None = None, cwd: str | None = None, timeout
 
 class Repo:
     def __init__(self, bare: str, remote: str, workspace: str, uid: int,
-                 default_branch: str = "main", subdir: str = "", git_env: GitEnv = None):
+                 default_branch: str = "main", subdir: str = "", git_env: GitEnv = None,
+                 scratch_dir: str | None = None):
+        self.scratch_dir = scratch_dir
         self.bare = bare
         self.remote = remote
         self.workspace = workspace
@@ -177,6 +188,79 @@ class Repo:
                  f"refs/heads/{branch}:refs/heads/{branch}", git_dir=self.bare, env_extra=env)
 
     push_host = push_branch  # iteration 1 name
+
+    # ------------------------------------------------------------- merging
+    def is_ancestor(self, a: str, b: str) -> bool:
+        """Whether commit `a` is an ancestor of (or equal to) `b`."""
+        p = subprocess.run(["git", "--git-dir", self.bare, "merge-base", "--is-ancestor", a, b],
+                           env=git_env(), capture_output=True, text=True, timeout=60)
+        if p.returncode not in (0, 1):
+            raise GitError(f"git merge-base failed: {p.stderr.strip()[:500]}")
+        return p.returncode == 0
+
+    def _scratch_root(self) -> Path:
+        return Path(self.scratch_dir) if self.scratch_dir else Path(self.bare).parent / "scratch"
+
+    def merge_commit(self, onto: str, branch_sha: str, message: str, ref: str) -> str:
+        """`merge --no-ff` of `branch_sha` onto `onto` in an orchestrator-owned
+        scratch clone; the result is stored in the bare repo as `ref`
+        (refs/kemudi/merge/...) and its sha returned. Conflict -> MergeConflict."""
+        if not ref.startswith("refs/kemudi/merge/"):
+            raise GitError(f"refusing merge ref {ref!r}")
+        root = self._scratch_root()
+        root.mkdir(parents=True, exist_ok=True)
+        d = root / uuid.uuid4().hex
+        try:
+            _git("clone", "--no-tags", "--quiet", "--no-checkout", self.bare, str(d))
+            _git("checkout", "--quiet", "--detach", onto, cwd=str(d))
+            ident = ["-c", "user.name=Kemudi", "-c", "user.email=kemudi@kemudi.local"]
+            try:
+                _git(*ident, "merge", "--no-ff", "--no-edit", "-m", message, branch_sha,
+                     cwd=str(d))
+            except GitError as e:
+                raise MergeConflict(str(e)) from e
+            sha = _git("rev-parse", "HEAD", cwd=str(d))
+            _git("update-ref", "-d", ref, git_dir=self.bare)
+            _git("push", "--quiet", self.bare, f"{sha}:{ref}", cwd=str(d))
+            return sha
+        finally:
+            if d.exists():
+                shutil.rmtree(d, onerror=_force_remove)
+
+    def prepare_at(self, branch: str, ref: str, sha: str) -> Path:
+        """The job workspace as a detached checkout of `ref` (expected at `sha`),
+        for re-running the gates on a merge result. No remote, like prepare()."""
+        if not BRANCH_RE.match(branch):
+            raise GitError(f"refusing branch {branch!r}")
+        d = self.job_dir(branch)
+        if d.exists():
+            shutil.rmtree(d, onerror=_force_remove)
+        _git("clone", "--no-tags", "--quiet", "--no-checkout", self.bare, str(d))
+        _git("fetch", "--quiet", "--no-tags", "origin", f"+{ref}:refs/kemudi/target", cwd=str(d))
+        _git("checkout", "--quiet", "--detach", "refs/kemudi/target", cwd=str(d))
+        if _git("rev-parse", "HEAD", cwd=str(d)) != sha:
+            raise GitError(f"{ref} is not at {sha[:8]}")
+        _git("remote", "remove", "origin", cwd=str(d))
+        _git("update-ref", "-d", "refs/kemudi/target", cwd=str(d))
+        exclude = d / ".git" / "info" / "exclude"
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        with exclude.open("a") as fh:
+            fh.write("\n.qa/\nnode_modules/\n")
+        _chown(d, self.uid)
+        return d
+
+    def push_default(self, sha: str) -> None:
+        """Push `sha` to the remote's default branch. Never forced: if the
+        remote moved, git refuses and PushRejected is raised."""
+        with self._remote_env() as env:
+            try:
+                _git("push", self.remote, f"{sha}:refs/heads/{self.default_branch}",
+                     git_dir=self.bare, env_extra=env)
+            except GitError as e:
+                text = str(e).lower()
+                if any(w in text for w in ("rejected", "non-fast-forward", "fetch first")):
+                    raise PushRejected(str(e)) from e
+                raise
 
 
 def _force_remove(func, path, _exc) -> None:

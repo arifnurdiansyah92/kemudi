@@ -110,6 +110,11 @@ class FakeAgent:
             n = sum(1 for p, _ in self.calls if p == "awak.code")
             self.code(Path(workdir), n)
             return "changed things", 10.0
+        if purpose == "awak.qa":
+            workdir = Path(task.splitlines()[0].removeprefix("Workspace: ").strip())
+            spec = workdir / ".qa" / "spec" / "story.spec.ts"
+            spec.parent.mkdir(parents=True, exist_ok=True)
+            spec.write_text("test('AC1: thing', () => {})")
         return "spec written", 5.0
 
 
@@ -122,17 +127,20 @@ def commit_file(workdir: Path, name: str, content: str):
 class FakeRunner:
     """`qa` entries are reports, or "pass"/"fail" to build one with real PNGs."""
 
-    def __init__(self, workspace: Path, gates=None, qa=None, n_criteria=2):
+    def __init__(self, workspace: Path, gates=None, qa=None, n_criteria=2, deploy=None):
         self.workspace = Path(workspace)
         self.gates = list(gates or [])
         self.qa = list(qa or [])
         self.n = n_criteria
+        self.deploy = list(deploy or [])
         self.calls: list[str] = []
         self.payloads: list[tuple[str, dict]] = []
 
     def call(self, op, **payload):
         self.calls.append(op)
         self.payloads.append((op, payload))
+        if op == "deploy" and self.deploy:
+            return self.deploy.pop(0)
         if op == "gates":
             return self.gates.pop(0) if self.gates else {"gates": [{"name": "tsc", "ok": True}]}
         if op == "qa":

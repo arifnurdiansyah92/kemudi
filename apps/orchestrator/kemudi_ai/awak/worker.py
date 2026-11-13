@@ -23,6 +23,7 @@ from .crypto import SecretKeyMissing
 from .agent import Agent, AgentError
 from .gitops import GitError, Repo, branch_for
 from .intake import TAG, story_areas
+from .merge import DONE_TAG, HUMAN_TAG, Merger, effective_mode, save_spec
 from .prompts import RoleScope, out_of_scope, prompt_version, render, render_role
 from .runner import Runner, RunnerError
 from .stories import code_task, criteria, qa_task
@@ -31,8 +32,6 @@ from .verdict import Verdict, evaluate, safe_screenshot
 
 log = logging.getLogger(__name__)
 
-DONE_TAG = "awaiting-merge"
-HUMAN_TAG = "needs-human"
 
 
 class Stop(Exception):
@@ -75,6 +74,7 @@ class Worker:
         repo: Repo | None = None,
         secret_values: list[str] | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        command_runner: ssh.CommandRunner = ssh.subprocess_runner,
     ):
         self.s = settings
         self.sessions = sessions
@@ -85,6 +85,7 @@ class Worker:
         self.repo = repo
         self.secret_values = secrets.known_values() if secret_values is None else secret_values
         self.sleep = sleep
+        self.command_runner = command_runner  # deploy over SSH
         self._seeded = False
 
     # ------------------------------------------------------------------ loop
@@ -103,12 +104,26 @@ class Worker:
                 job.infra_errors += 1
                 db.commit()
                 record_event(db, job.id, "recovered", {"phase": job.phase})
+            # A merge cut off by a crash starts over from the top (sync, branch
+            # check, merge, gates); nothing half-done is pushed.
+            for job in db.query(AwakJob).filter_by(merge_state="merging"):
+                job.merge_state = "requested"
+                db.commit()
+                record_event(db, job.id, "recovered", {"merge": True})
 
     def tick(self) -> bool:
         """Process at most one story. Returns True if it did any work."""
         self._seed()
         with self.sessions() as db:
             slugs = config_store.enabled_slugs(db)
+        # Requested merges first: a human is waiting on the button.
+        for slug in slugs:
+            with self.sessions() as db:
+                job = (db.query(AwakJob).filter_by(project_slug=slug, merge_state="requested")
+                       .order_by(AwakJob.id).first())
+            if job is not None:
+                self._requested_merge(self.taiga.project(slug), job)
+                return True
         for slug in slugs:
             project = self.taiga.project(slug)
             picked = self._pick(project)
@@ -140,6 +155,7 @@ class Worker:
                     candidates.append((status, st))
         candidates.sort(key=lambda x: x[1]["ref"])
         with self.sessions() as db:
+            mode = config_store.load(db, project.slug).merge_mode
             for status, st in candidates:
                 job = db.query(AwakJob).filter_by(
                     project_slug=project.slug, story_id=st["id"]).one_or_none()
@@ -166,6 +182,8 @@ class Worker:
                     self._reset(job, self._human_feedback(st["id"]))
                 else:
                     continue
+                if status == "ready" or not job.merge_mode:
+                    job.merge_mode = mode  # snapshot; the stricter of it and the current wins
                 job.state, job.updated_at = "running", now()
                 db.commit()
                 record_event(db, job.id, "picked", {"status": status})
@@ -175,6 +193,7 @@ class Worker:
     def _reset(self, job: AwakJob, feedback: str, fresh: bool = False) -> None:
         job.attempts, job.infra_errors, job.feedback = 0, 0, feedback
         job.started_at, job.cost_idr, job.phase = now(), 0.0, ""
+        job.merge_state, job.merged_sha, job.merge_error = "", "", ""
         if fresh:
             # Back in Ready: route again (role, repo and prompt may have changed).
             job.role_id, job.repo_id, job.prompt_version = None, None, ""
@@ -318,14 +337,28 @@ class Worker:
         story = self._ours(story["id"], {"ready-for-test"}, project)
         evidence = self._upload(project, story["id"], verdict, workdir, f"us{job.story_ref}-a{n}")
         if verdict.outcome == "pass":
+            with self.sessions() as db:
+                current = config_store.load(db, project.slug).merge_mode
+            mode = effective_mode(self._job(job.id).merge_mode, current)
+            if mode != "manual" and not save_spec(self.s, job.id, workdir):
+                self._event(job.id, "qa_spec_missing", {})
             tags = sorted(set(tag_names(story)) | {DONE_TAG})
             self.taiga.update_story(story["id"], version=story["version"],
                                     status=project.status("done"), tags=tags)
             self._set(job.id, state="passed", phase="", attempts=n)
-            self._say(story["id"], job.id,
-                      f"QA lulus untuk `{sha[:8]}`:\n{_table(verdict, evidence)}\n\n"
-                      f"Pindah ke Done dengan tag `{DONE_TAG}`: branch `{job.branch}` "
-                      f"belum di-merge dan perlu direview manusia.", n)
+            head = f"QA lulus untuk `{sha[:8]}`:\n{_table(verdict, evidence)}\n\n"
+            if mode == "manual":
+                tail = (f"Pindah ke Done dengan tag `{DONE_TAG}`: branch `{job.branch}` "
+                        f"belum di-merge dan perlu direview manusia.")
+            elif mode == "approve":
+                tail = (f"Pindah ke Done dengan tag `{DONE_TAG}`: branch `{job.branch}` "
+                        f"menunggu Merge di Kemudi.")
+            else:
+                tail = (f"Pindah ke Done dengan tag `{DONE_TAG}`; merge otomatis ke "
+                        f"`{repo.default_branch}` berjalan.")
+            self._say(story["id"], job.id, head + tail, n)
+            if mode == "auto":
+                Merger(self).merge(self._job(job.id), project, story, require_qa_rerun=True)
             return None
         return Fail("QA failed these acceptance criteria:\n" + verdict.failures(),
                     f"QA gagal untuk `{sha[:8]}`:\n{_table(verdict, evidence)}\n\n"
@@ -399,11 +432,24 @@ class Worker:
         if changed:
             self._event(job.id, "routed", {"role_id": role.id, "repo_id": rc.id,
                                            "prompt_version": version})
+        return Route(cfg, role, rc, self._repo_of(cfg, rc, key))
+
+    def _repo_of(self, cfg: ProjectConfig, rc: RepoConfig, key: AwakKey | None) -> Repo:
         if self.repo is not None and rc.url == self.s.host_git:
-            repo = self.repo  # the injected Kemudi repo (iteration 1 wiring, tests)
-        else:
-            repo = repo_for(cfg, rc, self.s, key)
-        return Route(cfg, role, rc, repo)
+            return self.repo  # the injected Kemudi repo (iteration 1 wiring, tests)
+        return repo_for(cfg, rc, self.s, key)
+
+    def _requested_merge(self, project: Project, job: AwakJob) -> None:
+        """A human clicked Merge (approve mode). Re-checks the mode first."""
+        with self.sessions() as db:
+            current = config_store.load(db, project.slug).merge_mode
+        mode = effective_mode(job.merge_mode, current)
+        merger = Merger(self)
+        if mode == "manual":
+            merger.fail(job.id, job.story_id,
+                        "mode merge proyek sekarang manual; merge dibatalkan.")
+            return
+        merger.merge(job, project, {"id": job.story_id}, require_qa_rerun=mode == "auto")
 
     def _runner(self, op: str, **payload) -> dict:
         res = self.runner.call(op, **payload)
@@ -528,7 +574,8 @@ def repo_for(config: ProjectConfig, repo_row: RepoConfig, settings: Settings,
                 raise GitError(str(e)) from e
 
     return Repo(bare, repo_row.url, settings.workspace_dir, settings.awak_uid,
-                default_branch=repo_row.default_branch, subdir=repo_row.subdir, git_env=env)
+                default_branch=repo_row.default_branch, subdir=repo_row.subdir, git_env=env,
+                scratch_dir=str(Path(settings.repos_dir) / "scratch"))
 
 
 def command_lines(text: str) -> list[list[str]]:

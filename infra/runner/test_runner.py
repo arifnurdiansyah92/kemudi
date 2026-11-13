@@ -66,3 +66,16 @@ def test_failing_install_command_is_an_infra_error(runner, monkeypatch):
     monkeypatch.setattr(runner, "run", lambda cmd, cwd, timeout, env=None: (1, "boom"))
     res = runner.op_install({"job": "awak-us-1", "commands": [{"name": "i", "argv": ["npm", "ci"]}]})
     assert "infra_error" in res and "boom" in res["infra_error"]
+
+
+def test_deploy_runs_command_in_job_dir(runner, monkeypatch):
+    calls = []
+    monkeypatch.setattr(runner, "run", lambda cmd, cwd, timeout, env=None:
+                        calls.append((cmd, cwd, timeout)) or (3, "deploy log"))
+    res = runner.op_deploy({"job": "awak-us-1", "command": "make deploy"})
+    assert res == {"ok": False, "exit": 3, "output": "deploy log"}
+    assert calls == [(["sh", "-c", "make deploy"], runner.WORKSPACE / "awak-us-1", 900)]
+    with pytest.raises(ValueError):
+        runner.op_deploy({"job": "awak-us-1", "command": " "})
+    with pytest.raises(ValueError):
+        runner.op_deploy({"job": "../x", "command": "make deploy"})

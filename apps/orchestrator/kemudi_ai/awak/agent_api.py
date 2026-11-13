@@ -598,3 +598,82 @@ def get_role_prompt(slug: str, role_id: int, _: TaigaUser = Depends(member),
         "rendered": prompts.render_role(role, cfg.repos),
         "version": prompts.prompt_version(role, cfg.repos),
     }
+
+
+# --- story merge (approve mode) ----------------------------------------------
+
+
+def get_bot_taiga(settings: Settings = Depends(get_settings)):
+    """The Awak bot's Taiga client (local stack only: Taiga() asserts it)."""
+    from .taiga import Taiga
+
+    return Taiga(settings.taiga_api_url, settings.awak_username, settings.awak_password)
+
+
+def _story_job(db: Session, slug: str, story_id: int) -> AwakJob | None:
+    return db.query(AwakJob).filter_by(project_slug=slug, story_id=story_id).one_or_none()
+
+
+def _merge_blocker(db: Session, slug: str, job: AwakJob | None) -> str | None:
+    """Why Merge cannot be requested now (the card's tag is checked separately)."""
+    from .merge import effective_mode
+
+    if job is None:
+        return "Awak has no job for this story"
+    if not config_store.is_enabled(db, slug):
+        return "Awak is turned off for this project"
+    if effective_mode(job.merge_mode, config_store.load(db, slug).merge_mode) != "approve":
+        return "the merge mode for this story is not approve"
+    if job.state != "passed":
+        return "the story has not passed QA"
+    if job.merge_state not in ("", "failed"):
+        return f"a merge is already {job.merge_state}"
+    return None
+
+
+@router.get("/stories/{story_id}")
+def get_story_agent(slug: str, story_id: int, _: TaigaUser = Depends(member),
+                    db: Session = Depends(get_db)):
+    from .merge import effective_mode
+
+    job = _story_job(db, slug, story_id)
+    current = config_store.load(db, slug).merge_mode
+    return {
+        "job": _job_out(job) if job else None,
+        "merge_mode": effective_mode(job.merge_mode, current) if job else current,
+        # The card's awaiting-merge tag is not checked here (no Taiga call while
+        # polling); the UI has the tags and POST merge checks them.
+        "can_merge": _merge_blocker(db, slug, job) is None,
+        "merge_state": job.merge_state if job else "",
+        "merge_error": job.merge_error if job else "",
+    }
+
+
+@router.post("/stories/{story_id}/merge", status_code=202)
+def request_merge(slug: str, story_id: int, user: TaigaUser = Depends(admin),
+                  db: Session = Depends(get_db), taiga=Depends(get_bot_taiga),
+                  start_worker: Callable[[], None] = Depends(get_worker_starter)):
+    from .merge import DONE_TAG
+    from .taiga import TaigaError, tag_names
+
+    job = _story_job(db, slug, story_id)
+    why = _merge_blocker(db, slug, job)
+    if why:
+        raise HTTPException(409, why)
+    try:
+        story = taiga.story(story_id)
+    except TaigaError as e:
+        raise HTTPException(502, f"could not read the story: {e}") from e
+    if DONE_TAG not in tag_names(story):
+        raise HTTPException(409, f"the story does not carry {DONE_TAG}")
+    # Conditional update: a second click (or a racing request) changes nothing.
+    n = (db.query(AwakJob)
+         .filter(AwakJob.id == job.id, AwakJob.merge_state.in_(("", "failed")))
+         .update({"merge_state": "requested", "merge_error": ""}, synchronize_session=False))
+    db.commit()
+    if n != 1:
+        raise HTTPException(409, "a merge is already requested")
+    record_decision(db, actor(user), "awak_merge_requested", slug,
+                    {"story_ref": job.story_ref, "branch": job.branch, "last_sha": job.last_sha})
+    start_worker()
+    return {"merge_state": "requested"}
