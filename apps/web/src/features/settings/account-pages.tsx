@@ -51,11 +51,17 @@ function Photo({ me }: { me: Me }) {
       title={t('photo.title')}
       description={t('photo.description')}
     >
-      <div className='flex items-center gap-4'>
+      <div className='flex flex-wrap items-center gap-4'>
         <UserAvatar
           user={{ ...me, photo: me.big_photo ?? me.photo }}
           className='size-16'
         />
+        <div className='min-w-0 flex-1'>
+          <p className='truncate font-medium'>{me.full_name_display}</p>
+          <p className='truncate text-sm text-muted-foreground'>
+            @{me.username}
+          </p>
+        </div>
         <input
           ref={input}
           type='file'
