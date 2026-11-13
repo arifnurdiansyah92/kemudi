@@ -1,11 +1,15 @@
 """kemudi-runner: a tiny HTTP service that runs a fixed set of commands in an
 Awak job workspace. Python stdlib only.
 
-POST /install    {job}                      pnpm install (frozen, no scripts)
+POST /install    {job, subdir?, commands?}  pnpm install (frozen, no scripts), or the commands
 POST /commit     {job, message}             commit anything the agent left
-POST /gates      {job}                      tsc, eslint, vitest, vite build
+POST /gates      {job, subdir?, commands?}  tsc, eslint, vitest, vite build, or the commands
 POST /qa_reset   {job}                      empty .qa/ for a fresh spec
 POST /qa         {job, token, user, project} run .qa/spec twice against a dev server
+
+`commands` is [{name, argv, timeout}], run without a shell in `subdir` of the
+job workspace; argv[0] must be in ALLOWED_PROGRAMS. Without `commands`, the
+iteration 1 apps/web steps run.
 
 Every reply is JSON. `infra_error` is set when the step could not run at all
 (as opposed to the code failing a check).
@@ -66,12 +70,63 @@ def job_dir(body: dict) -> Path:
 
 # --- operations -------------------------------------------------------------
 
+# Programs a repo's configured commands may start (argv[0], a bare name looked
+# up on PATH). No shell is involved, so `;`, `&&` or `$(...)` are plain text.
+ALLOWED_PROGRAMS = {"pnpm", "npm", "npx", "yarn", "node", "python", "uv", "pytest", "make",
+                    "go", "cargo"}
+MAX_TIMEOUT = 1800
+
+
+def work_dir(body: dict) -> Path:
+    """The job dir, or `subdir` inside it: relative, no `..`, must exist."""
+    d = job_dir(body)
+    sub = str(body.get("subdir") or "")
+    if not sub:
+        return d
+    parts = sub.replace("\\", "/").split("/")
+    if (sub.startswith(("/", "\\")) or ":" in sub or ".." in parts
+            or any(p in ("", ".") for p in parts[:-1])):
+        raise ValueError(f"bad subdir {sub!r}")
+    target = d.joinpath(*[p for p in parts if p])
+    if not target.resolve().is_relative_to(d.resolve()) or not target.is_dir():
+        raise ValueError(f"no directory {sub!r} in the workspace")
+    return target
+
+
+def commands(body: dict, default_timeout: int) -> list[tuple[str, list[str], int]] | None:
+    """Validated `commands`, or None when the caller sent none (iteration 1 mode)."""
+    raw = body.get("commands")
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise ValueError("commands must be a list")
+    out = []
+    for c in raw:
+        argv = c.get("argv") if isinstance(c, dict) else None
+        if not (isinstance(argv, list) and argv and all(isinstance(a, str) for a in argv)):
+            raise ValueError("each command needs argv: a non-empty list of strings")
+        if argv[0] not in ALLOWED_PROGRAMS:
+            raise ValueError(f"program {argv[0]!r} is not allowed; use one of "
+                             f"{sorted(ALLOWED_PROGRAMS)}")
+        timeout = min(int(c.get("timeout") or default_timeout), MAX_TIMEOUT)
+        out.append((str(c.get("name") or " ".join(argv))[:200], argv, timeout))
+    return out
+
+
 def op_install(body: dict) -> dict:
-    web = job_dir(body) / "apps" / "web"
-    code, out = run(["pnpm", "install", "--frozen-lockfile", "--ignore-scripts",
-                     "--store-dir", "/pnpm-store", "--reporter", "append-only"], web, 900)
-    if code != 0:
-        return {"ok": False, "infra_error": "pnpm install failed: " + out[-800:]}
+    cmds = commands(body, 900)
+    if cmds is None:
+        web = job_dir(body) / "apps" / "web"
+        code, out = run(["pnpm", "install", "--frozen-lockfile", "--ignore-scripts",
+                         "--store-dir", "/pnpm-store", "--reporter", "append-only"], web, 900)
+        if code != 0:
+            return {"ok": False, "infra_error": "pnpm install failed: " + out[-800:]}
+        return {"ok": True}
+    cwd = work_dir(body)
+    for name, argv, timeout in cmds:
+        code, out = run(argv, cwd, timeout)
+        if code != 0:
+            return {"ok": False, "infra_error": f"{name} failed: " + out[-800:]}
     return {"ok": True}
 
 
@@ -95,15 +150,19 @@ GATES = [
 
 
 def op_gates(body: dict) -> dict:
-    web = job_dir(body) / "apps" / "web"
+    cmds = commands(body, 900)
+    if cmds is None:
+        cwd, cmds = job_dir(body) / "apps" / "web", GATES
+    else:
+        cwd = work_dir(body)
     results = []
-    for name, cmd, timeout in GATES:
-        code, out = run(cmd, web, timeout)
+    for i, (name, cmd, timeout) in enumerate(cmds):
+        code, out = run(cmd, cwd, timeout)
         if code == 124:
             return {"infra_error": f"{name} timed out"}
         results.append({"name": name, "ok": code == 0, "output": out})
-        if code != 0 and name == "tsc -b":
-            break  # later gates only repeat the type errors
+        if code != 0 and i == 0:
+            break  # the first gate is the type check; later ones only repeat its errors
     return {"ok": all(r["ok"] for r in results), "gates": results}
 
 

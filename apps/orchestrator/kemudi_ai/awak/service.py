@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import Settings
 from .agent import HermesAgent
-from .gitops import Repo
 from .runner import HttpRunner
 from .taiga import Taiga
 from .worker import Worker
@@ -23,8 +22,7 @@ def build_worker(settings: Settings, sessions: sessionmaker[Session]) -> Worker:
         qa_taiga=Taiga(settings.taiga_api_url, settings.qa_username, settings.qa_password),
         agent=HermesAgent(settings, sessions),
         runner=HttpRunner(settings.runner_url, settings.runner_key),
-        repo=Repo(settings.bare_repo, settings.host_git, settings.workspace_dir,
-                  settings.awak_uid),
+        repo=None,  # built per job from the repo row (worker.repo_for)
     )
 
 

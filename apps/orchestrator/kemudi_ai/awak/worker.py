@@ -5,17 +5,21 @@ job row only remembers attempts, feedback and cost between ticks.
 """
 
 import logging
+import shlex
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
+from contextlib import contextmanager
+from typing import Callable, Iterator
 
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import Settings
-from ..store import AwakJob, record_event
-from . import config_store, secrets
+from ..store import AwakJob, AwakKey, record_event
+from . import config_store, secrets, ssh
+from .config_store import ProjectConfig, RepoConfig
+from .crypto import SecretKeyMissing
 from .agent import Agent, AgentError
 from .gitops import GitError, Repo, branch_for
 from .intake import TAG
@@ -58,7 +62,7 @@ class Worker:
         qa_taiga: Taiga,
         agent: Agent,
         runner: Runner,
-        repo: Repo,
+        repo: Repo | None = None,
         secret_values: list[str] | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ):
@@ -205,6 +209,7 @@ class Worker:
     def _attempt(self, project: Project, job: AwakJob, story: dict) -> Fail | None:
         n = job.attempts + 1
         story = self._ours(story["id"], {"ready", "in-progress", "ready-for-test"}, project)
+        repo, rc = self._job_repo(job, project.slug)
         self.taiga.update_story(
             story["id"], version=story["version"],
             status=project.status("in-progress"),
@@ -214,7 +219,7 @@ class Worker:
 
         # After an infra error past the coding step, keep Awak's work and resume
         # from collect instead of paying for the coding run again.
-        workdir = self.repo.job_dir(job.branch)
+        workdir = repo.job_dir(job.branch)
         prepared = self._last_event(job.id, "prepared")
         resume = (job.phase in ("collect", "gates", "qa") and workdir.exists()
                   and prepared is not None)
@@ -225,12 +230,12 @@ class Worker:
         else:
             # prepare
             self._set(job.id, phase="prepare")
-            main_sha = self.repo.sync_main()
-            base_sha = (self.repo.sha(job.branch) if self.repo.has_branch(job.branch)
+            main_sha = repo.sync_default()
+            base_sha = (repo.sha(job.branch) if repo.has_branch(job.branch)
                         else main_sha)
-            workdir = self.repo.prepare(job.branch)
+            workdir = repo.prepare(job.branch)
             self._event(job.id, "prepared", {"base": base_sha})
-            self._runner("install", job=workdir.name)
+            self._runner("install", job=workdir.name, **_commands(rc, "install"))
 
             # code
             self._set(job.id, phase="code")
@@ -246,31 +251,32 @@ class Worker:
 
         # collect
         self._set(job.id, phase="collect")
-        sha = self.repo.collect(job.branch)
+        sha = repo.collect(job.branch)
         if sha == base_sha:
             return Fail("You made no commit. Implement the story and commit it.",
                         "Awak tidak menghasilkan commit. Laporan Awak:\n\n"
                         + _quote(report))
-        files = self.repo.changed_files(job.branch)
+        files = repo.changed_files(job.branch)
         backend = [f for f in files if f.startswith(BACKEND_PREFIXES)]
         if backend:
             return Fail("Do not change services/kemudi-back; this story is frontend only. "
                         "Revert: " + ", ".join(backend),
                         "Awak mengubah backend, padahal story ini khusus frontend: "
                         + ", ".join(f"`{f}`" for f in backend))
-        leaked = secrets.files_with_secrets(self.repo.diff_from_main(job.branch),
+        leaked = secrets.files_with_secrets(repo.diff_from_main(job.branch),
                                             self.secret_values)
         if leaked:
             return Fail("Your change contains a secret or key-like value in: "
                         + ", ".join(leaked) + ". Remove it.",
                         "Diff mengandung nilai mirip secret di "
                         + ", ".join(f"`{f}`" for f in leaked) + "; branch tidak di-push.")
-        self.repo.push_host(job.branch)
+        repo.push_branch(job.branch)
         self._set(job.id, last_sha=sha)
 
         # gates
         self._set(job.id, phase="gates")
-        gates = self._runner("gates", job=workdir.name).get("gates") or []
+        gates = (self._runner("gates", job=workdir.name, **_commands(rc, "gates"))
+                 .get("gates") or [])
         failed = [g for g in gates if not g.get("ok")]
         table = "\n".join(f"- {'✅' if g.get('ok') else '❌'} {g['name']}" for g in gates)
         if failed:
@@ -330,6 +336,24 @@ class Worker:
         return verdict
 
     # ------------------------------------------------------------- helpers
+    def _job_repo(self, job: AwakJob, slug: str) -> tuple[Repo, RepoConfig]:
+        """The job's repo, pinned on the job at its first attempt."""
+        with self.sessions() as db:
+            cfg = config_store.load(db, slug)
+            rc = cfg.repo(job.repo_id) if job.repo_id is not None else None
+            if rc is None:
+                if job.repo_id is not None:
+                    raise Stop("repo untuk story ini sudah dihapus dari pengaturan Agen.")
+                if not cfg.repos:
+                    raise Stop("proyek belum punya repo; tambahkan di Pengaturan proyek → Agen.")
+                rc = cfg.repos[0]
+                db.get(AwakJob, job.id).repo_id = rc.id
+                db.commit()
+            key = config_store.key_row(db, rc.key_id)
+        if self.repo is not None and rc.url == self.s.host_git:
+            return self.repo, rc  # the injected Kemudi repo (iteration 1 wiring, tests)
+        return repo_for(cfg, rc, self.s, key), rc
+
     def _runner(self, op: str, **payload) -> dict:
         res = self.runner.call(op, **payload)
         if res.get("infra_error"):
@@ -425,6 +449,62 @@ class Worker:
                 self.taiga.attach(project.id, story_id, str(p), name)
                 names.setdefault(c.n, []).append(name)
         return names
+
+
+def repo_for(config: ProjectConfig, repo_row: RepoConfig, settings: Settings,
+             key_row: AwakKey | None = None) -> Repo:
+    """A `Repo` for a configured repo. The seeded Kemudi repo (the local
+    host_git) keeps iteration 1's bare repo; others get {repos_dir}/{id}.git."""
+    if repo_row.url == settings.host_git:
+        bare = settings.bare_repo
+    else:
+        bare = str(Path(settings.repos_dir) / f"{repo_row.id}.git")
+    env = None
+    if not ssh.is_local_url(repo_row.url):
+        slug = config.slug
+
+        @contextmanager
+        def env() -> Iterator[dict[str, str]]:
+            if key_row is None:
+                raise GitError(f"repo {repo_row.name} has no deploy key; generate one "
+                               f"in Project settings -> Agent")
+            known_hosts = ssh.known_hosts_path(settings, slug)
+            known_hosts.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with ssh.key_file(settings, key_row) as key_path:
+                    yield ssh.git_ssh_env(key_path, known_hosts)
+            except SecretKeyMissing as e:
+                raise GitError(str(e)) from e
+
+    return Repo(bare, repo_row.url, settings.workspace_dir, settings.awak_uid,
+                default_branch=repo_row.default_branch, subdir=repo_row.subdir, git_env=env)
+
+
+def command_lines(text: str) -> list[list[str]]:
+    """Newline-separated command lines -> argv lists (no shell)."""
+    out = []
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            out.append(shlex.split(line))
+    return out
+
+
+_TIMEOUTS = {"install_cmd": 900, "check_cmd": 900, "build_cmd": 600}
+
+
+def _commands(rc: RepoConfig, op: str) -> dict:
+    """Runner payload: the repo's subdir and command list for `install`/`gates`."""
+    fields = ("install_cmd",) if op == "install" else ("check_cmd", "build_cmd")
+    cmds = []
+    try:
+        for f in fields:
+            for argv in command_lines(getattr(rc, f)):
+                cmds.append({"name": shlex.join(argv), "argv": argv, "timeout": _TIMEOUTS[f]})
+    except ValueError as e:
+        raise Stop(f"perintah repo {rc.name} tidak valid ({e}); perbaiki di "
+                   f"Pengaturan proyek → Agen.") from e
+    return {"subdir": rc.subdir, "commands": cmds}
 
 
 def _quote(text: str) -> str:

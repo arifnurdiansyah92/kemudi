@@ -126,9 +126,11 @@ class FakeRunner:
         self.qa = list(qa or [])
         self.n = n_criteria
         self.calls: list[str] = []
+        self.payloads: list[tuple[str, dict]] = []
 
     def call(self, op, **payload):
         self.calls.append(op)
+        self.payloads.append((op, payload))
         if op == "gates":
             return self.gates.pop(0) if self.gates else {"gates": [{"name": "tsc", "ok": True}]}
         if op == "qa":
