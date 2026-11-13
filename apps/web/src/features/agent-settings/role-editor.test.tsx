@@ -152,6 +152,25 @@ describe('RoleEditor', () => {
     )
   })
 
+  it('a Fullstack role takes the Frontend + backend area', async () => {
+    const onSave = vi.fn()
+    const screen = await renderEditor(onSave)
+    await screen
+      .getByRole('combobox', { name: 'Template' })
+      .selectOptions('Fullstack')
+    await expect
+      .element(screen.getByRole('combobox', { name: 'Area tag' }))
+      .toHaveValue('both')
+    await expect
+      .element(screen.getByText(/Stories tagged area:both/))
+      .toBeVisible()
+    await screen.getByRole('button', { name: 'Save changes' }).click()
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ template: 'fullstack', area: 'both' }),
+      null
+    )
+  })
+
   it('blocks an overlay over the limit and shows the count', async () => {
     const onSave = vi.fn()
     const screen = await renderEditor(onSave)

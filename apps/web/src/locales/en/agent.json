@@ -1,6 +1,17 @@
 {
   "unavailable": "Awak's settings aren't reachable. Check that the Kemudi AI orchestrator is running.",
   "lastChange": "Last changed by {{who}}, {{when}}",
+  "botAccess": {
+    "title": "Awak can't open this project",
+    "notMember": "Awak isn't a member of this project in Taiga, so it can't see the board and no story gets picked up.",
+    "give": "Give Awak access",
+    "given": "Awak can open this project now",
+    "askAdmin": "Ask a project admin to give Awak access."
+  },
+  "lastError": {
+    "label": "Last problem:",
+    "at": "Last problem, {{when}}:"
+  },
   "status": {
     "title": "Awak",
     "description": "When Awak is on, it picks up Ready stories with an area tag, writes the code on a branch, runs the checks and QA, then follows the merge policy below.",
@@ -134,18 +145,19 @@
       "needsKey": "Generate a key and add it to the machine before checking.",
       "never": "Not checked yet.",
       "checkedAt": "Checked {{when}}",
-      "passed_one": "Meets the minimum for {{count}} job at a time",
-      "passed_other": "Meets the minimum for {{count}} jobs at a time",
-      "failed": "Below the minimum for one job",
+      "passed_one": "Fits {{count}} story at once",
+      "passed_other": "Fits {{count}} stories at once",
+      "oneAtATime": "Awak currently works on one story at a time.",
+      "failed": "Below the minimum for one story",
       "fact": "Check",
       "found": "Found",
-      "minimum": "Minimum per job",
+      "minimum": "Minimum per story",
       "cpu": "CPU",
       "ram": "Memory",
       "disk": "Free disk",
       "docker": "Docker",
       "arch": "Architecture",
-      "slots": "Job slots",
+      "slots": "Stories at once",
       "cpuValue": "{{count}} vCPU",
       "gbValue": "{{value}} GB",
       "unknown": "Unknown",
@@ -260,11 +272,13 @@
     "templates": {
       "frontend": "Frontend",
       "backend": "Backend",
+      "fullstack": "Fullstack",
       "qa": "QA"
     },
     "areas": {
       "web": "web",
       "backend": "backend",
+      "both": "Frontend + backend",
       "qa": "qa"
     },
     "editor": {
@@ -272,6 +286,7 @@
       "template": "Template",
       "area": "Area tag",
       "areaHint": "Stories tagged area:{{area}} go to this role.",
+      "areaHintBoth": "Stories tagged area:both, or both area:web and area:backend, go to this role. It also takes single-area stories when no other role covers that area.",
       "model": "Model",
       "modelHint": "Keep the connection default, or pick another model from the same provider.",
       "repos": "Repositories",

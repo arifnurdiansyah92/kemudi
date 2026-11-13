@@ -22,7 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import Settings
-from ..store import AwakJob, AwakKey, AwakWorkerLease, record_event
+from ..store import AwakJob, AwakKey, AwakProject, AwakWorkerLease, record_event
 from . import config_store, llm_conn, secrets, ssh
 from .config_store import ProjectConfig, RepoConfig, RoleConfig
 from .crypto import SecretKeyMissing
@@ -135,7 +135,11 @@ class Worker:
                 record_event(db, job.id, "recovered", {"merge": True})
 
     def tick(self) -> bool:
-        """Process at most one story. Returns True if it did any work."""
+        """Process at most one story. Returns True if it did any work.
+
+        A failure in one project (the bot cannot open it, Taiga refuses...) is
+        logged and recorded on that project, and the next project is served.
+        """
         self._seed()
         with self.sessions() as db:
             slugs = config_store.enabled_slugs(db)
@@ -144,17 +148,57 @@ class Worker:
             with self.sessions() as db:
                 job = (db.query(AwakJob).filter_by(project_slug=slug, merge_state="requested")
                        .order_by(AwakJob.id).first())
-            if job is not None:
-                self._requested_merge(self.taiga.project(slug), job)
-                return True
+            if job is None:
+                continue
+            try:
+                self._requested_merge(self._project(slug), job)
+            except Exception as e:  # noqa: BLE001 - other projects must still be served
+                self._project_failed(slug, e)
+                continue
+            return True
         for slug in slugs:
-            project = self.taiga.project(slug)
-            picked = self._pick(project)
+            try:
+                project = self._project(slug)
+                picked = self._pick(project)
+            except Exception as e:  # noqa: BLE001
+                self._project_failed(slug, e)
+                continue
+            self._project_ok(slug)
             if picked:
                 job_id, story = picked
-                self._process(project, job_id, story)
+                try:
+                    self._process(project, job_id, story)
+                except Exception as e:  # noqa: BLE001
+                    self._project_failed(slug, e)
                 return True
         return False
+
+    def _project(self, slug: str) -> Project:
+        try:
+            return self.taiga.project(slug)
+        except TaigaError as e:
+            if "HTTP 404" in str(e) or "HTTP 403" in str(e):
+                raise TaigaError(
+                    f"Awak (user {self.taiga.username}) cannot open project {slug}: it is "
+                    f"not a member. Give Awak access in Project settings → Agent.") from e
+            raise
+
+    def _project_failed(self, slug: str, error: Exception) -> None:
+        log.warning("awak: project %s failed: %s", slug, error,
+                    exc_info=not isinstance(error, TaigaError))
+        text = secrets.redact(str(error) or type(error).__name__, self.secret_values)[:1000]
+        with self.sessions() as db:
+            p = db.get(AwakProject, slug)
+            if p is not None:
+                p.last_error, p.last_error_at = text, now()
+                db.commit()
+
+    def _project_ok(self, slug: str) -> None:
+        with self.sessions() as db:
+            p = db.get(AwakProject, slug)
+            if p is not None and (p.last_error or p.last_error_at):
+                p.last_error, p.last_error_at = "", None
+                db.commit()
 
     def run_forever(self, stop_flag: Callable[[], bool] = lambda: False) -> None:
         held = False
@@ -512,10 +556,12 @@ class Worker:
             row = db.get(AwakJob, job.id)
             if row.role_id is None:
                 areas = story_areas(tag_names(story))
-                if len(areas) > 1:
+                role = cfg.role_for_story(areas)
+                if role is None and len(areas) > 1:
                     raise Stop("story punya lebih dari satu tag area ("
-                               + ", ".join(f"area-{a}" for a in areas) + "); sisakan satu.")
-                role = cfg.role_for_area(areas[0])
+                               + ", ".join(f"area-{a}" for a in areas) + "); sisakan satu, "
+                               "atau tambahkan peran Fullstack (area Frontend + backend) di "
+                               "Pengaturan proyek → Agen.")
                 if role is None:
                     raise Stop(f"tidak ada peran agen aktif untuk area {areas[0]}; aktifkan "
                                f"di Pengaturan proyek → Agen.")

@@ -197,7 +197,12 @@ export function RoleEditor({
             id='role-template'
             value={template}
             disabled={ro}
-            onChange={(e) => setTemplate(e.target.value as RoleTemplate)}
+            onChange={(e) => {
+              const next = e.target.value as RoleTemplate
+              setTemplate(next)
+              // A Fullstack role is for stories touching both sides.
+              if (next === 'fullstack') setArea('both')
+            }}
             className={fieldClass}
           >
             {roleTemplates.map((x) => (
@@ -224,7 +229,9 @@ export function RoleEditor({
             ))}
           </select>
           <p id='role-area-hint' className='text-xs text-muted-foreground'>
-            {t('roles.editor.areaHint', { area })}
+            {area === 'both'
+              ? t('roles.editor.areaHintBoth')
+              : t('roles.editor.areaHint', { area })}
           </p>
         </div>
       </div>

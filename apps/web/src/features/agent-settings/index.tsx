@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { SettingsSection } from '@/features/project-settings/layout'
 import { useProject } from '@/features/project/use-project'
+import { BotAccessNotice, LastError } from './bot-access'
 import { Jobs } from './jobs'
 import { ProjectLlmSection } from './llm-connection'
 import { Machine } from './machine'
@@ -134,37 +135,41 @@ function SettingsBlocks({
         title={t('status.title')}
         description={t('status.description')}
       >
-        <div className='flex flex-wrap items-center justify-between gap-x-6 gap-y-2'>
-          <div className='flex items-center gap-3'>
-            <Switch
-              id='agent-enabled'
-              checked={settings.enabled}
-              disabled={!canEdit || save.isPending}
-              onCheckedChange={(enabled) =>
-                put(
-                  { enabled },
-                  enabled ? t('status.turnedOn') : t('status.turnedOff')
-                )
-              }
-            />
-            <Label htmlFor='agent-enabled' className='font-medium'>
-              {t('status.label')}
-            </Label>
-            <span className='text-sm text-muted-foreground'>
-              {settings.enabled ? t('status.on') : t('status.off')}
-            </span>
-            {save.isPending && (
-              <Loader2 className='size-3.5 animate-spin text-muted-foreground' />
+        <div className='grid gap-4'>
+          <div className='flex flex-wrap items-center justify-between gap-x-6 gap-y-2'>
+            <div className='flex items-center gap-3'>
+              <Switch
+                id='agent-enabled'
+                checked={settings.enabled}
+                disabled={!canEdit || save.isPending}
+                onCheckedChange={(enabled) =>
+                  put(
+                    { enabled },
+                    enabled ? t('status.turnedOn') : t('status.turnedOff')
+                  )
+                }
+              />
+              <Label htmlFor='agent-enabled' className='font-medium'>
+                {t('status.label')}
+              </Label>
+              <span className='text-sm text-muted-foreground'>
+                {settings.enabled ? t('status.on') : t('status.off')}
+              </span>
+              {save.isPending && (
+                <Loader2 className='size-3.5 animate-spin text-muted-foreground' />
+              )}
+            </div>
+            {settings.updated_by && settings.updated_at && (
+              <p className='text-xs text-muted-foreground'>
+                {t('lastChange', {
+                  who: settings.updated_by,
+                  when: f.date(settings.updated_at, 'dateTime'),
+                })}
+              </p>
             )}
           </div>
-          {settings.updated_by && settings.updated_at && (
-            <p className='text-xs text-muted-foreground'>
-              {t('lastChange', {
-                who: settings.updated_by,
-                when: f.date(settings.updated_at, 'dateTime'),
-              })}
-            </p>
-          )}
+          <BotAccessNotice slug={slug} settings={settings} canEdit={canEdit} />
+          <LastError settings={settings} />
         </div>
       </SettingsSection>
 

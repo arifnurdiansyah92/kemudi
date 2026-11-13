@@ -87,6 +87,13 @@ class ProjectConfig:
         """The first enabled role serving `area` (roles are ordered by id)."""
         return next((r for r in self.roles if r.enabled and r.area == area), None)
 
+    def role_for_story(self, areas: list[str]) -> RoleConfig | None:
+        """Several areas need a `both` (Fullstack) role; one area takes its own
+        role first, else a `both` role."""
+        if len(set(areas)) > 1:
+            return self.role_for_area("both")
+        return self.role_for_area(areas[0]) or self.role_for_area("both")
+
     def qa_role(self) -> RoleConfig | None:
         return next((r for r in self.roles if r.enabled and r.template == "qa"), None)
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { render } from 'vitest-browser-react'
 import type { Preflight } from '@/lib/kemudi-ai/agent'
-import { PreflightResult } from './machine'
+import { PreflightResult, PreflightSummary } from './machine'
 
 const base: Preflight = {
   ok: true,
@@ -28,6 +28,16 @@ describe('PreflightResult', () => {
     await expect.element(screen.getByText('27.3.1')).toBeVisible()
   })
 
+  it('summarises capacity in stories, one at a time for now', async () => {
+    const screen = await render(<PreflightSummary result={base} />)
+    await expect
+      .element(screen.getByText('Fits 2 stories at once'))
+      .toBeVisible()
+    await expect
+      .element(screen.getByText('Awak currently works on one story at a time.'))
+      .toBeVisible()
+  })
+
   it('shows the Docker problem and zero slots when Docker is missing', async () => {
     const screen = await render(
       <PreflightResult
@@ -46,7 +56,7 @@ describe('PreflightResult', () => {
         screen.getByText('Docker: not installed or not reachable by this user')
       )
       .toBeVisible()
-    const slots = screen.getByRole('row', { name: /Job slots/ })
+    const slots = screen.getByRole('row', { name: /Stories at once/ })
     await expect.element(slots.getByRole('cell').first()).toHaveTextContent('0')
   })
 })
