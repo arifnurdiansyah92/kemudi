@@ -18,6 +18,13 @@ vi.mock('@/features/project/use-project', () => ({ can: () => false }))
 
 const project = { id: 1 } as Project
 
+// Inline payloads: the sandbox has no media server to fetch from, but the
+// browser can still decode these, so the test proves the picture renders.
+const PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR42mP4z8AARAwQCgAf7gP9Y167WwAAAABJRU5ErkJggg=='
+const THUMB =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='%23000'/%3E%3C/svg%3E"
+
 function attachment(overrides: Partial<Attachment>): Attachment {
   return {
     id: 1,
@@ -47,30 +54,34 @@ describe('Attachments', () => {
   it('shows an image attachment in a modal instead of linking to the file', async () => {
     const image = attachment({
       name: 'design.png',
-      url: '/media/design.png',
-      thumbnail_card_url: '/media/design.png.96x96_q85_crop.png',
+      url: PNG,
+      thumbnail_card_url: THUMB,
     })
     mocks.files = [image]
 
     const screen = await renderAttachments()
 
-    expect(
-      document.querySelectorAll('a[href="/media/design.png"]')
-    ).toHaveLength(0)
+    // Nothing in the row points at the file, so a click cannot start a download.
+    expect(document.querySelectorAll('a[href]')).toHaveLength(0)
+    expect(document.querySelectorAll('[download]')).toHaveLength(0)
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'View design.png' })
-    )
+    const trigger = screen.getByRole('button', { name: 'View design.png' })
+    expect(trigger.element().closest('a')).toBeNull()
+    // Click the thumbnail itself, the way a reader would.
+    await userEvent.click(trigger.element().querySelector('img')!)
 
     const dialog = screen.getByRole('dialog', { name: 'design.png' })
     await expect.element(dialog).toBeInTheDocument()
+    const shown = dialog.getByRole('img', { name: 'design.png' })
+    await expect.element(shown).toHaveAttribute('src', PNG)
+    // The browser decoded the image: the modal shows the picture itself.
     await expect
-      .element(dialog.getByRole('img', { name: 'design.png' }))
-      .toHaveAttribute('src', '/media/design.png')
+      .poll(() => (shown.element() as HTMLImageElement).naturalWidth)
+      .toBeGreaterThan(0)
   })
 
   it('closes the modal again', async () => {
-    mocks.files = [attachment({ name: 'photo.jpg', url: '/media/photo.jpg' })]
+    mocks.files = [attachment({ name: 'photo.jpg', url: PNG })]
 
     const screen = await renderAttachments()
     await userEvent.click(
