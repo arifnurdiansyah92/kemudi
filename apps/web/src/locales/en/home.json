@@ -10,6 +10,7 @@
     "itemMeta": "{{project}}, {{time}}"
   },
   "projects": {
+    "titleWithCount": "{{name}} ({{count}})",
     "intro": "Every project you are a member of; drag to put them in your order.",
     "newProject": "New project",
     "loadFailed": "Projects could not be loaded.",
