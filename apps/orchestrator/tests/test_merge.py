@@ -359,6 +359,21 @@ def test_deploy_output_is_redacted_and_posted(tmp_path, repo, remote):
     assert "needs-human" not in tags(taiga)
 
 
+def test_deploy_command_is_redacted_from_output(tmp_path, repo, remote):
+    command = "DEPLOY_TOKEN=tok-9f8e7d6c make deploy URL=https://hooks.example.com/x/abcdef0123456789"
+    runner = FakeRunner(tmp_path / "ws", qa=["pass"], deploy=[{
+        "ok": False, "exit": 1,
+        "output": f"+ {command}\nauth tok-9f8e7d6c failed\nposting https://hooks.example.com/"
+                  "x/abcdef0123456789\nmake: *** [deploy] Error 1"}])
+    w, taiga, sessions, _ = make(tmp_path, repo, runner=runner, deploy_command=command)
+    w.tick()
+    request(sessions)
+    w.tick()
+    text = taiga.texts(1)[-1]
+    assert "Deploy gagal" in text and "Error 1" in text
+    assert "tok-9f8e7d6c" not in text and "abcdef0123456789" not in text
+
+
 def test_deploy_failure_keeps_merge(tmp_path, repo, remote):
     runner = FakeRunner(tmp_path / "ws", qa=["pass"],
                         deploy=[{"ok": False, "exit": 1, "output": "boom"}])

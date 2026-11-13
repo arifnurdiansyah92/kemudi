@@ -39,7 +39,9 @@
       "label": "Deploy command",
       "hintLocal": "Runs after each merge in the runner sandbox on Kemudi's server, from the repo's root, without Docker. Leave empty to merge without deploying.",
       "hintSsh": "Runs after each merge on {{host}} over SSH, as {{user}}. Leave empty to merge without deploying.",
-      "saved": "Deploy command saved"
+      "saved": "Deploy command saved",
+      "set": "A deploy command is set. Only project admins can see it.",
+      "notSet": "No deploy command is set; merges do not deploy."
     }
   },
   "machine": {

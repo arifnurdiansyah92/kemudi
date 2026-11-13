@@ -63,6 +63,7 @@ def test_settings_defaults_to_approve_and_disabled(agent_client):
     assert body["enabled"] is False and body["merge_mode"] == "approve"
     assert body["executor"] == "local" and body["remote_execution"] is False
     assert body["ssh_public_key"] is None and body["ssh_fingerprint"] is None
+    assert body["deploy_command"] is None and body["deploy_command_set"] is False
     with agent_client.S() as db:
         assert db.query(AwakProject).count() == 0
 
@@ -73,7 +74,12 @@ def test_member_reads_admin_writes(agent_client):
     r = agent_client.put(url, headers=ADMIN, json=SETTINGS)
     assert r.status_code == 200
     assert r.json()["enabled"] is True and r.json()["updated_by"] == "pm (1)"
-    assert agent_client.get(url, headers=MEMBER).json()["deploy_command"] == "make deploy"
+    # the deploy command may hold a token: admins see it, members only that it is set
+    member_view = agent_client.get(url, headers=MEMBER).json()
+    assert member_view["deploy_command"] is None and member_view["deploy_command_set"] is True
+    admin_view = agent_client.get(url, headers=ADMIN).json()
+    assert admin_view["deploy_command"] == "make deploy" and admin_view["deploy_command_set"]
+    assert r.json()["deploy_command"] == "make deploy"
     with agent_client.S() as db:
         d = db.query(Decision).filter_by(action="awak_settings").one()
         assert d.subject == "demo"

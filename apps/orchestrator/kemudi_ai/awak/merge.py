@@ -50,6 +50,18 @@ def effective_mode(snapshot: str, current: str) -> str:
     return a if STRICTNESS[a] <= STRICTNESS[b] else b
 
 
+def deploy_secrets(command: str) -> list[str]:
+    """Strings of the deploy command to hide from its output: the command
+    itself, `NAME=value` values and long words (a token passed inline)."""
+    values = [command] if command else []
+    for word in command.split():
+        value = word.split("=", 1)[1] if "=" in word else word
+        value = value.strip("'\"")
+        if len(value) >= 16 or ("=" in word and len(value) >= 8):
+            values.append(value)
+    return sorted(set(values), key=len, reverse=True)  # longest first
+
+
 class MergeFailed(Exception):
     """The merge cannot go ahead; nothing was pushed to the default branch."""
 
@@ -239,7 +251,8 @@ class Merger:
                     ok, out = bool(res.get("ok")), str(res.get("output") or "")
         except (GitError, RunnerError, SecretKeyMissing, OSError) as e:
             ok, out = False, f"{type(e).__name__}: {e}"
-        tail = secrets.redact(out, w.secret_values)[-1500:].strip() or "(tanpa output)"
+        tail = (secrets.redact(out, [*w.secret_values, *deploy_secrets(command)])[-1500:]
+                .strip() or "(tanpa output)")
         w._event(job.id, "deploy", {"ok": ok})
         if ok:
             w._say(story_id, job.id, f"Deploy selesai:\n```\n{tail}\n```")

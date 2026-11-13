@@ -103,6 +103,7 @@ const DEPLOY_EXAMPLE = 'docker compose up -d --build'
 /** The post-merge deploy command; the hint says where it runs. */
 export function DeployCommand({
   value,
+  isSet,
   executor,
   host,
   user,
@@ -110,7 +111,9 @@ export function DeployCommand({
   pending,
   onSave,
 }: {
-  value: string
+  /** `null` when the reader is not an admin: the command may hold a token. */
+  value: string | null
+  isSet: boolean
   executor: Executor
   host: string
   user: string
@@ -119,7 +122,21 @@ export function DeployCommand({
   onSave: (command: string) => void
 }) {
   const { t } = useTranslation(['agent', 'common'])
-  const [text, setText] = useState(value)
+  const [text, setText] = useState(value ?? '')
+  const hint =
+    executor === 'ssh'
+      ? t('merge.deploy.hintSsh', { host, user })
+      : t('merge.deploy.hintLocal')
+  if (value === null || !canEdit)
+    return (
+      <div className='grid gap-1.5'>
+        <p className='text-sm font-medium'>{t('merge.deploy.label')}</p>
+        <p className='text-sm'>
+          {isSet ? t('merge.deploy.set') : t('merge.deploy.notSet')}
+        </p>
+        <p className='text-xs text-muted-foreground'>{hint}</p>
+      </div>
+    )
   const dirty = text !== value
   return (
     <form
@@ -136,37 +153,32 @@ export function DeployCommand({
         id='deploy-command'
         value={text}
         onChange={(e) => setText(e.target.value)}
-        readOnly={!canEdit}
         rows={3}
         spellCheck={false}
         maxLength={2000}
         aria-describedby='deploy-command-hint'
         placeholder={DEPLOY_EXAMPLE}
-        className='w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs shadow-xs outline-none read-only:bg-muted/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
+        className='w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
       />
       <p id='deploy-command-hint' className='text-xs text-muted-foreground'>
-        {executor === 'ssh'
-          ? t('merge.deploy.hintSsh', { host, user })
-          : t('merge.deploy.hintLocal')}
+        {hint}
       </p>
-      {canEdit && (
-        <div className='flex gap-2'>
-          <Button type='submit' size='sm' disabled={!dirty || pending}>
-            {pending && <Loader2 className='animate-spin' />}
-            {t('common:actions.save')}
+      <div className='flex gap-2'>
+        <Button type='submit' size='sm' disabled={!dirty || pending}>
+          {pending && <Loader2 className='animate-spin' />}
+          {t('common:actions.save')}
+        </Button>
+        {dirty && (
+          <Button
+            type='button'
+            size='sm'
+            variant='ghost'
+            onClick={() => setText(value)}
+          >
+            {t('common:actions.cancel')}
           </Button>
-          {dirty && (
-            <Button
-              type='button'
-              size='sm'
-              variant='ghost'
-              onClick={() => setText(value)}
-            >
-              {t('common:actions.cancel')}
-            </Button>
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </form>
   )
 }

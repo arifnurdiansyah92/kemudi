@@ -184,8 +184,9 @@ function SettingsBlocks({
             onChange={(merge_mode) => put({ merge_mode }, t('merge.saved'))}
           />
           <DeployCommand
-            key={settings.deploy_command}
+            key={settings.deploy_command ?? ''}
             value={settings.deploy_command}
+            isSet={settings.deploy_command_set}
             executor={settings.executor}
             host={settings.ssh_host}
             user={settings.ssh_user}

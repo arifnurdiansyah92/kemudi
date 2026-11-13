@@ -5,7 +5,7 @@ from functools import lru_cache
 from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session, sessionmaker
 
-from .auth import TaigaUser, current_user, project_access
+from .auth import ProjectAccess, TaigaUser, current_user, project_access
 from .config import Settings, get_settings
 from .llm import LLM, HermesLLM
 from .store import make_session
@@ -35,6 +35,12 @@ def get_db(sessions: sessionmaker[Session] = Depends(get_sessions)):
 def member(slug: str, user: TaigaUser = Depends(current_user), settings: Settings = Depends(get_settings)):
     project_access(slug, user, settings)
     return user
+
+
+def access(slug: str, user: TaigaUser = Depends(current_user),
+           settings: Settings = Depends(get_settings)) -> ProjectAccess:
+    """Membership (404 otherwise) and whether the caller is a project admin."""
+    return project_access(slug, user, settings)
 
 
 def admin(slug: str, user: TaigaUser = Depends(current_user), settings: Settings = Depends(get_settings)):

@@ -39,7 +39,9 @@
       "label": "Perintah deploy",
       "hintLocal": "Dijalankan setelah setiap merge di sandbox runner pada server Kemudi, dari root repo, tanpa Docker. Kosongkan untuk merge tanpa deploy.",
       "hintSsh": "Dijalankan setelah setiap merge di {{host}} melalui SSH, sebagai {{user}}. Kosongkan untuk merge tanpa deploy.",
-      "saved": "Perintah deploy disimpan"
+      "saved": "Perintah deploy disimpan",
+      "set": "Perintah deploy sudah diatur. Hanya admin proyek yang dapat melihatnya.",
+      "notSet": "Belum ada perintah deploy; merge tidak menjalankan deploy."
     }
   },
   "machine": {

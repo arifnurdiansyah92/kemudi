@@ -16,9 +16,9 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, Upl
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session, sessionmaker
 
-from ..auth import TaigaUser
+from ..auth import ProjectAccess, TaigaUser
 from ..config import Settings, get_settings
-from ..deps import actor, admin, get_db, get_llm, get_sessions, member
+from ..deps import access, actor, admin, get_db, get_llm, get_sessions, member
 from ..llm import LLM
 from ..store import AwakJob, AwakKey, AwakProject, AwakRepo, AwakRole, record_decision
 from . import config_store, crypto, gitops, prompts, secrets, ssh
@@ -82,12 +82,16 @@ class AgentSettings(BaseModel):
         return self
 
 
-def _settings_out(db: Session, slug: str) -> dict:
+def _settings_out(db: Session, slug: str, is_admin: bool) -> dict:
     p = db.get(AwakProject, slug)
     cfg = config_store.load(db, slug)
     key = config_store.key_row(db, p.ssh_key_id) if p else None
     return {
         **{k: getattr(cfg, k) for k in config_store.SETTING_FIELDS},
+        # The deploy command may hold a token: admins only; members see whether
+        # one is set.
+        "deploy_command": cfg.deploy_command if is_admin else None,
+        "deploy_command_set": bool(cfg.deploy_command.strip()),
         "ssh_public_key": key.public_key if key else None,
         "ssh_fingerprint": key.fingerprint if key else None,
         "preflight": (p.preflight if p else {}) or {},
@@ -99,8 +103,9 @@ def _settings_out(db: Session, slug: str) -> dict:
 
 
 @router.get("/settings")
-def get_agent_settings(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(get_db)):
-    return _settings_out(db, slug)
+def get_agent_settings(slug: str, acc: ProjectAccess = Depends(access),
+                       db: Session = Depends(get_db)):
+    return _settings_out(db, slug, acc.is_admin)
 
 
 @router.put("/settings")
@@ -135,7 +140,7 @@ def put_agent_settings(
         record_decision(db, actor(user), "awak_settings", slug, {"changed": detail})
     if p.enabled:
         start_worker()
-    return _settings_out(db, slug)
+    return _settings_out(db, slug, True)
 
 
 # --- jobs --------------------------------------------------------------------

@@ -42,7 +42,10 @@ export type AgentSettingsIn = {
   ssh_user: string
 }
 
-export type AgentSettings = AgentSettingsIn & {
+export type AgentSettings = Omit<AgentSettingsIn, 'deploy_command'> & {
+  /** Admins only (it may hold a token); `null` for other members. */
+  deploy_command: string | null
+  deploy_command_set: boolean
   ssh_public_key: string | null
   ssh_fingerprint: string | null
   /** `{}` until the first check. */
@@ -261,12 +264,13 @@ export function useSaveAgentSettings(slug: string) {
   })
 }
 
-/** The PUT body from the settings as read: the API takes every field. */
+/** The PUT body from the settings as read: the API takes every field. Only
+ * admins write, and admins always read the deploy command. */
 export function settingsBody(s: AgentSettings): AgentSettingsIn {
   return {
     enabled: s.enabled,
     merge_mode: s.merge_mode,
-    deploy_command: s.deploy_command,
+    deploy_command: s.deploy_command ?? '',
     executor: s.executor,
     ssh_host: s.ssh_host,
     ssh_port: s.ssh_port,
