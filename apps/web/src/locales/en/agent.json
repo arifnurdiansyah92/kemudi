@@ -253,5 +253,80 @@
       "merged": "Merged",
       "failed": "Failed"
     }
+  },
+  "intake": {
+    "title": "Intake",
+    "intro": "Paste a brief, meeting notes or a client email, or add a document. Kemudi drafts user stories for you to check and edit, then creates them in the backlog.",
+    "agentOff": {
+      "title": "Awak is off for this project",
+      "body": "Stories are still created. Ready ones wait until Awak is turned on.",
+      "link": "Turn it on in Settings → Agent"
+    },
+    "source": {
+      "text": "Text",
+      "textPlaceholder": "Paste the brief, notes or email here",
+      "file": "Document",
+      "drop": "Drop a PDF or DOCX here, or",
+      "browse": "choose a file",
+      "removeFile": "Remove {{file}}",
+      "badFile": "Only PDF and DOCX files can be read.",
+      "language": "Story language",
+      "submit": "Draft stories",
+      "drafting": "Drafting stories. This can take about half a minute.",
+      "failed": "No drafts this time"
+    },
+    "drafts": {
+      "title": "Drafts",
+      "summary": "{{ready}} will go to Ready, {{waiting}} will wait in New. Nothing is in the backlog until you create them.",
+      "empty": "The model found no stories in this text. Add more detail and draft again.",
+      "story": "Story {{n}}",
+      "subject": "Subject",
+      "subjectShort": "Write at least 3 characters.",
+      "description": "Description",
+      "criteria": "Acceptance criteria",
+      "criterion": "Criterion {{n}}",
+      "addCriterion": "Add criterion",
+      "removeCriterion": "Remove criterion {{n}}",
+      "noCriteria": "No criteria yet.",
+      "area": "Area",
+      "areas": {
+        "web": "Web",
+        "backend": "Backend",
+        "both": "Web and backend"
+      },
+      "hold": "Hold back in New",
+      "remove": "Remove story {{n}}",
+      "ready": "Goes to Ready",
+      "waits": "Waits in New",
+      "held": "Held in New",
+      "rechecked": "Rechecked on create",
+      "create_one": "Create {{count}} story",
+      "create_other": "Create {{count}} stories",
+      "discard": "Discard drafts",
+      "createFailed": "The stories were not created",
+      "keptEdits": "Your drafts and edits are kept. Fix the problem and create again."
+    },
+    "result": {
+      "title_one": "Created {{count}} story",
+      "title_other": "Created {{count}} stories",
+      "ready": "Ready",
+      "new": "New",
+      "more": "Draft more stories"
+    }
+  },
+  "mergeButton": {
+    "summary": "Passed QA on {{branch}}. Waiting for an admin to merge.",
+    "action": "Merge",
+    "retry": "Try again",
+    "confirm": {
+      "title": "Merge this story?",
+      "body": "Kemudi merges {{branch}} into {{target}}, reruns the checks, pushes, then runs the deploy command.",
+      "action": "Merge into {{target}}"
+    },
+    "requested": "Merge requested. Waiting for the worker to pick it up.",
+    "merging": "Merging into {{target}} and rerunning the checks.",
+    "merged": "Merged into {{target}}.",
+    "failed": "Merge failed: {{reason}}",
+    "noReason": "no reason given"
   }
 }

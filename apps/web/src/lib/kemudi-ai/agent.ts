@@ -463,3 +463,129 @@ export function useAgentJobs(slug: string) {
     refetchInterval: (q) => (q.state.data?.some(isJobActive) ? 10_000 : false),
   })
 }
+
+/* ---------- story: merge on approve ---------- */
+
+export const AWAITING_MERGE_TAG = 'awaiting-merge'
+
+export type StoryAgent = {
+  job: Job | null
+  merge_mode: MergeMode
+  can_merge: boolean
+  merge_state: MergeState
+  merge_error: string
+}
+
+export function isMergePending(state: MergeState) {
+  return state === 'requested' || state === 'merging'
+}
+
+/** Awak's job for a story; polls every 5 s while a merge is pending. */
+export function useStoryAgent(slug: string, storyId: number, enabled = true) {
+  return useQuery({
+    queryKey: agentKey(slug, 'stories', storyId),
+    enabled,
+    queryFn: async () =>
+      (
+        await api.get<StoryAgent>(
+          `/projects/${slug}/agent/stories/${storyId}`,
+          base
+        )
+      ).data,
+    refetchInterval: (q) =>
+      q.state.data && isMergePending(q.state.data.merge_state) ? 5_000 : false,
+  })
+}
+
+export function useMergeStory(slug: string, storyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () =>
+      (
+        await api.post<{ merge_state: MergeState }>(
+          `/projects/${slug}/agent/stories/${storyId}/merge`,
+          null,
+          base
+        )
+      ).data,
+    onSuccess: ({ merge_state }) =>
+      qc.setQueryData<StoryAgent>(
+        agentKey(slug, 'stories', storyId),
+        (prev) => prev && { ...prev, merge_state, merge_error: '' }
+      ),
+    onError: onFail,
+    onSettled: () =>
+      qc.invalidateQueries({ queryKey: agentKey(slug, 'stories', storyId) }),
+  })
+}
+
+/* ---------- intake ---------- */
+
+export type IntakeArea = 'web' | 'backend' | 'both'
+export const intakeAreas: IntakeArea[] = ['web', 'backend', 'both']
+export const INTAKE_MAX_DRAFTS = 30
+export const INTAKE_MAX_CRITERIA = 10
+
+export type IntakeDraftOut = {
+  subject: string
+  description: string
+  criteria: string[]
+  area: IntakeArea
+  ready: boolean
+  reason: string
+}
+
+export type IntakeDraftIn = {
+  subject: string
+  description: string
+  criteria: string[]
+  area: IntakeArea
+  hold: boolean
+}
+
+export type IntakeStory = {
+  id: number
+  ref: number
+  subject: string
+  ready: boolean
+  reason: string
+}
+
+/** Drafts only, nothing reaches Taiga. The model can take half a minute. */
+export function useIntakeDraft(slug: string) {
+  return useMutation({
+    mutationFn: async (input: {
+      text: string
+      lang: 'id' | 'en'
+      file: File | null
+    }) => {
+      const form = new FormData()
+      form.append('text', input.text)
+      form.append('lang', input.lang)
+      if (input.file) form.append('file', input.file)
+      return (
+        await api.post<{ drafts: IntakeDraftOut[] }>(
+          `/projects/${slug}/intake/draft`,
+          form,
+          { ...base, timeout: 180_000 }
+        )
+      ).data.drafts
+    },
+  })
+}
+
+/** Creates the stories with the caller's own Taiga rights. */
+export function useIntakeCreate(slug: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (drafts: IntakeDraftIn[]) =>
+      (
+        await api.post<{ stories: IntakeStory[] }>(
+          `/projects/${slug}/intake/create`,
+          { drafts },
+          { ...base, timeout: 120_000 }
+        )
+      ).data.stories,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['stories'] }),
+  })
+}

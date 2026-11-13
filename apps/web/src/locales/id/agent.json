@@ -251,5 +251,80 @@
       "merged": "Selesai merge",
       "failed": "Gagal"
     }
+  },
+  "intake": {
+    "title": "Intake",
+    "intro": "Tempel brief, catatan rapat, atau email klien, atau tambahkan dokumen. Kemudi menyusun draf user story untuk Anda periksa dan sunting, lalu membuatnya di backlog.",
+    "agentOff": {
+      "title": "Awak nonaktif untuk proyek ini",
+      "body": "Story tetap dibuat. Story berstatus Ready menunggu sampai Awak diaktifkan.",
+      "link": "Aktifkan di Pengaturan → Agent"
+    },
+    "source": {
+      "text": "Teks",
+      "textPlaceholder": "Tempel brief, catatan, atau email di sini",
+      "file": "Dokumen",
+      "drop": "Letakkan file PDF atau DOCX di sini, atau",
+      "browse": "pilih file",
+      "removeFile": "Hapus {{file}}",
+      "badFile": "Hanya file PDF dan DOCX yang dapat dibaca.",
+      "language": "Bahasa story",
+      "submit": "Susun draf story",
+      "drafting": "Menyusun draf story. Proses ini bisa memakan waktu sekitar setengah menit.",
+      "failed": "Draf belum dapat disusun"
+    },
+    "drafts": {
+      "title": "Draf",
+      "summary": "{{ready}} masuk ke Ready, {{waiting}} menunggu di New. Belum ada yang masuk ke backlog sampai Anda membuatnya.",
+      "empty": "Model tidak menemukan story dalam teks ini. Tambahkan detail lalu susun ulang.",
+      "story": "Story {{n}}",
+      "subject": "Judul",
+      "subjectShort": "Tulis minimal 3 karakter.",
+      "description": "Deskripsi",
+      "criteria": "Kriteria penerimaan",
+      "criterion": "Kriteria {{n}}",
+      "addCriterion": "Tambah kriteria",
+      "removeCriterion": "Hapus kriteria {{n}}",
+      "noCriteria": "Belum ada kriteria.",
+      "area": "Area",
+      "areas": {
+        "web": "Web",
+        "backend": "Backend",
+        "both": "Web dan backend"
+      },
+      "hold": "Tahan di New",
+      "remove": "Hapus story {{n}}",
+      "ready": "Masuk ke Ready",
+      "waits": "Menunggu di New",
+      "held": "Ditahan di New",
+      "rechecked": "Diperiksa ulang saat dibuat",
+      "create_one": "Buat {{count}} story",
+      "create_other": "Buat {{count}} story",
+      "discard": "Buang draf",
+      "createFailed": "Story belum dibuat",
+      "keptEdits": "Draf dan suntingan Anda tetap tersimpan. Perbaiki masalahnya lalu buat lagi."
+    },
+    "result": {
+      "title_one": "{{count}} story dibuat",
+      "title_other": "{{count}} story dibuat",
+      "ready": "Ready",
+      "new": "New",
+      "more": "Susun story lain"
+    }
+  },
+  "mergeButton": {
+    "summary": "Lolos QA di {{branch}}. Menunggu admin melakukan merge.",
+    "action": "Merge",
+    "retry": "Coba lagi",
+    "confirm": {
+      "title": "Merge story ini?",
+      "body": "Kemudi melakukan merge {{branch}} ke {{target}}, menjalankan ulang pemeriksaan, melakukan push, lalu menjalankan perintah deploy.",
+      "action": "Merge ke {{target}}"
+    },
+    "requested": "Merge diminta. Menunggu worker mengambilnya.",
+    "merging": "Melakukan merge ke {{target}} dan menjalankan ulang pemeriksaan.",
+    "merged": "Merge ke {{target}} selesai.",
+    "failed": "Merge gagal: {{reason}}",
+    "noReason": "tanpa keterangan"
   }
 }
