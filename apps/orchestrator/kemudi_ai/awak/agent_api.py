@@ -122,6 +122,8 @@ def put_agent_settings(
         ssh.forget_host(settings, slug, p.ssh_host)
     for k, v in changed.items():
         setattr(p, k, v)
+    if {"executor", "ssh_host", "ssh_port", "ssh_user"} & set(changed):
+        p.preflight = {}  # a check of the old machine says nothing about the new one
     if changed:
         p.updated_by, p.updated_at = actor(user), config_store.now()
     db.commit()
@@ -459,6 +461,103 @@ def check_repo_access(slug: str, repo_id: int, user: TaigaUser = Depends(admin),
     return res
 
 
+# --- execution machine -------------------------------------------------------
+
+
+def get_runner_health(settings: Settings = Depends(get_settings)) -> Callable[[], bool]:
+    def ok() -> bool:
+        import httpx
+
+        try:
+            r = httpx.get(f"{settings.runner_url.rstrip('/')}/health", timeout=5)
+            return r.status_code == 200
+        except httpx.HTTPError:
+            return False
+
+    return ok
+
+
+def _project_row(db: Session, slug: str) -> AwakProject:
+    p = db.get(AwakProject, slug)
+    if p is None:
+        p = AwakProject(slug=slug, **config_store.DEFAULTS)
+        db.add(p)
+        db.flush()
+    return p
+
+
+@router.post("/machine/key")
+def generate_machine_key(slug: str, user: TaigaUser = Depends(admin),
+                         db: Session = Depends(get_db),
+                         settings: Settings = Depends(get_settings)):
+    """The key Kemudi logs in to the SSH machine with (preflight and deploy)."""
+    try:
+        private, public, fp = crypto.generate_keypair(f"kemudi-{slug}-machine")
+        token = crypto.encrypt(settings, private)
+    except SecretKeyMissing as e:
+        raise _no_secret_key(e) from e
+    del private
+    p = _project_row(db, slug)
+    old = config_store.key_row(db, p.ssh_key_id)
+    key = AwakKey(owner_kind="machine", owner_id=0, public_key=public, fingerprint=fp,
+                  private_key_enc=token, created_by=actor(user))
+    db.add(key)
+    db.flush()
+    p.ssh_key_id = key.id
+    db.flush()
+    if old is not None:
+        db.delete(old)
+    p.updated_by, p.updated_at = actor(user), config_store.now()
+    db.commit()
+    record_decision(db, actor(user), "awak_machine_key", slug,
+                    {"fingerprint": fp, "replaced": old is not None})
+    return {"public_key": public, "fingerprint": fp}
+
+
+@router.post("/machine/check")
+def check_machine(slug: str, user: TaigaUser = Depends(admin), db: Session = Depends(get_db),
+                  settings: Settings = Depends(get_settings),
+                  run: CommandRunner = Depends(get_command_runner),
+                  runner_ok: Callable[[], bool] = Depends(get_runner_health)):
+    from . import machine
+
+    cfg = config_store.load(db, slug)
+    p = _project_row(db, slug)
+    if cfg.executor == "ssh":
+        key = config_store.key_row(db, p.ssh_key_id)
+        if key is None:
+            raise HTTPException(409, "generate the machine key and add it to the machine's "
+                                     "authorized_keys first")
+        try:
+            res = machine.check_ssh(settings, cfg, key, run)
+        except SecretKeyMissing as e:
+            raise _no_secret_key(e) from e
+    else:
+        res = machine.check_local(settings, runner_ok)
+    out = {**res.to_dict(), "executor": cfg.executor,
+           # Jobs run on the local executor until remote execution ships.
+           "remote_execution": False}
+    p.preflight = out
+    db.commit()
+    record_decision(db, actor(user), "awak_machine_check", slug,
+                    {"executor": cfg.executor, "ok": res.ok, "slots": res.slots,
+                     "error": bool(res.error)})
+    return out
+
+
+@router.delete("/machine/host-key", status_code=204)
+def forget_machine_host_key(slug: str, user: TaigaUser = Depends(admin),
+                            db: Session = Depends(get_db),
+                            settings: Settings = Depends(get_settings)):
+    cfg = config_store.load(db, slug)
+    if cfg.ssh_host:
+        ssh.forget_host(settings, slug, cfg.ssh_host)
+        p = db.get(AwakProject, slug)
+        if p is not None and p.preflight:
+            p.preflight = {**p.preflight, "host_key": None}
+            db.commit()
+    record_decision(db, actor(user), "awak_machine_forget_host", slug, {"host": cfg.ssh_host})
+    return Response(status_code=204)
 
 
 # --- roles -------------------------------------------------------------------
