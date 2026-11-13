@@ -17,11 +17,10 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Switch } from '@/components/ui/switch'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { KeyField, ModelPicker, ProviderFields } from './connection-fields'
+import { hostOf } from './providers'
 
 /** "From this agent" / "From project" / "Kemudi server default". */
 export function LlmSourceBadge({ source }: { source: LlmSource }) {
@@ -48,10 +47,6 @@ function InUse({ effective }: { effective: LlmEffective }) {
   )
 }
 
-/** Examples, not prose: the same in every language. */
-const URL_EXAMPLE = 'https://api.openai.com/v1'
-const MODEL_EXAMPLE = 'gpt-4o-mini'
-
 type Handlers = {
   /** Rejects with the server's error; the form shows it inline. */
   onSave: (body: LlmIn) => Promise<unknown>
@@ -65,6 +60,7 @@ type Handlers = {
  * then it is dropped. An empty key field keeps the stored key.
  */
 export function LlmConnectionForm({
+  slug,
   id,
   level,
   canEdit,
@@ -73,6 +69,7 @@ export function LlmConnectionForm({
   onClear,
   onTest,
 }: {
+  slug: string
   /** Prefix for field ids, unique on the page. */
   id: string
   level: LlmLevel
@@ -96,10 +93,13 @@ export function LlmConnectionForm({
   const dirty =
     url !== level.base_url || name !== level.model || typedKey !== ''
   const filled = url !== '' && name !== ''
-  const showKeyInput = !level.key_set || replacing
+
   // A kept key follows the level to a new address; say so before saving.
   const keyMoves =
-    level.key_set && !typedKey && level.base_url !== '' && url !== level.base_url
+    level.key_set &&
+    !typedKey &&
+    level.base_url !== '' &&
+    url !== level.base_url
   const off = !canEdit || busy !== null
 
   const body = (): LlmIn => ({
@@ -150,102 +150,48 @@ export function LlmConnectionForm({
       }}
     >
       <div className='grid items-start gap-4 sm:grid-cols-2'>
-        <div className='grid gap-1.5 sm:col-span-2'>
-          <Label htmlFor={`${id}-url`}>{t('llm.baseUrl')}</Label>
-          <Input
-            id={`${id}-url`}
-            value={baseUrl}
-            inputMode='url'
-            spellCheck={false}
-            autoComplete='off'
-            maxLength={500}
-            placeholder={URL_EXAMPLE}
-            disabled={!canEdit}
-            aria-describedby={`${id}-url-hint`}
-            onChange={(e) => setBaseUrl(e.target.value)}
-            className='font-mono text-xs'
-          />
-          <p id={`${id}-url-hint`} className='text-xs text-muted-foreground'>
-            {t('llm.baseUrlHint')}
-          </p>
-        </div>
-        <div className='grid gap-1.5'>
-          <Label htmlFor={`${id}-model`}>{t('llm.model')}</Label>
-          <Input
-            id={`${id}-model`}
-            value={model}
-            spellCheck={false}
-            autoComplete='off'
-            maxLength={100}
-            placeholder={MODEL_EXAMPLE}
-            disabled={!canEdit}
-            aria-describedby={`${id}-model-hint`}
-            onChange={(e) => setModel(e.target.value)}
-            className='font-mono text-xs'
-          />
-          <p id={`${id}-model-hint`} className='text-xs text-muted-foreground'>
-            {t('llm.modelHint')}
-          </p>
-        </div>
-        <div className='grid gap-1.5'>
-          <Label htmlFor={`${id}-key`}>{t('llm.key')}</Label>
-          {showKeyInput ? (
-            <Input
-              id={`${id}-key`}
-              type='password'
-              value={key}
-              spellCheck={false}
-              autoComplete='new-password'
-              maxLength={1000}
-              disabled={!canEdit}
-              aria-describedby={`${id}-key-hint`}
-              onChange={(e) => setKey(e.target.value)}
-              className='font-mono text-xs'
-            />
-          ) : (
-            <div className='flex h-9 items-center justify-between gap-2 rounded-md border border-input bg-muted/50 ps-3 pe-1'>
-              <span
-                id={`${id}-key`}
-                className='font-mono text-xs'
-                aria-label={t('llm.keyStored', { last4: level.key_last4 })}
-              >
-                {`•••• ${level.key_last4 ?? ''}`}
-              </span>
-              <Button
-                type='button'
-                size='sm'
-                variant='ghost'
-                className='h-7'
-                disabled={off}
-                onClick={() => setReplacing(true)}
-              >
-                {t('llm.keyReplace')}
-              </Button>
-            </div>
-          )}
-          <p id={`${id}-key-hint`} className='text-xs text-muted-foreground'>
-            {!level.key_set
-              ? t('llm.keyHintNew')
-              : replacing
-                ? t('llm.keyHintReplace')
-                : t('llm.keyHintStored')}
-            {replacing && (
-              <>
-                {' '}
-                <button
-                  type='button'
-                  className='font-medium text-foreground underline underline-offset-4'
-                  onClick={() => {
-                    setKey('')
-                    setReplacing(false)
-                  }}
-                >
-                  {t('llm.keyKeep')}
-                </button>
-              </>
-            )}
-          </p>
-        </div>
+        <ProviderFields
+          id={id}
+          url={baseUrl}
+          onUrl={setBaseUrl}
+          disabled={!canEdit}
+        />
+        <KeyField
+          id={id}
+          keySet={level.key_set}
+          last4={level.key_last4}
+          value={key}
+          onChange={setKey}
+          replacing={replacing}
+          onReplacing={setReplacing}
+          disabled={off}
+        />
+        <ModelPicker
+          id={`${id}-model`}
+          slug={slug}
+          // Saved values list the saved connection; edits list the typed one.
+          request={
+            url === level.base_url && !typedKey
+              ? {}
+              : { base_url: url, ...(typedKey ? { api_key: typedKey } : {}) }
+          }
+          canFetch={
+            canEdit &&
+            (url === '' || url === level.base_url || hostOf(url) !== '')
+          }
+          hint={t('llm.modelHint')}
+          value={model}
+          onChange={setModel}
+          disabled={!canEdit}
+          fallback={
+            url
+              ? { source: 'project', host: hostOf(url) }
+              : {
+                  source: level.effective.llm_source,
+                  host: level.effective.llm_host,
+                }
+          }
+        />
       </div>
 
       {keyMoves && (
@@ -307,7 +253,7 @@ export function LlmConnectionForm({
   )
 }
 
-function TestResult({ result }: { result: LlmTest | null }) {
+export function TestResult({ result }: { result: LlmTest | null }) {
   const { t } = useTranslation('agent')
   const f = useFormat()
   const target = result
@@ -370,10 +316,11 @@ function serverDefault(level: LlmLevel, t: (k: 'llm.noHost') => string) {
 
 /** Project level: "Model connection (all agents)". */
 export function ProjectLlm({
+  slug,
   level,
   canEdit,
   ...handlers
-}: { level: LlmLevel; canEdit: boolean } & Handlers) {
+}: { slug: string; level: LlmLevel; canEdit: boolean } & Handlers) {
   const { t } = useTranslation('agent')
   return (
     <div className='grid gap-4'>
@@ -384,6 +331,7 @@ export function ProjectLlm({
         </p>
       </div>
       <LlmConnectionForm
+        slug={slug}
         id='llm-project'
         level={level}
         canEdit={canEdit}
@@ -395,106 +343,14 @@ export function ProjectLlm({
   )
 }
 
-/**
- * Agent level. "Use project default" on means this role has no connection of
- * its own; turning it back on after one was saved clears it.
- */
-export function RoleLlm({
-  roleId,
-  level,
-  canEdit,
-  ...handlers
-}: { roleId: number; level: LlmLevel; canEdit: boolean } & Handlers) {
+/** Wires the project level to the API. */
+function useLlmHandlers(slug: string): Handlers {
   const { t } = useTranslation('agent')
-  const [custom, setCustom] = useState(level.set)
-  const [confirm, setConfirm] = useState(false)
-  const [clearing, setClearing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function clear() {
-    setClearing(true)
-    setError(null)
-    try {
-      await handlers.onClear()
-      setCustom(false)
-    } catch (e) {
-      setError(agentError(e))
-    } finally {
-      setClearing(false)
-    }
-  }
-
-  return (
-    <div className='grid gap-4'>
-      <div className='flex flex-wrap items-center gap-3'>
-        <Switch
-          id={`llm-role-${roleId}-default`}
-          checked={!custom}
-          disabled={!canEdit || clearing}
-          onCheckedChange={(useDefault) => {
-            if (!useDefault) setCustom(true)
-            else if (level.set) setConfirm(true)
-            else setCustom(false)
-          }}
-        />
-        <Label htmlFor={`llm-role-${roleId}-default`}>
-          {t('llm.useDefault')}
-        </Label>
-        {clearing && (
-          <Loader2 className='size-3.5 animate-spin text-muted-foreground' />
-        )}
-      </div>
-      <div className='grid gap-1'>
-        <InUse effective={level.effective} />
-        <p className='text-xs text-muted-foreground'>
-          {t('llm.roleHierarchy', serverDefault(level, t))}
-        </p>
-      </div>
-      {error && (
-        <p role='alert' className='text-sm text-destructive'>
-          {error}
-        </p>
-      )}
-      {custom && (
-        <LlmConnectionForm
-          id={`llm-role-${roleId}`}
-          level={level}
-          canEdit={canEdit}
-          clearBody={t('llm.clearConfirm.roleBody')}
-          {...handlers}
-          onClear={async () => {
-            await handlers.onClear()
-            setCustom(false)
-          }}
-        />
-      )}
-      {level.set && <LastChange level={level} />}
-      <ConfirmDialog
-        open={confirm}
-        onOpenChange={setConfirm}
-        title={t('llm.clearConfirm.title')}
-        desc={t('llm.clearConfirm.roleBody')}
-        confirmText={t('llm.clearConfirm.action')}
-        destructive
-        handleConfirm={() => {
-          setConfirm(false)
-          void clear()
-        }}
-      />
-    </div>
-  )
-}
-
-/** Wires a level to the API. `roleId` null is the project level. */
-function useLlmHandlers(slug: string, roleId: number | null): Handlers {
-  const { t } = useTranslation('agent')
-  const save = useSaveLlmLevel(slug, roleId)
-  const test = useTestLlmLevel(slug, roleId)
+  const save = useSaveLlmLevel(slug, null)
+  const test = useTestLlmLevel(slug, null)
   return {
     onSave: (body) =>
-      save
-        .mutateAsync(body)
-        .then(() => toast.success(t('llm.saved'))),
+      save.mutateAsync(body).then(() => toast.success(t('llm.saved'))),
     onClear: () =>
       save
         .mutateAsync({ base_url: '', model: '', clear: true })
@@ -512,7 +368,7 @@ export function ProjectLlmSection({
 }) {
   const { t } = useTranslation('agent')
   const level = useLlmLevel(slug, null)
-  const handlers = useLlmHandlers(slug, null)
+  const handlers = useLlmHandlers(slug)
   if (level.isPending) return <Skeleton className='h-48 w-full' />
   if (level.isError)
     return (
@@ -524,36 +380,7 @@ export function ProjectLlmSection({
     <ProjectLlm
       // A save or clear comes back with a new time: start the form afresh.
       key={level.data.updated_at ?? 'never'}
-      level={level.data}
-      canEdit={canEdit}
-      {...handlers}
-    />
-  )
-}
-
-export function RoleLlmSection({
-  slug,
-  roleId,
-  canEdit,
-}: {
-  slug: string
-  roleId: number
-  canEdit: boolean
-}) {
-  const { t } = useTranslation('agent')
-  const level = useLlmLevel(slug, roleId)
-  const handlers = useLlmHandlers(slug, roleId)
-  if (level.isPending) return <Skeleton className='h-24 w-full' />
-  if (level.isError)
-    return (
-      <p role='alert' className='text-sm text-destructive'>
-        {t('llm.unavailable')}
-      </p>
-    )
-  return (
-    <RoleLlm
-      key={level.data.updated_at ?? 'never'}
-      roleId={roleId}
+      slug={slug}
       level={level.data}
       canEdit={canEdit}
       {...handlers}

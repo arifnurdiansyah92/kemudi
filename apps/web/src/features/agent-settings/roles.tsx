@@ -3,11 +3,16 @@ import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
+  agentError,
   roleBody,
+  useLlmLevel,
   useRolePrompt,
   useSaveRole,
+  useSaveRoleLlm,
+  useTestLlmLevel,
   type Repo,
   type Role,
+  type RoleIn,
 } from '@/lib/kemudi-ai/agent'
 import { Button } from '@/components/ui/button'
 import {
@@ -17,20 +22,19 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
-import { LlmSourceBadge, RoleLlmSection } from './llm-connection'
-import { RoleEditor } from './role-editor'
+import { LlmSourceBadge } from './llm-connection'
+import { RoleEditor, type ConnChange } from './role-editor'
 
 export function Roles({
   slug,
   roles,
-  models,
   repos,
   canEdit,
 }: {
   slug: string
   roles: Role[]
-  models: string[]
   repos: Repo[]
   canEdit: boolean
 }) {
@@ -110,7 +114,6 @@ export function Roles({
               key={`${open}-${current?.version ?? 0}`}
               slug={slug}
               role={current}
-              models={models}
               repos={repos}
               canEdit={canEdit}
               onCreated={setOpen}
@@ -125,21 +128,49 @@ export function Roles({
 function RoleSheetBody({
   slug,
   role,
-  models,
   repos,
   canEdit,
   onCreated,
 }: {
   slug: string
   role: Role | null
-  models: string[]
   repos: Repo[]
   canEdit: boolean
   onCreated: (id: number) => void
 }) {
   const { t } = useTranslation('agent')
   const save = useSaveRole(slug)
+  const saveLlm = useSaveRoleLlm(slug)
+  const test = useTestLlmLevel(slug, role?.id ?? null)
   const prompt = useRolePrompt(slug, role?.id ?? null)
+  const level = useLlmLevel(slug, role?.id ?? 0, role !== null)
+  const projectLevel = useLlmLevel(slug, null)
+
+  async function submit(body: RoleIn, conn: ConnChange | null) {
+    let saved: Role
+    try {
+      saved = await save.mutateAsync({ ...body, id: role?.id })
+    } catch {
+      return // useSaveRole shows the error
+    }
+    if (conn) {
+      try {
+        await saveLlm.mutateAsync({
+          roleId: saved.id,
+          body: conn.clear
+            ? { base_url: '', model: '', clear: true }
+            : { ...conn, model: body.model },
+        })
+      } catch (e) {
+        toast.error(t('llm.roleConnFailed', { error: agentError(e) }))
+        if (!role) onCreated(saved.id)
+        return
+      }
+    }
+    toast.success(role ? t('roles.saved') : t('roles.created'))
+    if (!role) onCreated(saved.id)
+  }
+
   return (
     <>
       <SheetHeader className='border-b px-6 py-4'>
@@ -151,42 +182,30 @@ function RoleSheetBody({
         <SheetDescription>{t('roles.description')}</SheetDescription>
       </SheetHeader>
       <div className='px-6 py-5'>
-        <RoleEditor
-          role={role}
-          prompt={prompt.data}
-          promptPending={prompt.isPending}
-          models={models}
-          repos={repos}
-          canEdit={canEdit}
-          pending={save.isPending}
-          onSave={(body) =>
-            save.mutate(
-              { ...body, id: role?.id },
-              {
-                onSuccess: (saved) => {
-                  toast.success(role ? t('roles.saved') : t('roles.created'))
-                  if (!role) onCreated(saved.id)
-                },
-              }
-            )
-          }
-        />
-      </div>
-      <section className='grid gap-3 border-t px-6 py-5'>
-        <div className='grid gap-1'>
-          <h3 className='font-semibold'>{t('llm.roleTitle')}</h3>
-          <p className='text-sm text-muted-foreground'>
-            {t('llm.roleDescription')}
+        {role && level.isPending ? (
+          <Skeleton className='h-96 w-full' />
+        ) : role && level.isError ? (
+          <p role='alert' className='text-sm text-destructive'>
+            {t('llm.unavailable')}
           </p>
-        </div>
-        {role ? (
-          <RoleLlmSection slug={slug} roleId={role.id} canEdit={canEdit} />
         ) : (
-          <p className='text-sm text-muted-foreground'>
-            {t('llm.roleSaveFirst')}
-          </p>
+          <RoleEditor
+            // A saved connection comes back with a new time: start afresh.
+            key={level.data?.updated_at ?? 'never'}
+            slug={slug}
+            role={role}
+            level={role ? (level.data ?? null) : null}
+            projectLevel={projectLevel.data}
+            prompt={prompt.data}
+            promptPending={prompt.isPending}
+            repos={repos}
+            canEdit={canEdit}
+            pending={save.isPending || saveLlm.isPending}
+            onSave={(body, conn) => void submit(body, conn)}
+            onTest={(body) => test.mutateAsync(body)}
+          />
         )}
-      </section>
+      </div>
     </>
   )
 }

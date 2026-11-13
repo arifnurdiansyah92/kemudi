@@ -609,7 +609,8 @@ class RoleIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     template: Literal["frontend", "backend", "qa"]
     area: Literal["web", "backend", "qa"]
-    model: str = Field(pattern=r"^[A-Za-z0-9._:/-]{1,100}$")
+    # Empty: use the model of the connection the role resolves to.
+    model: str = Field("", pattern=r"^[A-Za-z0-9._:/-]{0,100}$")
     repo_ids: list[int] = Field(default_factory=list, max_length=20)
     allowed_paths: list[str] = Field(default_factory=list)
     denied_paths: list[str] = Field(default_factory=list)
@@ -831,6 +832,51 @@ def test_project_llm(slug: str, body: LlmIn | None = None, _: TaigaUser = Depend
                      db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
                      transport=Depends(get_llm_transport)):
     return _test(db, settings, slug, db.get(AwakProject, slug), None, body, transport)
+
+
+class ModelsIn(BaseModel):
+    role_id: int | None = None
+    # Unsaved values; without base_url the saved connection that applies is used.
+    base_url: str = Field("", max_length=500)
+    api_key: str = Field("", max_length=1000)
+
+    @field_validator("api_key")
+    @classmethod
+    def _key(cls, v: str) -> str:
+        v = v.strip()
+        if any(c.isspace() for c in v):
+            raise ValueError("the API key cannot contain spaces")
+        return v
+
+    @field_validator("base_url")
+    @classmethod
+    def _url(cls, v: str) -> str:
+        return llm_conn.validate_base_url(v) if v.strip() else ""
+
+
+@router.post("/llm/models")
+def list_llm_models(slug: str, body: ModelsIn | None = None, _: TaigaUser = Depends(admin),
+                    db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
+                    transport=Depends(get_llm_transport)):
+    """Model ids the provider offers, for the connection that would apply:
+    unsaved base URL/key when given (a stored key only for its own base URL),
+    else the role level, else the project level, else the server default."""
+    body = body or ModelsIn()
+    role = _get_role(db, slug, body.role_id) if body.role_id else None
+    row = role if role is not None else db.get(AwakProject, slug)
+    try:
+        if body.base_url:
+            key = body.api_key
+            if not key and row is not None and row.llm_base_url == body.base_url \
+                    and row.llm_api_key_enc:
+                key = llm_conn.stored_key(settings, row)
+            conn = llm_conn.Connection(body.base_url, key, "",
+                                       "agent" if role is not None else "project")
+        else:
+            conn = llm_conn.resolve(db, settings, slug, body.role_id)
+    except SecretKeyMissing as e:
+        raise _no_secret_key(e) from e
+    return llm_conn.list_models(conn, transport)
 
 
 @router.get("/roles/{role_id}/llm")

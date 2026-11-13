@@ -3,9 +3,13 @@ import { useFormat } from '@/i18n/format'
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
+  agentError,
   OVERLAY_MAX,
   roleAreas,
   roleTemplates,
+  type LlmIn,
+  type LlmLevel,
+  type LlmTest,
   type Repo,
   type Role,
   type RoleArea,
@@ -19,6 +23,9 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { KeyField, ModelPicker, ProviderFields } from './connection-fields'
+import { TestResult } from './llm-connection'
+import { hostOf } from './providers'
 
 const lines = (text: string) =>
   text
@@ -26,12 +33,18 @@ const lines = (text: string) =>
     .map((l) => l.trim())
     .filter(Boolean)
 
-function blankRole(model: string): RoleIn {
+/** What happens to the role's own connection on save: set it (the model is
+ * the role's model) or clear it. An empty `api_key` keeps the stored key. */
+export type ConnChange =
+  | { clear: true }
+  | { clear?: false; base_url: string; api_key?: string }
+
+function blankRole(): RoleIn {
   return {
     name: '',
     template: 'frontend',
     area: 'web',
-    model,
+    model: '',
     repo_ids: [],
     allowed_paths: [],
     denied_paths: [],
@@ -50,43 +63,100 @@ const textareaClass =
  * shown read-only above the one part an admin writes: the overlay.
  */
 export function RoleEditor({
+  slug,
   role,
+  level,
+  projectLevel,
   prompt,
   promptPending,
-  models,
   repos,
   canEdit,
   pending,
   onSave,
+  onTest,
 }: {
+  slug: string
   role: Role | null
+  /** This role's own connection; null for a role not saved yet. */
+  level: LlmLevel | null
+  /** The project level, whose `effective` is what this role inherits. */
+  projectLevel: LlmLevel | undefined
   prompt: RolePrompt | undefined
   promptPending?: boolean
-  models: string[]
   repos: Repo[]
   canEdit: boolean
   pending: boolean
-  onSave: (role: RoleIn) => void
+  onSave: (role: RoleIn, conn: ConnChange | null) => void
+  /** Tests unsaved values against this role's connection. */
+  onTest?: (body: LlmIn) => Promise<LlmTest>
 }) {
   const { t } = useTranslation(['agent', 'common'])
   const f = useFormat()
-  const initial: RoleIn = role ?? blankRole(models[0] ?? '')
+  const initial: RoleIn = role ?? blankRole()
   const [name, setName] = useState(initial.name)
   const [template, setTemplate] = useState<RoleTemplate>(initial.template)
   const [area, setArea] = useState<RoleArea>(initial.area)
-  const [model, setModel] = useState(initial.model)
+  // One model field: the role's own model, or (for an older role with its own
+  // connection and no model of its own) that connection's model.
+  const [model, setModel] = useState(
+    initial.model || (level?.set ? level.model : '')
+  )
   const [repoIds, setRepoIds] = useState<number[]>(initial.repo_ids)
   const [allowed, setAllowed] = useState(initial.allowed_paths.join('\n'))
   const [denied, setDenied] = useState(initial.denied_paths.join('\n'))
   const [overlay, setOverlay] = useState(initial.prompt_overlay)
   const [enabled, setEnabled] = useState(initial.enabled)
 
+  // The connection: the project's (inherited) or this agent's own.
+  const [custom, setCustom] = useState(level?.set ?? false)
+  const [baseUrl, setBaseUrl] = useState(level?.base_url ?? '')
+  const [key, setKey] = useState('')
+  const [replacing, setReplacing] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [result, setResult] = useState<LlmTest | null>(null)
+  const [testError, setTestError] = useState<string | null>(null)
+
   const over = overlay.length - OVERLAY_MAX
   const ro = !canEdit
-  // Keep a model the server no longer lists selectable, so saving doesn't change it.
-  const modelChoices =
-    models.includes(model) || !model ? models : [model, ...models]
-  const valid = name.trim() !== '' && model !== '' && over <= 0
+  const url = baseUrl.trim()
+  const typedKey = key.trim()
+  const savedLevel = level?.set ?? false
+  const inherited = projectLevel?.effective
+  const valid =
+    name.trim() !== '' &&
+    over <= 0 &&
+    (!custom || (url !== '' && model.trim() !== ''))
+
+  function connChange(): ConnChange | null {
+    if (!custom) return savedLevel ? { clear: true } : null
+    const same =
+      savedLevel &&
+      url === level?.base_url &&
+      model.trim() === level.model &&
+      !typedKey
+    if (same) return null
+    return { base_url: url, ...(typedKey ? { api_key: typedKey } : {}) }
+  }
+
+  async function test() {
+    if (!onTest) return
+    setTesting(true)
+    setResult(null)
+    setTestError(null)
+    try {
+      setResult(
+        await onTest({
+          base_url: url,
+          model: model.trim(),
+          ...(typedKey ? { api_key: typedKey } : {}),
+        })
+      )
+    } catch (e) {
+      setTestError(agentError(e))
+    } finally {
+      setTesting(false)
+    }
+  }
 
   return (
     <form
@@ -94,21 +164,24 @@ export function RoleEditor({
       onSubmit={(e) => {
         e.preventDefault()
         if (!valid) return
-        onSave({
-          name: name.trim(),
-          template,
-          area,
-          model,
-          repo_ids: repoIds,
-          allowed_paths: lines(allowed),
-          denied_paths: lines(denied),
-          prompt_overlay: overlay,
-          enabled,
-        })
+        onSave(
+          {
+            name: name.trim(),
+            template,
+            area,
+            model: model.trim(),
+            repo_ids: repoIds,
+            allowed_paths: lines(allowed),
+            denied_paths: lines(denied),
+            prompt_overlay: overlay,
+            enabled,
+          },
+          connChange()
+        )
       }}
     >
       <div className='grid items-start gap-4 sm:grid-cols-2'>
-        <div className='grid gap-1.5'>
+        <div className='grid gap-1.5 sm:col-span-2'>
           <Label htmlFor='role-name'>{t('roles.editor.name')}</Label>
           <Input
             id='role-name'
@@ -117,26 +190,6 @@ export function RoleEditor({
             readOnly={ro}
             onChange={(e) => setName(e.target.value)}
           />
-        </div>
-        <div className='grid gap-1.5'>
-          <Label htmlFor='role-model'>{t('roles.editor.model')}</Label>
-          <select
-            id='role-model'
-            value={model}
-            disabled={ro}
-            aria-describedby='role-model-hint'
-            onChange={(e) => setModel(e.target.value)}
-            className={cn(fieldClass, 'font-mono text-xs')}
-          >
-            {modelChoices.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <p id='role-model-hint' className='text-xs text-muted-foreground'>
-            {t('roles.editor.modelHint')}
-          </p>
         </div>
         <div className='grid gap-1.5'>
           <Label htmlFor='role-template'>{t('roles.editor.template')}</Label>
@@ -185,6 +238,115 @@ export function RoleEditor({
         />
         <Label htmlFor='role-enabled'>{t('roles.editor.enabled')}</Label>
       </div>
+
+      <section className='grid gap-4 border-t pt-5'>
+        <div className='grid gap-1'>
+          <h3 className='text-sm font-medium'>{t('llm.roleTitle')}</h3>
+          <p className='text-xs text-muted-foreground'>
+            {t('llm.roleDescription')}
+          </p>
+        </div>
+        <div className='flex items-center gap-3'>
+          <Switch
+            id='role-llm-default'
+            checked={!custom}
+            disabled={ro}
+            onCheckedChange={(useDefault) => {
+              setCustom(!useDefault)
+              setResult(null)
+              setTestError(null)
+            }}
+          />
+          <Label htmlFor='role-llm-default'>{t('llm.useDefault')}</Label>
+        </div>
+        <div className='grid items-start gap-4 sm:grid-cols-2'>
+          {custom && (
+            <>
+              <ProviderFields
+                id='role-llm'
+                url={baseUrl}
+                onUrl={setBaseUrl}
+                disabled={ro}
+              />
+              <KeyField
+                id='role-llm'
+                keySet={level?.key_set ?? false}
+                last4={level?.key_last4 ?? null}
+                value={key}
+                onChange={setKey}
+                replacing={replacing}
+                onReplacing={setReplacing}
+                disabled={ro}
+              />
+            </>
+          )}
+          <ModelPicker
+            id='role-model'
+            slug={slug}
+            request={
+              custom
+                ? {
+                    ...(role ? { role_id: role.id } : {}),
+                    base_url: url,
+                    ...(typedKey ? { api_key: typedKey } : {}),
+                  }
+                : {}
+            }
+            canFetch={canEdit && (!custom || hostOf(url) !== '')}
+            value={model}
+            onChange={setModel}
+            disabled={ro}
+            inherit={custom ? null : { model: inherited?.llm_model ?? '' }}
+            fallback={
+              custom
+                ? { source: 'agent', host: hostOf(url) }
+                : {
+                    source: inherited?.llm_source ?? 'project',
+                    host: inherited?.llm_host ?? '',
+                  }
+            }
+            hint={
+              custom
+                ? model.trim()
+                  ? t('llm.modelHint')
+                  : t('llm.roleModelRequired')
+                : t('roles.editor.modelHint')
+            }
+          />
+        </div>
+        {!custom && level && (
+          <p className='text-xs text-muted-foreground'>
+            {savedLevel
+              ? t('llm.roleClears')
+              : t('llm.roleHierarchy', {
+                  model: level.server_default.model,
+                  host: level.server_default.host || t('llm.noHost'),
+                })}
+          </p>
+        )}
+        {custom && role && onTest && (
+          <div className='grid gap-3'>
+            <div>
+              <Button
+                type='button'
+                size='sm'
+                variant='outline'
+                disabled={ro || testing || !valid}
+                onClick={() => void test()}
+              >
+                {testing && <Loader2 className='animate-spin' />}
+                {testing ? t('llm.testing') : t('llm.test')}
+              </Button>
+            </div>
+            {testError && (
+              <p role='alert' className='text-sm text-destructive'>
+                {testError}
+              </p>
+            )}
+            <TestResult result={result} />
+          </div>
+        )}
+      </section>
 
       <fieldset className='grid gap-2'>
         <legend className='text-sm font-medium'>

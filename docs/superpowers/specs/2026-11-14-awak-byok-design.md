@@ -31,6 +31,11 @@ for example a strong coding model for Backend and a cheap one for QA.
   group, not field by field: a level that sets a key sets its own base URL and
   model too. **(call)** Mixing a key from one level with a URL from another
   would send a key to the wrong provider.
+- **The role's model follows the connection.** The model used is the role's own
+  `model` when it sets one, else the effective level's model. A model carries
+  no secret, so a role can use the project's provider and key with a model of
+  its own. An empty role model (the default for new and seeded roles) means
+  "the connection's model".
 - **Provider type: OpenAI-compatible chat completions.** This covers
   sumopod, OpenAI, OpenRouter, DeepSeek, Groq, local vLLM and Ollama. Hermes
   speaks this protocol. Native Anthropic or Gemini APIs come later, if needed.
@@ -72,6 +77,11 @@ for example a strong coding model for Backend and a cheap one for QA.
   explicit `clear: true` removes the level.
 - `GET/PUT /projects/{slug}/agent/roles/{id}/llm`, same shape (agent level).
 - `POST .../llm/test` at both levels.
+- `POST /projects/{slug}/agent/llm/models` (admin), body `{role_id?, base_url?,
+  api_key?}`: the provider's `GET {base_url}/models` ids for the connection that
+  would apply (typed values when `base_url` is sent, a stored key only for its
+  own base URL; else role, project, server). Answers `{ok, models, source,
+  host, error}`; 10 s timeout, no redirects, the key is never returned.
 - `GET /projects/{slug}/agent/roles` gains `llm_source`
   (`agent|project|server`), `llm_model` and `llm_host`.
 - Writes require project admin; reads require membership. A key is never
@@ -84,9 +94,14 @@ Run the impeccable skill.
 - **Project settings → Agent.** A new section, "Model connection (all
   agents)", sits after Merge policy. It has base URL, model, a write-only key
   field ("•••• 1a2b — replace"), Test connection and Clear.
+- **Provider presets** (sumopod, OpenAI, OpenRouter, DeepSeek, Groq, Ollama,
+  Custom) fill the base URL; editing the URL makes it Custom.
+- **Model picker.** A searchable list from the models endpoint, free text
+  allowed, Refresh, and the list's source ("From project · ai.sumopod.com").
 - **Role editor.** A "Model connection" block with a "Use project default"
-  toggle. When off, it shows the same fields as the global section. Each role
-  row shows its source and model.
+  toggle. When off, it shows provider, base URL and key. The model picker is
+  always there and is the one model field (the role's model is also its own
+  connection's model). Each role row shows its source and effective model.
 - Strings go in the `agent` namespace, en and id.
 
 ## Not in scope
