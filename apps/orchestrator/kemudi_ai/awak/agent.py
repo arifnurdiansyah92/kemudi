@@ -57,10 +57,15 @@ class HermesAgent:
             ],
             "stream": False,
         }
+        # Hermes derives a chat session id from the system prompt + first user
+        # message. A retry of the same attempt would land in the session of the
+        # cut-off run, which Hermes still holds as active (409). One session per
+        # run: the alias is unique per run.
+        headers = {"X-Hermes-Session-Id": alias}
         t0 = time.monotonic()
         content, usage, ok = "", {}, False
         try:
-            r = self.client.post("/chat/completions", json=body)
+            r = self.client.post("/chat/completions", json=body, headers=headers)
             r.raise_for_status()
             data = r.json()
             content = data["choices"][0]["message"].get("content") or ""
