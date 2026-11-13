@@ -16,13 +16,14 @@ import {
   Palette,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { projectQuery } from '@/lib/taiga/queries'
+import { projectQuery, useProjects } from '@/lib/taiga/queries'
 import { type NavGroup } from './types'
 
 /** Sidebar groups: the workspace, then the open project's views. */
 export function useNavGroups(): NavGroup[] {
   const { t } = useTranslation(['shell', 'common', 'contract'])
   const { slug } = useParams({ strict: false }) as { slug?: string }
+  const { data: projects } = useProjects()
   const { data: project } = useQuery({
     ...projectQuery(slug ?? ''),
     enabled: !!slug,
@@ -37,6 +38,8 @@ export function useNavGroups(): NavGroup[] {
           title: t('common:terms.project_other'),
           url: '/projects',
           icon: FolderKanban,
+          // How many projects the user belongs to; none means no badge.
+          badge: projects?.length ? String(projects.length) : undefined,
         },
       ],
     },
