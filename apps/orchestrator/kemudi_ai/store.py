@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, String, Text, create_engine
+from sqlalchemy import JSON, ForeignKey, String, Text, UniqueConstraint, create_engine, inspect, text
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -28,6 +28,10 @@ __all__ = [
     "Decision",
     "AwakJob",
     "AwakEvent",
+    "AwakKey",
+    "AwakProject",
+    "AwakRepo",
+    "AwakRole",
     "record_event",
     "make_session",
     "init_db",
@@ -138,6 +142,87 @@ class AwakJob(Base):
     cost_idr: Mapped[float] = mapped_column(default=0.0)
     started_at: Mapped[datetime] = mapped_column(default=now)
     updated_at: Mapped[datetime] = mapped_column(default=now)
+    # Iteration 2: pinned at pick, kept for rework.
+    repo_id: Mapped[int | None] = mapped_column(default=None)
+    role_id: Mapped[int | None] = mapped_column(default=None)
+    prompt_version: Mapped[str] = mapped_column(String(80), default="")
+    merge_mode: Mapped[str] = mapped_column(String(10), default="")  # snapshot at pick
+    # '' | requested | merging | merged | failed
+    merge_state: Mapped[str] = mapped_column(String(12), default="")
+    merged_sha: Mapped[str] = mapped_column(String(64), default="")
+    merge_error: Mapped[str] = mapped_column(Text, default="")
+
+
+class AwakKey(Base):
+    """A Kemudi-generated SSH key pair. The private half is a Fernet token."""
+
+    __tablename__ = "awak_keys"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_kind: Mapped[str] = mapped_column(String(10))  # repo | machine
+    owner_id: Mapped[int] = mapped_column()
+    public_key: Mapped[str] = mapped_column(Text)
+    fingerprint: Mapped[str] = mapped_column(String(100))
+    private_key_enc: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class AwakProject(Base):
+    """Per-project Awak settings (Project settings -> Agent)."""
+
+    __tablename__ = "awak_projects"
+    slug: Mapped[str] = mapped_column(String(200), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(default=False)
+    merge_mode: Mapped[str] = mapped_column(String(10), default="approve")
+    deploy_command: Mapped[str] = mapped_column(Text, default="")
+    executor: Mapped[str] = mapped_column(String(10), default="local")
+    ssh_host: Mapped[str] = mapped_column(String(255), default="")
+    ssh_port: Mapped[int] = mapped_column(default=22)
+    ssh_user: Mapped[str] = mapped_column(String(64), default="")
+    ssh_key_id: Mapped[int | None] = mapped_column(ForeignKey("awak_keys.id"), default=None)
+    preflight: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    updated_by: Mapped[str] = mapped_column(String(200), default="")
+    updated_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class AwakRepo(Base):
+    __tablename__ = "awak_repos"
+    __table_args__ = (UniqueConstraint("project_slug", "name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_slug: Mapped[str] = mapped_column(String(200))
+    name: Mapped[str] = mapped_column(String(100))
+    role: Mapped[str] = mapped_column(String(10), default="web")  # web|api|mobile|other
+    url: Mapped[str] = mapped_column(String(500))
+    default_branch: Mapped[str] = mapped_column(String(100), default="main")
+    subdir: Mapped[str] = mapped_column(String(200), default="")
+    # Newline-separated command lines.
+    install_cmd: Mapped[str] = mapped_column(Text, default="")
+    check_cmd: Mapped[str] = mapped_column(Text, default="")
+    build_cmd: Mapped[str] = mapped_column(Text, default="")
+    run_cmd: Mapped[str] = mapped_column(Text, default="")
+    key_id: Mapped[int | None] = mapped_column(ForeignKey("awak_keys.id"), default=None)
+    last_check: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    position: Mapped[int] = mapped_column(default=0)
+    updated_by: Mapped[str] = mapped_column(String(200), default="")
+    updated_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class AwakRole(Base):
+    __tablename__ = "awak_roles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_slug: Mapped[str] = mapped_column(String(200))
+    template: Mapped[str] = mapped_column(String(20))  # frontend|backend|qa
+    name: Mapped[str] = mapped_column(String(100))
+    area: Mapped[str] = mapped_column(String(20))  # web|backend|qa
+    model: Mapped[str] = mapped_column(String(100))
+    repo_ids: Mapped[list[Any]] = mapped_column(default=list)
+    allowed_paths: Mapped[list[Any]] = mapped_column(default=list)
+    denied_paths: Mapped[list[Any]] = mapped_column(default=list)
+    prompt_overlay: Mapped[str] = mapped_column(Text, default="")
+    enabled: Mapped[bool] = mapped_column(default=True)
+    version: Mapped[int] = mapped_column(default=1)
+    updated_by: Mapped[str] = mapped_column(String(200), default="")
+    updated_at: Mapped[datetime] = mapped_column(default=now)
 
 
 class AwakEvent(Base):
@@ -175,6 +260,38 @@ def make_session(db_url: str) -> sessionmaker[Session]:
 
 def init_db(engine) -> None:
     Base.metadata.create_all(engine)
+    _migrate(engine)
+
+
+# Tables that existed before a column was added to them. `create_all` never
+# alters an existing table, so missing columns are added here.
+_MIGRATED_TABLES = ("awak_jobs",)
+
+
+def _sql_literal(value: Any) -> str:
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        return str(value)
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _migrate(engine) -> None:
+    for name in _MIGRATED_TABLES:
+        table = Base.metadata.tables[name]
+        existing = {c["name"] for c in inspect(engine).get_columns(name)}
+        missing = [c for c in table.columns if c.name not in existing]
+        if not missing:
+            continue
+        with engine.begin() as conn:
+            for col in missing:
+                ddl = f"ALTER TABLE {name} ADD COLUMN {col.name} {col.type.compile(dialect=engine.dialect)}"
+                default = col.default.arg if col.default is not None else None
+                if default is not None and not callable(default):
+                    ddl += f" DEFAULT {_sql_literal(default)}"
+                    if not col.nullable:
+                        ddl += " NOT NULL"
+                conn.execute(text(ddl))
 
 
 def record_ai_call(session: Session, **fields: Any) -> AiCall:

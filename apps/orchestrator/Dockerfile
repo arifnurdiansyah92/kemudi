@@ -1,7 +1,8 @@
 FROM python:3.12-slim
 
 # git: the Awak loop clones, fetches and pushes awak/* branches.
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+# openssh-client: deploy keys (git over SSH), machine preflight and deploy.
+RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /usr/local/bin/uv

@@ -3,7 +3,6 @@
 import json
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from functools import lru_cache
 from typing import Any, Literal
 
 from fastapi import (
@@ -18,70 +17,46 @@ from fastapi import (
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session, sessionmaker
 
-from .auth import TaigaUser, current_user, project_access
+from .auth import TaigaUser
+from .awak import agent_api
 from .backtest import metrics, run_backtest
 from .baseline import BaselineItem, draft_baseline
 from .config import Settings, get_settings
+from .deps import _sessions, actor, admin, get_db, get_llm, get_sessions, member
 from .documents import extract_sections
-from .llm import LLM, HermesLLM, LLMError
+from .llm import LLM, LLMError
 from .pricing import RateCard
 from .store import (
     BacktestResult,
     BacktestRun,
     BaselineVersion,
     Contract,
-    make_session,
     record_decision,
 )
+
+__all__ = ["app", "_sessions", "get_sessions", "get_llm", "get_db", "member", "admin", "actor"]
+
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     settings = get_settings()
-    if settings.awak_project_slugs():
-        from .awak.service import start_worker
+    # Respect a test override of the session factory, so a TestClient never
+    # opens the real database file.
+    override = _app.dependency_overrides.get(get_sessions)
+    sessions = override() if override else _sessions(settings.ai_db_url)
+    from .awak import config_store
 
-        start_worker(settings, _sessions(settings.ai_db_url))
+    with sessions() as db:
+        config_store.seed_from_env(db, settings)
+        enabled = config_store.enabled_slugs(db)
+    if settings.awak_project_slugs() or enabled:
+        agent_api.start_worker_once(settings, sessions)
     yield
 
 
 # The gateway and the Vite proxy strip the /api/kemudi prefix.
 app = FastAPI(title="Kemudi AI", lifespan=_lifespan)
-
-
-@lru_cache
-def _sessions(db_url: str) -> sessionmaker[Session]:
-    return make_session(db_url)
-
-
-def get_sessions(settings: Settings = Depends(get_settings)) -> sessionmaker[Session]:
-    return _sessions(settings.ai_db_url)
-
-
-def get_llm(
-    settings: Settings = Depends(get_settings),
-    sessions: sessionmaker[Session] = Depends(get_sessions),
-) -> LLM:
-    return HermesLLM(settings, sessions)
-
-
-def get_db(sessions: sessionmaker[Session] = Depends(get_sessions)):
-    with sessions() as s:
-        yield s
-
-
-def member(slug: str, user: TaigaUser = Depends(current_user), settings: Settings = Depends(get_settings)):
-    project_access(slug, user, settings)
-    return user
-
-
-def admin(slug: str, user: TaigaUser = Depends(current_user), settings: Settings = Depends(get_settings)):
-    if not project_access(slug, user, settings).is_admin:
-        raise HTTPException(403, "project admins only")
-    return user
-
-
-def actor(user: TaigaUser) -> str:
-    return f"{user.username} ({user.id})"
+app.include_router(agent_api.router)
 
 
 def _contract(db: Session, slug: str) -> Contract:
@@ -366,11 +341,12 @@ async def intake(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
+    from .awak import config_store
     from .awak.intake import create_stories, draft_stories
     from .awak.taiga import TaigaError
     from .documents import extract_text
 
-    if slug not in settings.awak_project_slugs():
+    if slug not in settings.awak_project_slugs() and not config_store.is_enabled(db, slug):
         raise HTTPException(409, "Awak is not enabled for this project")
     body = text.strip()
     if file is not None:

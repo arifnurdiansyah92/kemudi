@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     max_infra_errors: int = 3
     lang: str = "id"
 
+    # --- Awak project setup (docs/superpowers/specs/2026-11-14-awak-project-setup-design.md)
+    # Fernet key (urlsafe base64, 32 bytes) that encrypts generated SSH keys at
+    # rest. Empty = key generation and key use answer 503.
+    secret_key: str = ""
+    ssh_dir: str = "/var/lib/kemudi-ai/ssh"
+    repos_dir: str = "/var/lib/kemudi-ai/repos"
+
     def awak_project_slugs(self) -> list[str]:
         return [s.strip() for s in self.awak_projects.split(",") if s.strip()]
 

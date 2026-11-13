@@ -12,7 +12,7 @@ from kemudi_ai.awak.taiga import TaigaError, assert_local
 from kemudi_ai.awak.verdict import evaluate, safe_screenshot
 from kemudi_ai.awak.worker import Worker
 from kemudi_ai.config import Settings
-from kemudi_ai.store import AwakJob, make_session
+from kemudi_ai.store import AwakJob, AwakProject, AwakRepo, make_session
 
 from .awak_fakes import PNG, FakeAgent, FakeRunner, FakeTaiga, commit_file, git, qa_report
 from .fakes import FakeLLM
@@ -341,3 +341,46 @@ def test_infra_error_after_coding_resumes_without_recoding(tmp_path, repo):
     assert taiga.status_of(1) == "done"
     assert [p for p, _ in agent.calls].count("awak.code") == 1
     assert job_of(sessions).infra_errors == 1
+
+
+# --- iteration 2: projects come from the database -------------------------------
+
+def test_worker_serves_db_enabled_projects(tmp_path, repo):
+    settings = Settings(awak_projects="", ai_db_url="sqlite:///:memory:")
+    sessions = make_session(settings.ai_db_url)
+    with sessions() as db:
+        db.add(AwakProject(slug="kemudi", enabled=True, merge_mode="manual"))
+        db.add(AwakRepo(project_slug="kemudi", name="kemudi", url=settings.host_git,
+                        subdir="apps/web"))
+        db.commit()
+    taiga = FakeTaiga()
+    w = Worker(settings, sessions, taiga, FakeTaiga("awak-qa"), FakeAgent(),
+               FakeRunner(tmp_path / "ws", qa=["pass"]), repo,
+               secret_values=["super-secret-value"], sleep=lambda s: None)
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    assert w.tick()
+    assert taiga.status_of(1) == "done"
+    with sessions() as db:
+        db.get(AwakProject, "kemudi").enabled = False
+        db.commit()
+    taiga.add(2, 13, "Lain", DESC)
+    assert not w.tick()  # disabled projects are not served
+
+
+def test_disabling_mid_job_stops(tmp_path, repo):
+    holder = {}
+
+    def code(d, n):
+        commit_file(d, "f.txt", "x")
+        with holder["S"]() as db:
+            db.get(AwakProject, "kemudi").enabled = False
+            db.commit()
+
+    w, taiga, sessions = make_worker(tmp_path, repo, FakeAgent(code=code),
+                                     FakeRunner(tmp_path / "ws", qa=["pass"]))
+    holder["S"] = sessions
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    assert job_of(sessions).state == "stopped"
+    assert taiga.status_of(1) == "in-progress"
+    assert "dimatikan" in taiga.texts(1)[-1]

@@ -32,5 +32,5 @@ def start_worker(settings: Settings, sessions: sessionmaker[Session]) -> threadi
     worker = build_worker(settings, sessions)  # fails fast on a non-local Taiga
     t = threading.Thread(target=worker.run_forever, name="awak-worker", daemon=True)
     t.start()
-    log.warning("Awak worker started for %s", settings.awak_project_slugs())
+    log.warning("Awak worker started (seed: %s)", settings.awak_project_slugs())
     return t

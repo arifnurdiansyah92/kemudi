@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import Settings
 from ..store import AwakJob, record_event
-from . import secrets
+from . import config_store, secrets
 from .agent import Agent, AgentError
 from .gitops import GitError, Repo, branch_for
 from .intake import TAG
@@ -71,10 +71,18 @@ class Worker:
         self.repo = repo
         self.secret_values = secrets.known_values() if secret_values is None else secret_values
         self.sleep = sleep
+        self._seeded = False
 
     # ------------------------------------------------------------------ loop
+    def _seed(self) -> None:
+        if not self._seeded:
+            with self.sessions() as db:
+                config_store.seed_from_env(db, self.s)
+            self._seeded = True
+
     def recover(self) -> None:
         """A job left running by a crash becomes queued again (infra error)."""
+        self._seed()
         with self.sessions() as db:
             for job in db.query(AwakJob).filter_by(state="running"):
                 job.state = "queued"
@@ -84,7 +92,10 @@ class Worker:
 
     def tick(self) -> bool:
         """Process at most one story. Returns True if it did any work."""
-        for slug in self.s.awak_project_slugs():
+        self._seed()
+        with self.sessions() as db:
+            slugs = config_store.enabled_slugs(db)
+        for slug in slugs:
             project = self.taiga.project(slug)
             picked = self._pick(project)
             if picked:
@@ -326,6 +337,9 @@ class Worker:
         return res
 
     def _ours(self, story_id: int, statuses: set[str], project: Project) -> dict:
+        with self.sessions() as db:
+            if not config_store.is_enabled(db, project.slug):
+                raise Stop("Awak dimatikan untuk proyek ini.")
         st = self.taiga.story(story_id)
         if TAG not in tag_names(st):
             raise Stop(f"tag `{TAG}` dihapus.")
