@@ -132,6 +132,7 @@
   "errorPage": {
     "goBack": "Go back",
     "home": "Back to home",
+    "backToProjects": "Back to projects",
     "forbidden": {
       "title": "Access forbidden",
       "description": "You don't have permission <br/>to view this page."

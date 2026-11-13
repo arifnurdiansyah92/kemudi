@@ -1,4 +1,4 @@
-import { useNavigate, useRouter } from '@tanstack/react-router'
+import { Link, useNavigate, useRouter } from '@tanstack/react-router'
 import { Trans, useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 
@@ -18,8 +18,11 @@ export function NotFoundError() {
           <Button variant='outline' onClick={() => history.go(-1)}>
             {t('errorPage.goBack')}
           </Button>
-          <Button onClick={() => navigate({ to: '/' })}>
+          <Button variant='outline' onClick={() => navigate({ to: '/' })}>
             {t('errorPage.home')}
+          </Button>
+          <Button asChild>
+            <Link to='/projects'>{t('errorPage.backToProjects')}</Link>
           </Button>
         </div>
       </div>
