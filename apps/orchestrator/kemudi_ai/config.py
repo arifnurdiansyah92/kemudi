@@ -17,6 +17,33 @@ class Settings(BaseSettings):
     token_price_idr_per_1k: float = 0.0
     llm_timeout_s: float = 180.0
 
+    # --- Awak dev loop (docs/superpowers/specs/2026-11-13-awak-dev-loop-design.md)
+    # Comma-separated project slugs the worker serves; empty = worker off.
+    awak_projects: str = ""
+    awak_username: str = "awak"
+    awak_password: str = ""
+    qa_username: str = "awak-qa"
+    qa_password: str = ""
+    qa_project: str = "awak-qa-sandbox"
+    awak_url: str = "http://kemudi-awak:8642/v1"
+    awak_api_key: str = ""
+    awak_model: str = "deepseek-flash"
+    qa_model: str = "deepseek-flash"
+    awak_timeout_s: float = 1500.0
+    runner_url: str = "http://kemudi-runner:8800"
+    runner_key: str = ""
+    workspace_dir: str = "/workspace"
+    bare_repo: str = "/var/lib/kemudi-ai/awak.git"
+    host_git: str = "/host-git"
+    awak_uid: int = 10000
+    poll_interval_s: float = 20.0
+    max_attempts: int = 3
+    max_infra_errors: int = 3
+    lang: str = "id"
+
+    def awak_project_slugs(self) -> list[str]:
+        return [s.strip() for s in self.awak_projects.split(",") if s.strip()]
+
 
 @lru_cache
 def get_settings() -> Settings:

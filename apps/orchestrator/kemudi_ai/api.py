@@ -1,6 +1,7 @@
 """HTTP API for apps/web, served at /api/kemudi behind the gateway."""
 
 import json
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Any, Literal
@@ -33,8 +34,18 @@ from .store import (
     record_decision,
 )
 
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    settings = get_settings()
+    if settings.awak_project_slugs():
+        from .awak.service import start_worker
+
+        start_worker(settings, _sessions(settings.ai_db_url))
+    yield
+
+
 # The gateway and the Vite proxy strip the /api/kemudi prefix.
-app = FastAPI(title="Kemudi AI")
+app = FastAPI(title="Kemudi AI", lifespan=_lifespan)
 
 
 @lru_cache
@@ -332,3 +343,64 @@ def set_verdict(
     db.commit()
     record_decision(db, actor(user), "verdict", f"{slug}#{run.id}/{r.ticket_id}", {"verdict": body.verdict})
     return _result(r)
+
+
+# --- Awak dev loop -------------------------------------------------------------
+# docs/superpowers/specs/2026-11-13-awak-dev-loop-design.md
+
+
+def get_taiga_bot(settings: Settings = Depends(get_settings)):
+    from .awak.taiga import Taiga
+
+    return Taiga(settings.taiga_api_url, settings.awak_username, settings.awak_password)
+
+
+@app.post("/projects/{slug}/intake")
+async def intake(
+    slug: str,
+    text: str = Form(""),
+    lang: Literal["id", "en"] = Form("id"),
+    file: UploadFile | None = File(None),
+    user: TaigaUser = Depends(admin),
+    llm: LLM = Depends(get_llm),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    from .awak.intake import create_stories, draft_stories
+    from .awak.taiga import TaigaError
+    from .documents import extract_text
+
+    if slug not in settings.awak_project_slugs():
+        raise HTTPException(409, "Awak is not enabled for this project")
+    body = text.strip()
+    if file is not None:
+        try:
+            body += "\n\n" + extract_text(file.filename or "", await file.read())
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+    if not body.strip():
+        raise HTTPException(400, "send text or a file")
+    try:
+        drafts = draft_stories(llm, body, lang)
+    except LLMError as e:
+        raise HTTPException(502, f"the model did not return stories: {e}") from e
+    try:
+        created = create_stories(get_taiga_bot(settings), slug, drafts)
+    except TaigaError as e:
+        raise HTTPException(502, str(e)) from e
+    record_decision(db, actor(user), "awak_intake", slug,
+                    {"stories": [c["ref"] for c in created], "chars": len(body)})
+    return {"stories": created}
+
+
+@app.get("/projects/{slug}/awak/jobs")
+def awak_jobs(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(get_db)):
+    from .store import AwakJob
+
+    jobs = db.query(AwakJob).filter_by(project_slug=slug).order_by(AwakJob.id.desc()).all()
+    return {"jobs": [
+        {"story_ref": j.story_ref, "branch": j.branch, "state": j.state, "phase": j.phase,
+         "attempts": j.attempts, "infra_errors": j.infra_errors, "last_sha": j.last_sha,
+         "cost_idr": j.cost_idr, "started_at": j.started_at, "updated_at": j.updated_at}
+        for j in jobs
+    ]}

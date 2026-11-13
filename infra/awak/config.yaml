@@ -1,0 +1,127 @@
+# Kemudi: Awak, the coding agent (Hermes with terminal and file tools).
+#
+# Mounted read-only at /etc/hermes/config.yaml (Hermes' managed scope), so the
+# agent cannot change its own settings. No secrets here: the model is reached
+# through kemudi-llm-proxy, which adds the provider key; this container never
+# holds it. See docs/superpowers/specs/2026-11-13-awak-dev-loop-design.md.
+
+model:
+  provider: custom
+  base_url: http://kemudi-llm-proxy/v1
+  api_key: via-proxy
+  default: ${KEMUDI_AWAK_MODEL}
+
+# --- Tools: terminal and file only -------------------------------------------
+platform_toolsets:
+  api_server: [terminal, file, todo]
+toolsets: [terminal, file, todo]
+mcp_servers: {}
+
+terminal:
+  backend: local
+  cwd: /workspace
+  timeout: 600
+
+agent:
+  max_turns: 80
+  run_budget_seconds: 1200
+  disabled_toolsets:
+    - bot_room
+    - browser
+    - catalog
+    - clarify
+    - code_execution
+    - computer_use
+    - connections
+    - context_engine
+    - cronjob
+    - delegation
+    - desktop_ui
+    - discord
+    - discord_admin
+    - feishu_doc
+    - feishu_drive
+    - image_gen
+    - kanban
+    - memory
+    - onboarding
+    - project
+    - search
+    - session_search
+    - skills
+    - stt
+    - tts
+    - video
+    - video_gen
+    - vision
+    - web
+    - x_search
+
+# Unattended: nobody can answer a prompt, and the container is the boundary
+# (internal network, no secrets, no Docker socket).
+approvals:
+  mode: "off"
+  unattended_mode: approve
+  single_query_mode: approve
+  deny:
+    - "git push*"
+    - "*git remote add*"
+    - "git checkout -b*"
+    - "git switch*"
+    - "git reset --hard*"
+    - "git rebase*"
+    - "*curl*|*sh*"
+
+security:
+  # AGENTS.md/CLAUDE.md stay off limits (default true): refused when unattended.
+  protected_instruction_files: true
+
+# --- No memory, skills or background LLM work --------------------------------
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+  nudge_interval: 0
+  provider: ""
+
+skills:
+  project_discovery: false
+  auto_load: []
+  inline_shell: false
+
+curator:
+  enabled: false
+
+compression:
+  enabled: true
+
+checkpoints:
+  enabled: false
+
+smart_model_routing:
+  enabled: false
+
+auxiliary:
+  title_generation:
+    enabled: false
+    model_upgrade_enabled: false
+  background_review:
+    enabled: false
+
+plugins:
+  enabled: []
+
+model_catalog:
+  enabled: false
+
+updates:
+  check: false
+
+telemetry:
+  shared_metrics:
+    enabled: false
+    send: false
+
+gateway:
+  platforms:
+    api_server:
+      tool_progress_events: false

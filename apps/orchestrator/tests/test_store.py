@@ -22,4 +22,4 @@ def test_roundtrip_contract_and_baseline():
 
 def test_ai_calls_append_only():
     writers = [n for n in store.__all__ if n.startswith(("record_", "update_", "delete_"))]
-    assert writers == ["record_ai_call", "record_decision"]
+    assert sorted(writers) == ["record_ai_call", "record_decision", "record_event"]

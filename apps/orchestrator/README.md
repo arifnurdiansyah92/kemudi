@@ -43,3 +43,61 @@ These come from the environment, normally `infra/.env`:
 | `KEMUDI_AI_MODEL` | `deepseek-flash` |
 | `KEMUDI_AI_DB_URL` | `sqlite:///data/kemudi-ai.db` |
 | `KEMUDI_TAIGA_API_URL` | `http://localhost:9100/api/v1` |
+
+## Awak dev loop
+
+Iteration 1 of the loop in
+[the design](../../docs/superpowers/specs/2026-11-13-awak-dev-loop-design.md):
+a request becomes stories; Awak (Hermes) codes each one on an `awak/us-<n>`
+branch; the runner checks it (`tsc -b`, eslint, vitest, `vite build`) and runs
+a Playwright spec written by a QA agent, twice, with a screenshot per
+acceptance criterion; the card moves to Done (tagged `awaiting-merge`) or back
+to In progress with the failures, up to 3 attempts.
+
+Done means QA passed, not merged: review the branch yourself
+(`git log main..awak/us-<n>`, `git diff main...awak/us-<n>`) and merge it.
+
+### Run it
+
+1. Fill the Awak block in `infra/.env` (see `infra/.env.example`).
+2. Start the stack with the profile:
+   ```sh
+   docker compose -f infra/docker-compose.dev.yml --env-file infra/.env --profile awak up -d --build
+   ```
+3. Create the bot users and projects (idempotent):
+   ```sh
+   docker compose -f infra/docker-compose.dev.yml --env-file infra/.env exec -T \
+     -e KEMUDI_AWAK_PASSWORD -e KEMUDI_QA_PASSWORD -e AWAK_PM=webdev \
+     kemudi-back python manage.py shell < infra/awak/bootstrap.py
+   ```
+   (Export the two passwords from `infra/.env` into your shell first.)
+4. Add work, either way:
+   - `POST /api/kemudi/projects/kemudi/intake` with form field `text` (or a
+     PDF/DOCX `file`), as a project admin; or
+   - in the board: a story in **Ready** with the tag `agent-ready` and an
+     `## Acceptance criteria` list in its description.
+
+The worker polls every 20 s and takes one story at a time. To stop Awak on a
+story, remove the tag, block the card or move it; to send a Done story back,
+move it to In progress and write what is wrong in a comment.
+
+### Configuration
+
+| Variable | Default | |
+| --- | --- | --- |
+| `KEMUDI_AWAK_PROJECTS` | (empty: worker off) | project slugs, comma-separated |
+| `KEMUDI_AWAK_PASSWORD`, `KEMUDI_QA_PASSWORD` | | Taiga users `awak`, `awak-qa` |
+| `KEMUDI_AWAK_API_KEY`, `KEMUDI_RUNNER_KEY` | | guard kemudi-awak / kemudi-runner ports |
+| `KEMUDI_AWAK_MODEL`, `KEMUDI_QA_MODEL` | `deepseek-flash` | |
+| `KEMUDI_MAX_ATTEMPTS` | `3` | |
+
+### Boundaries
+
+- kemudi-awak runs on an internal network only and holds no secrets; the
+  model key is added by kemudi-llm-proxy. kemudi-runner also holds no
+  secrets but can reach the internet (for npm); the QA token it gets per run
+  belongs to `awak-qa`, a member of the QA sandbox project only.
+- Only `awak/us-<n>` branches are pushed, and only into the local repo's git
+  data (`.git`, mounted into the orchestrator). Nothing goes to GitHub.
+- Diffs and comments are scanned for secrets before they leave the sandbox.
+- The worker refuses any Taiga that is not the local dev stack.
