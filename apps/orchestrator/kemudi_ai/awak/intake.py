@@ -20,9 +20,18 @@ def area_tag(area: str) -> str:
 
 
 def story_areas(tags: list[str]) -> list[str]:
-    """The areas a story's tags name; no area tag means `web` (iteration 1)."""
-    found = [t[len(AREA_PREFIX):] for t in tags
-             if t.startswith(AREA_PREFIX) and t[len(AREA_PREFIX):] in AREAS]
+    """The areas a story's tags name; no area tag means `web` (iteration 1).
+
+    `area-both` (intake's tag for a story touching web and backend) names
+    both, so the worker asks a human to split it or keep one area.
+    """
+    found = []
+    for t in tags:
+        area = t[len(AREA_PREFIX):] if t.startswith(AREA_PREFIX) else None
+        if area == "both":
+            found += AREAS
+        elif area in AREAS:
+            found.append(area)
     return sorted(set(found)) or ["web"]
 
 
@@ -52,12 +61,21 @@ class StoryDraft(BaseModel):
         v = str(v or "web").strip().lower()
         return v if v in ("web", "backend", "both") else "both"
 
-    def auto_ready(self) -> tuple[bool, str]:
-        """Whether Awak may pick it up without a PM, and why not."""
+    def auto_ready(self, enabled_areas: set[str] | None = None) -> tuple[bool, str]:
+        """Whether Awak may pick it up without a PM, and why not.
+
+        `enabled_areas` are the areas with an enabled agent role; None keeps
+        iteration 1's rule (web only), which the CLI uses.
+        """
         if not self.criteria:
             return False, "belum ada kriteria penerimaan"
-        if self.area != "web":
-            return False, "butuh perubahan backend, belum bisa diuji otomatis per branch"
+        if enabled_areas is None:
+            if self.area != "web":
+                return False, "butuh perubahan backend, belum bisa diuji otomatis per branch"
+        elif self.area == "both":
+            return False, "menyentuh web dan backend sekaligus; sebaiknya dipecah per area"
+        elif self.area not in enabled_areas:
+            return False, f"tidak ada peran agen aktif untuk area {self.area}"
         if len(self.criteria) > MAX_CRITERIA:
             return False, f"lebih dari {MAX_CRITERIA} kriteria penerimaan; sebaiknya dipecah"
         return True, ""
@@ -76,18 +94,28 @@ def draft_stories(llm: LLM, text: str, lang: str = "id") -> list[StoryDraft]:
     return out
 
 
-def create_stories(taiga: Taiga, project_slug: str, drafts: list[StoryDraft]) -> list[dict]:
+HELD_REASON = "ditahan oleh PM saat intake"
+
+
+def create_stories(taiga: Taiga, project_slug: str, drafts: list[StoryDraft],
+                   enabled_areas: set[str] | None = None,
+                   hold: set[int] = frozenset()) -> list[dict]:
+    """Create the stories; Ready + `agent-ready` only when `auto_ready` holds
+    and the PM did not hold it back (indexes in `hold`). Every story gets its
+    area tag."""
     project = taiga.project(project_slug)
     ready, new = project.status("ready"), project.status("new")
     created = []
-    for d in drafts:
-        ok, why = d.auto_ready()
+    for i, d in enumerate(drafts):
+        ok, why = d.auto_ready(enabled_areas)
+        if ok and i in hold:
+            ok, why = False, HELD_REASON
         story = taiga.create_story(
             project.id,
             subject=d.subject,
             description=format_description(d.description, d.criteria),
             status=ready if ok else new,
-            tags=[TAG] if ok else [],
+            tags=([TAG] if ok else []) + [area_tag(d.area)],
         )
         if not ok:
             taiga.comment(

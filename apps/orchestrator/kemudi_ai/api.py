@@ -57,6 +57,7 @@ async def _lifespan(_app: FastAPI):
 # The gateway and the Vite proxy strip the /api/kemudi prefix.
 app = FastAPI(title="Kemudi AI", lifespan=_lifespan)
 app.include_router(agent_api.router)
+app.include_router(agent_api.intake_router)
 
 
 def _contract(db: Session, slug: str) -> Contract:

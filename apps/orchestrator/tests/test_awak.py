@@ -50,8 +50,9 @@ def test_intake_creates_ready_and_held_stories():
     created = create_stories(taiga, "kemudi", draft_stories(llm, "butuh badge"))
     assert [c["ready"] for c in created] == [True, False]
     first, second = (taiga.stories_by_id[c["id"]] for c in created)
-    assert taiga.status_of(first["id"]) == "ready" and first["tags"] == [["agent-ready", None]]
-    assert taiga.status_of(second["id"]) == "new" and second["tags"] == []
+    assert taiga.status_of(first["id"]) == "ready"
+    assert first["tags"] == [["agent-ready", None], ["area-web", None]]
+    assert taiga.status_of(second["id"]) == "new" and second["tags"] == [["area-backend", None]]
     assert "backend" in taiga.texts(second["id"])[0]
     assert criteria(first["description"]) == ["satu", "dua"]
 

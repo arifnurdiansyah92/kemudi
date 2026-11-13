@@ -10,15 +10,16 @@ import shlex
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Iterator, Literal
+from typing import Annotated, Callable, Iterator, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..auth import TaigaUser
 from ..config import Settings, get_settings
-from ..deps import actor, admin, get_db, get_sessions, member
+from ..deps import actor, admin, get_db, get_llm, get_sessions, member
+from ..llm import LLM
 from ..store import AwakJob, AwakKey, AwakProject, AwakRepo, AwakRole, record_decision
 from . import config_store, crypto, gitops, prompts, secrets, ssh
 from .crypto import SecretKeyMissing
@@ -776,3 +777,99 @@ def request_merge(slug: str, story_id: int, user: TaigaUser = Depends(admin),
                     {"story_ref": job.story_ref, "branch": job.branch, "last_sha": job.last_sha})
     start_worker()
     return {"merge_state": "requested"}
+
+
+# --- intake (draft, then create) ---------------------------------------------
+# Under /projects/{slug}/intake: any member may draft; Taiga's own add_us
+# permission decides create, because stories are created with the caller's
+# token. Works whether or not the agent is enabled.
+
+intake_router = APIRouter(prefix="/projects/{slug}/intake")
+
+
+def get_taiga_for_user(user: TaigaUser = Depends(member),
+                       settings: Settings = Depends(get_settings)):
+    """The caller's own Taiga client (local stack only: with_token asserts it)."""
+    from .taiga import Taiga
+
+    return Taiga.with_token(settings.taiga_api_url, user.token)
+
+
+def _enabled_areas(db: Session, slug: str) -> set[str]:
+    from .intake import AREAS
+
+    return {r.area for r in config_store.load(db, slug).roles if r.enabled and r.area in AREAS}
+
+
+class IntakeDraft(BaseModel):
+    subject: str = Field(min_length=3, max_length=200)
+    description: str = Field("", max_length=5000)
+    criteria: list[Annotated[str, Field(min_length=1, max_length=500)]] = Field(
+        default_factory=list, max_length=10)
+    area: Literal["web", "backend", "both"]
+    hold: bool = False  # the PM keeps it in New even if it qualifies
+
+
+class IntakeCreate(BaseModel):
+    drafts: list[IntakeDraft] = Field(min_length=1, max_length=30)
+
+
+@intake_router.post("/draft")
+async def intake_draft(
+    slug: str,
+    text: str = Form(""),
+    lang: Literal["id", "en"] = Form("id"),
+    file: UploadFile | None = File(None),
+    _: TaigaUser = Depends(member),
+    llm: LLM = Depends(get_llm),
+    db: Session = Depends(get_db),
+):
+    """Drafts only: nothing is created in Taiga."""
+    from ..documents import extract_text
+    from ..llm import LLMError
+    from .intake import draft_stories
+
+    body = text.strip()
+    if file is not None:
+        try:
+            body += "\n\n" + extract_text(file.filename or "", await file.read())
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+    if not body.strip():
+        raise HTTPException(400, "send text or a file")
+    try:
+        drafts = draft_stories(llm, body, lang)
+    except LLMError as e:
+        raise HTTPException(502, f"the model did not return stories: {e}") from e
+    areas = _enabled_areas(db, slug)
+    out = []
+    for d in drafts:
+        ready, reason = d.auto_ready(areas)
+        out.append({"subject": d.subject, "description": d.description,
+                    "criteria": d.criteria, "area": d.area, "ready": ready, "reason": reason})
+    return {"drafts": out}
+
+
+@intake_router.post("/create")
+def intake_create(slug: str, body: IntakeCreate, user: TaigaUser = Depends(member),
+                  db: Session = Depends(get_db), taiga=Depends(get_taiga_for_user)):
+    from .intake import StoryDraft, create_stories
+    from .taiga import TaigaError
+
+    drafts = [StoryDraft(subject=d.subject, description=d.description, criteria=d.criteria,
+                         area=d.area) for d in body.drafts]
+    hold = {i for i, d in enumerate(body.drafts) if d.hold}
+    try:
+        created = create_stories(taiga, slug, drafts, _enabled_areas(db, slug), hold)
+    except TaigaError as e:
+        if "HTTP 403" in str(e):
+            raise HTTPException(403, "Taiga does not let you add stories to this project") from e
+        if "HTTP 401" in str(e):
+            raise HTTPException(401, "your Taiga session expired; sign in again") from e
+        raise HTTPException(502, secrets.redact(str(e), secrets.known_values())) from e
+    chars = sum(len(d.subject) + len(d.description) + sum(map(len, d.criteria))
+                for d in body.drafts)
+    record_decision(db, actor(user), "awak_intake", slug,
+                    {"stories": [c["ref"] for c in created], "chars": chars,
+                     "held": sorted(hold)})
+    return {"stories": created}
