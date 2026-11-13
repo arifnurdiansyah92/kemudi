@@ -45,7 +45,7 @@ def test_migrate_adds_job_columns(tmp_path):
     init_db(engine)
     cols = {c["name"] for c in inspect(engine).get_columns("awak_jobs")}
     assert {"repo_id", "role_id", "prompt_version", "merge_mode", "merge_state",
-            "merged_sha", "merge_error"} <= cols
+            "merged_sha", "merge_error", "repo_url", "repo_branch"} <= cols
     init_db(engine)  # idempotent
     S = make_session(f"sqlite:///{tmp_path / 'old.db'}")
     with S() as db:

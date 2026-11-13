@@ -146,6 +146,9 @@ class AwakJob(Base):
     # Iteration 2: pinned at pick, kept for rework.
     repo_id: Mapped[int | None] = mapped_column(default=None)
     role_id: Mapped[int | None] = mapped_column(default=None)
+    # The repo as the last attempt ran it; a merge refuses if it changed since.
+    repo_url: Mapped[str] = mapped_column(String(500), default="")
+    repo_branch: Mapped[str] = mapped_column(String(100), default="")
     prompt_version: Mapped[str] = mapped_column(String(80), default="")
     merge_mode: Mapped[str] = mapped_column(String(10), default="")  # snapshot at pick
     # '' | requested | merging | merged | failed

@@ -231,6 +231,25 @@ def test_branch_moved_since_qa_refuses(tmp_path, repo, remote):
     assert job.merge_state == "failed" and "branch berubah" in job.merge_error
 
 
+def test_repo_edited_since_qa_refuses(tmp_path, repo, remote):
+    from kemudi_ai.store import AwakRepo
+
+    before = rev(remote)
+    w, taiga, sessions, _ = make(tmp_path, repo)
+    w.tick()
+    job = job_of(sessions)
+    assert (job.repo_url, job.repo_branch) == (w.s.host_git, "main")
+    with sessions() as db:
+        db.get(AwakRepo, job.repo_id).default_branch = "release"
+        db.commit()
+    request(sessions)
+    w.tick()
+    job = job_of(sessions)
+    assert rev(remote) == before
+    assert job.merge_state == "failed" and "diubah sejak QA" in job.merge_error
+    assert "release" in job.merge_error and "needs-human" in tags(taiga)
+
+
 def test_card_changed_refuses(tmp_path, repo, remote):
     before = rev(remote)
     w, taiga, sessions, _ = make(tmp_path, repo)

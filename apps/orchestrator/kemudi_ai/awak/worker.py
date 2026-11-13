@@ -281,6 +281,7 @@ class Worker:
         if fresh:
             # Back in Ready: route again (role, repo and prompt may have changed).
             job.role_id, job.repo_id, job.prompt_version = None, None, ""
+            job.repo_url, job.repo_branch = "", ""
 
     def _human_feedback(self, story_id: int) -> str:
         bot = {self.taiga.username, self.s.qa_username}
@@ -520,6 +521,8 @@ class Worker:
                 rc = cfg.repo(row.repo_id)
                 if rc is None:
                     raise Stop("repo untuk story ini sudah dihapus dari pengaturan Agen.")
+            # What this attempt runs against; Merge checks it is still the same.
+            row.repo_url, row.repo_branch = rc.url, rc.default_branch
             version = prompt_version(role, cfg.repos)
             changed = row.prompt_version != version
             row.prompt_version = version

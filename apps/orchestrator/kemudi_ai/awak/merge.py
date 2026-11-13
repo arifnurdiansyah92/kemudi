@@ -155,6 +155,13 @@ class Merger:
             rc = cfg.repo(job.repo_id)
             if rc is None:
                 raise MergeFailed("repo untuk story ini sudah dihapus dari pengaturan Agen.")
+            row = db.get(AwakJob, job.id)
+            pinned = (row.repo_url, row.repo_branch) if row else ("", "")
+            if pinned[0] and pinned != (rc.url, rc.default_branch):
+                raise MergeFailed(
+                    f"repo {rc.name} diubah sejak QA (`{pinned[0]}` @ `{pinned[1]}` -> "
+                    f"`{rc.url}` @ `{rc.default_branch}`); pindahkan story ke Ready untuk "
+                    f"menjalankannya ulang.")
             key = config_store.key_row(db, rc.key_id)
         return cfg, rc, self.w._repo_of(cfg, rc, key)
 
