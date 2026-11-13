@@ -139,6 +139,16 @@ def test_git_roundtrip_pushes_only_awak_branches(repo, host):
         repo.prepare("feature/x")
 
 
+def test_changed_files_lists_both_sides_of_a_rename(repo):
+    repo.sync_main()
+    d = repo.prepare("awak/us-4")
+    (d / "apps" / "web").mkdir(parents=True)
+    git(d, "mv", "README.md", "apps/web/README.md")
+    git(d, "commit", "-m", "move")
+    repo.collect("awak/us-4")
+    assert sorted(repo.changed_files("awak/us-4")) == ["README.md", "apps/web/README.md"]
+
+
 def test_rework_reuses_branch(repo):
     repo.sync_main()
     d = repo.prepare("awak/us-3")

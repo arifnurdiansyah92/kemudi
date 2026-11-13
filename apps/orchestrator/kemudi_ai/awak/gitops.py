@@ -175,7 +175,9 @@ class Repo:
                     git_dir=self.bare, timeout=120)
 
     def changed_files(self, branch: str) -> list[str]:
-        out = _git("diff", "--name-only",
+        """Every path the branch touches. `--no-renames`: a rename lists both its
+        old (deleted) and new path, so a move out of a denied path is caught."""
+        out = _git("diff", "--name-only", "--no-renames",
                    f"refs/heads/{self.default_branch}...refs/heads/{branch}", git_dir=self.bare)
         return [line for line in out.splitlines() if line]
 
