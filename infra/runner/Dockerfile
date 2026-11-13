@@ -10,6 +10,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     PNPM_HOME=/opt/pnpm
 # Versions match apps/web (packageManager pnpm@10.30.1, playwright 1.59.1).
 RUN npm install -g pnpm@10.30.1 @playwright/test@1.59.1 \
+ && ln -sf "$(npm prefix -g)/bin/pnpm" /usr/local/bin/pnpm \
  && mkdir -p /ms-playwright /pnpm-store /workspace
 # Playwright 1.59's own installer hangs while extracting on the image's Node 26,
 # so fetch its pinned Chromium builds (revision 1217) and unpack them where

@@ -131,6 +131,11 @@ class Worker:
                     continue
                 elif job.state == "queued":
                     pass  # crash recovery
+                elif (status == "in-progress" and job.state == "failed"
+                      and job.infra_errors >= self.s.max_infra_errors):
+                    # Unblocked after an environment problem: carry on where it
+                    # stopped, keeping attempts and Awak's work.
+                    job.infra_errors = 0
                 elif status == "in-progress":
                     # A human sent it back (or unblocked it): rework with their words.
                     self._reset(job, self._human_feedback(st["id"]))
@@ -144,7 +149,7 @@ class Worker:
 
     def _reset(self, job: AwakJob, feedback: str) -> None:
         job.attempts, job.infra_errors, job.feedback = 0, 0, feedback
-        job.started_at, job.cost_idr = now(), 0.0
+        job.started_at, job.cost_idr, job.phase = now(), 0.0, ""
 
     def _human_feedback(self, story_id: int) -> str:
         bot = {self.taiga.username, self.s.qa_username}
@@ -181,7 +186,8 @@ class Worker:
                 continue
             if result is None:  # passed
                 return
-            job = self._set(job_id, attempts=job.attempts + 1, feedback=result.feedback)
+            job = self._set(job_id, attempts=job.attempts + 1, feedback=result.feedback,
+                            phase="")
             self._move(story["id"], project.status("in-progress"))
             self._say(story["id"], job_id, result.comment)
 
@@ -195,21 +201,36 @@ class Worker:
         )
         self._say(story["id"], job.id, f"Percobaan {n}/{self.s.max_attempts} dimulai.", n)
 
-        # prepare
-        self._set(job.id, phase="prepare")
-        main_sha = self.repo.sync_main()
-        base_sha = self.repo.sha(job.branch) if self.repo.has_branch(job.branch) else main_sha
-        workdir = self.repo.prepare(job.branch)
-        self._runner("install", job=workdir.name)
+        # After an infra error past the coding step, keep Awak's work and resume
+        # from collect instead of paying for the coding run again.
+        workdir = self.repo.job_dir(job.branch)
+        prepared = self._last_event(job.id, "prepared")
+        resume = (job.phase in ("collect", "gates", "qa") and workdir.exists()
+                  and prepared is not None)
+        report = ""
+        if resume:
+            base_sha = prepared["base"]
+            self._event(job.id, "resumed", {"phase": job.phase})
+        else:
+            # prepare
+            self._set(job.id, phase="prepare")
+            main_sha = self.repo.sync_main()
+            base_sha = (self.repo.sha(job.branch) if self.repo.has_branch(job.branch)
+                        else main_sha)
+            workdir = self.repo.prepare(job.branch)
+            self._event(job.id, "prepared", {"base": base_sha})
+            self._runner("install", job=workdir.name)
 
-        # code
-        self._set(job.id, phase="code")
-        task = code_task(str(workdir), job.story_ref, story["subject"],
-                         story.get("description") or "", job.feedback)
-        report, cost = self.agent.run("awak.code", self.s.awak_model, CODE_SYSTEM, task)
-        self._add_cost(job.id, cost)
-        self._runner("commit", job=workdir.name,
-                     message=f"awak: uncommitted changes from attempt {n} (US #{job.story_ref})")
+            # code
+            self._set(job.id, phase="code")
+            task = code_task(str(workdir), job.story_ref, story["subject"],
+                             story.get("description") or "", job.feedback)
+            report, cost = self.agent.run("awak.code", self.s.awak_model, CODE_SYSTEM, task)
+            self._add_cost(job.id, cost)
+            self._set(job.id, phase="collect")
+            self._runner("commit", job=workdir.name,
+                         message=f"awak: uncommitted changes from attempt {n} "
+                                 f"(US #{job.story_ref})")
         self._ours(story["id"], {"in-progress"}, project)
 
         # collect
@@ -333,7 +354,7 @@ class Worker:
         owner = st.get("owner")
         self.taiga.update_story(st["id"], version=st["version"], is_blocked=True,
                                 blocked_note=reason[:200], tags=tags, assigned_to=owner)
-        self._set(job_id, state="failed", phase="")
+        self._set(job_id, state="failed")  # keep phase: unblocking resumes
         self._say(st["id"], job_id, f"Butuh bantuan manusia. {reason}")
 
     def _job(self, job_id: int) -> AwakJob:
@@ -352,6 +373,14 @@ class Worker:
     def _add_cost(self, job_id: int, cost: float) -> None:
         job = self._job(job_id)
         self._set(job_id, cost_idr=job.cost_idr + cost)
+
+    def _last_event(self, job_id: int, kind: str) -> dict | None:
+        from ..store import AwakEvent
+
+        with self.sessions() as db:
+            row = (db.query(AwakEvent).filter_by(job_id=job_id, kind=kind)
+                   .order_by(AwakEvent.id.desc()).first())
+            return row.detail if row else None
 
     def _event(self, job_id: int, kind: str, detail: dict) -> None:
         with self.sessions() as db:

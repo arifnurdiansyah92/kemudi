@@ -13,13 +13,17 @@ import subprocess
 from pathlib import Path
 
 BRANCH_RE = re.compile(r"^awak/us-\d+$")
-SAFE = [
-    "-c", "core.hooksPath=/dev/null",
-    "-c", "core.fsmonitor=false",
-    "-c", "protocol.file.allow=always",
-    "-c", "safe.directory=*",
-]
-UPLOAD_PACK = "git -c core.hooksPath=/dev/null -c core.fsmonitor=false upload-pack"
+# Passed as GIT_CONFIG_* environment ("command line" scope), so every git
+# process inherits it, including the upload-pack a local fetch spawns. The
+# workspace belongs to another uid (Awak), hence safe.directory.
+SAFE_CONFIG = {
+    "core.hooksPath": "/dev/null",
+    "core.fsmonitor": "false",
+    "protocol.file.allow": "always",
+    "safe.directory": "*",
+}
+UPLOAD_PACK = ("git -c core.hooksPath=/dev/null -c core.fsmonitor=false "
+               "-c 'safe.directory=*' upload-pack")
 
 
 class GitError(Exception):
@@ -31,7 +35,7 @@ def branch_for(ref: int) -> str:
 
 
 def _git(*args: str, git_dir: str | None = None, cwd: str | None = None, timeout=300) -> str:
-    cmd = ["git", *SAFE]
+    cmd = ["git"]
     if git_dir:
         cmd += ["--git-dir", git_dir]
     cmd += list(args)
@@ -41,7 +45,11 @@ def _git(*args: str, git_dir: str | None = None, cwd: str | None = None, timeout
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_CONFIG_GLOBAL": "/dev/null",
         "GIT_TERMINAL_PROMPT": "0",
+        "GIT_CONFIG_COUNT": str(len(SAFE_CONFIG)),
     }
+    for i, (k, v) in enumerate(SAFE_CONFIG.items()):
+        env[f"GIT_CONFIG_KEY_{i}"] = k
+        env[f"GIT_CONFIG_VALUE_{i}"] = v
     p = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout)
     if p.returncode != 0:
         raise GitError(f"git {' '.join(args[:2])} failed: {p.stderr.strip()[:500]}")

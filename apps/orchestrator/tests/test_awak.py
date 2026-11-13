@@ -317,3 +317,23 @@ def test_story_without_criteria_stops(tmp_path, repo):
     w.tick()
     assert job_of(sessions).state == "stopped"
     assert "kriteria" in taiga.texts(1)[-1]
+
+
+def test_infra_error_after_coding_resumes_without_recoding(tmp_path, repo):
+    agent = FakeAgent()
+    runner = FakeRunner(tmp_path / "ws", qa=["pass"])
+    w, taiga, sessions = make_worker(tmp_path, repo, agent, runner)
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    real_collect, calls = repo.collect, []
+
+    def flaky_collect(branch):
+        calls.append(branch)
+        if len(calls) == 1:
+            raise GitError("dubious ownership")
+        return real_collect(branch)
+
+    repo.collect = flaky_collect
+    w.tick()
+    assert taiga.status_of(1) == "done"
+    assert [p for p, _ in agent.calls].count("awak.code") == 1
+    assert job_of(sessions).infra_errors == 1
