@@ -123,8 +123,10 @@ def put_agent_settings(
         db.add(p)
     new = body.model_dump()
     changed = {k: new[k] for k in config_store.SETTING_FIELDS if getattr(p, k) != new[k]}
-    if p.ssh_host and ({"ssh_host", "ssh_port"} & set(changed)):
-        # A new machine: never trust the old machine's host key for it.
+    if (p.ssh_host and ({"ssh_host", "ssh_port"} & set(changed))
+            and p.ssh_host not in _hosts_in_use(db, slug, machine=False)):
+        # A new machine: never trust the old machine's host key for it (unless
+        # a repo still uses that host: known_hosts is one file per project).
         ssh.forget_host(settings, slug, p.ssh_host)
     for k, v in changed.items():
         setattr(p, k, v)
@@ -141,6 +143,19 @@ def put_agent_settings(
     if p.enabled:
         start_worker()
     return _settings_out(db, slug, True)
+
+
+def _hosts_in_use(db: Session, slug: str, skip_repo: int | None = None,
+                  machine: bool = True) -> set[str]:
+    """SSH hosts the project's repos (and machine) use. They share one
+    known_hosts, so a host is forgotten only when nothing else uses it."""
+    hosts = {ssh.url_host(r.url) for r in db.query(AwakRepo).filter_by(project_slug=slug)
+             if r.id != skip_repo}
+    p = db.get(AwakProject, slug)
+    if machine and p is not None and p.ssh_host:
+        hosts.add(p.ssh_host)
+    hosts.discard("")
+    return hosts
 
 
 # --- jobs --------------------------------------------------------------------
@@ -306,7 +321,8 @@ def update_repo(slug: str, repo_id: int, body: RepoIn, user: TaigaUser = Depends
     changed = sorted(k for k, v in new.items() if getattr(r, k) != v)
     for k in changed:
         setattr(r, k, new[k])
-    if "url" in changed and old_host and old_host != ssh.url_host(r.url):
+    if ("url" in changed and old_host and old_host != ssh.url_host(r.url)
+            and old_host not in _hosts_in_use(db, slug, skip_repo=r.id)):
         ssh.forget_host(settings, slug, old_host)
     if changed:
         r.updated_by, r.updated_at = actor(user), config_store.now()

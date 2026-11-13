@@ -285,3 +285,26 @@ def test_worker_uses_repo_default_branch(tmp_path):
     assert install["commands"][0]["argv"] == ["pnpm", "install"]
     gates = next(p for op, p in runner.payloads if op == "gates")
     assert [c["argv"] for c in gates["commands"]] == [["pnpm", "test"]]
+
+
+def test_url_change_keeps_a_host_still_in_use(agent_client):
+    first = add_repo(agent_client)
+    add_repo(agent_client, name="api", url="git@github.com:acme/api.git")
+    vps = add_repo(agent_client, name="ops", url="git@vps.example.com:ops.git")
+    agent_client.put("/projects/demo/agent/settings", headers=ADMIN, json={
+        "enabled": False, "merge_mode": "approve", "deploy_command": "", "executor": "ssh",
+        "ssh_host": "vps.example.com", "ssh_port": 22, "ssh_user": "deploy"})
+    kh = ssh.known_hosts_path(agent_client.settings, "demo")
+    kh.parent.mkdir(parents=True, exist_ok=True)
+    key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"
+    kh.write_text(f"github.com {key}vps.example.com {key}")
+    # another repo still uses github.com
+    r = agent_client.put(f"/projects/demo/agent/repos/{first['id']}", headers=ADMIN,
+                         json={**SSH_REPO, "url": "git@gitlab.com:acme/web.git"})
+    assert r.status_code == 200
+    assert ssh.host_key_fingerprint(kh, "github.com") is not None
+    # the machine still uses vps.example.com
+    r = agent_client.put(f"/projects/demo/agent/repos/{vps['id']}", headers=ADMIN,
+                         json={**SSH_REPO, "name": "ops", "url": "git@gitlab.com:acme/ops.git"})
+    assert r.status_code == 200
+    assert ssh.host_key_fingerprint(kh, "vps.example.com") is not None

@@ -210,3 +210,18 @@ def test_check_local_endpoint(agent_client):
     assert body["executor"] == "local" and body["docker"] == "runner"
     assert agent_client.post("/projects/demo/agent/machine/check",
                              headers=MEMBER).status_code == 403
+
+
+def test_changing_host_keeps_a_host_a_repo_still_uses(agent_client):
+    _ssh_project(agent_client)
+    r = agent_client.post("/projects/demo/agent/repos", headers=ADMIN, json={
+        "name": "web", "role": "web", "url": "ssh://git@vps.example.com:2222/srv/web.git",
+        "default_branch": "main"})
+    assert r.status_code == 200, r.text
+    kh = ssh.known_hosts_path(agent_client.settings, "demo")
+    kh.parent.mkdir(parents=True, exist_ok=True)
+    kh.write_text(KH_LINE)
+    r = agent_client.put("/projects/demo/agent/settings", headers=ADMIN,
+                         json={**SSH_SETTINGS, "ssh_host": "vps2.example.com"})
+    assert r.status_code == 200
+    assert ssh.host_key_fingerprint(kh, "vps.example.com") is not None
