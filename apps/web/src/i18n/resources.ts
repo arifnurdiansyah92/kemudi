@@ -4,6 +4,7 @@
  * (src/i18n/resources.test.ts checks that).
  */
 import en_admin from '@/locales/en/admin.json'
+import en_agent from '@/locales/en/agent.json'
 import en_auth from '@/locales/en/auth.json'
 import en_backlog from '@/locales/en/backlog.json'
 import en_board from '@/locales/en/board.json'
@@ -15,6 +16,7 @@ import en_pages from '@/locales/en/pages.json'
 import en_settings from '@/locales/en/settings.json'
 import en_shell from '@/locales/en/shell.json'
 import id_admin from '@/locales/id/admin.json'
+import id_agent from '@/locales/id/agent.json'
 import id_auth from '@/locales/id/auth.json'
 import id_backlog from '@/locales/id/backlog.json'
 import id_board from '@/locales/id/board.json'
@@ -41,6 +43,7 @@ export const resources = {
     pages: en_pages,
     admin: en_admin,
     contract: en_contract,
+    agent: en_agent,
   },
   id: {
     common: id_common,
@@ -54,5 +57,6 @@ export const resources = {
     pages: id_pages,
     admin: id_admin,
     contract: id_contract,
+    agent: id_agent,
   },
 } as const

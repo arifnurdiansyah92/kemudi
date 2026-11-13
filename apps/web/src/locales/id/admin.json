@@ -10,6 +10,7 @@
     "customFields": "Kolom kustom",
     "tags": "Tag",
     "webhooks": "Webhook",
+    "agent": "Agen",
     "integrations": "Integrasi",
     "exportImport": "Impor dan ekspor",
     "sprintAccess": "Akses sprint"

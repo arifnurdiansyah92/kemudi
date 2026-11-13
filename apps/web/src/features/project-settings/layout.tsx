@@ -15,6 +15,7 @@ const SECTIONS = [
   ['tags', 'nav.tags'],
   ['webhooks', 'nav.webhooks'],
   ['integrations', 'nav.integrations'],
+  ['agent', 'nav.agent'],
   ['data', 'nav.exportImport'],
   ['sprint-access', 'nav.sprintAccess'],
 ] as const
@@ -50,7 +51,7 @@ export function ProjectSettingsLayout() {
           <div className='mt-6 grid gap-8 lg:grid-cols-[13rem_minmax(0,1fr)]'>
             <nav
               aria-label={t('nav.sectionsLabel')}
-              className='lg:sticky lg:top-20 lg:self-start'
+              className='min-w-0 lg:sticky lg:top-20 lg:self-start'
             >
               <ul className='flex gap-1 overflow-x-auto lg:flex-col'>
                 {SECTIONS.map(([key, label]) => (

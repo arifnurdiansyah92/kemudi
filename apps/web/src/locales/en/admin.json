@@ -10,6 +10,7 @@
     "customFields": "Custom fields",
     "tags": "Tags",
     "webhooks": "Webhooks",
+    "agent": "Agent",
     "integrations": "Integrations",
     "exportImport": "Import and export",
     "sprintAccess": "Sprint access"
