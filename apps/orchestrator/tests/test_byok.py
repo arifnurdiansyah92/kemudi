@@ -27,7 +27,7 @@ from .conftest import ADMIN, MEMBER, SECRET_KEY
 KEY = "sk-live-AbCdEfGh0123456789wxyz"
 ROLE_KEY = "gsk_role0123456789abcdQRST"
 ROLE = {"name": "Backend dev", "template": "backend", "area": "backend",
-        "model": "deepseek-flash", "repo_ids": [], "allowed_paths": [], "denied_paths": [],
+        "model": "", "repo_ids": [],"allowed_paths": [], "denied_paths": [],
         "prompt_overlay": "", "enabled": True}
 
 
@@ -51,14 +51,17 @@ def test_resolution_agent_over_project_over_server_with_partial_levels():
     S = make_session("sqlite:///:memory:")
     with S() as db:
         db.add(AwakProject(slug="demo"))
+        # The role sets no model of its own: it uses the effective level's model
+        # (role-model overrides are covered in test_role_model_overrides_...).
         role = AwakRole(project_slug="demo", template="backend", name="B", area="backend",
-                        model="role-model")
+                        model="")
         db.add(role)
         db.commit()
-        # Nothing set: server default with the role's model.
+        # Nothing set: server default with the fallback, then KEMUDI_AWAK_MODEL.
         c = llm_conn.resolve(db, s, "demo", role.id)
         assert (c.source, c.base_url, c.api_key, c.model) == (
-            "server", "https://server.example/v1", "server-key-123456", "role-model")
+            "server", "https://server.example/v1", "server-key-123456", "srv-model")
+        assert llm_conn.resolve(db, s, "demo", role.id, "role-fb").model == "role-fb"
         # No role: the fallback model, then KEMUDI_AWAK_MODEL.
         assert llm_conn.resolve(db, s, "demo", None, "qa-model").model == "qa-model"
         assert llm_conn.resolve(db, s, "demo", None).model == "srv-model"
@@ -92,6 +95,37 @@ def test_resolution_agent_over_project_over_server_with_partial_levels():
         # A role of another project is ignored.
         assert llm_conn.resolve(db, s, "other", role.id).source == "server"
         assert sorted(llm_conn.stored_keys(db, s)) == sorted([KEY, ROLE_KEY])
+
+
+def test_role_model_overrides_inherited_connection_model():
+    s = _settings()
+    S = make_session("sqlite:///:memory:")
+    with S() as db:
+        p = AwakProject(slug="demo")
+        llm_conn.set_level(s, p, "https://proj.example/v1", "proj-model", KEY)
+        db.add(p)
+        role = AwakRole(project_slug="demo", template="backend", name="B", area="backend",
+                        model="role-model")
+        db.add(role)
+        db.commit()
+        # The project's provider and key, the role's model.
+        c = llm_conn.resolve(db, s, "demo", role.id)
+        assert (c.source, c.base_url, c.api_key, c.model) == (
+            "project", "https://proj.example/v1", KEY, "role-model")
+        assert llm_conn.describe(db, s, "demo", role.id).public() == {
+            "llm_source": "project", "llm_model": "role-model", "llm_host": "proj.example"}
+        # The server default too, ahead of the fallback model.
+        p.llm_base_url = ""
+        db.commit()
+        assert llm_conn.resolve(db, s, "demo", role.id, "fb").model == "role-model"
+        # Its own connection: the role's model is the one model field.
+        llm_conn.set_level(s, role, "https://r.example/v1", "old-level-model", ROLE_KEY)
+        db.commit()
+        c = llm_conn.resolve(db, s, "demo", role.id)
+        assert (c.source, c.api_key, c.model) == ("agent", ROLE_KEY, "role-model")
+        role.model = ""
+        db.commit()
+        assert llm_conn.resolve(db, s, "demo", role.id).model == "old-level-model"
 
 
 def test_base_url_validation():
@@ -213,6 +247,84 @@ def test_connection_test_endpoint(agent_client):
     role_id = _role(agent_client)
     r = agent_client.post(f"/projects/demo/agent/roles/{role_id}/llm/test", headers=ADMIN)
     assert r.json()["ok"] is True and r.json()["llm_source"] == "project"
+
+
+def test_models_endpoint_uses_the_applicable_connection(agent_client):
+    seen: list[httpx.Request] = []
+
+    def upstream(req: httpx.Request) -> httpx.Response:
+        seen.append(req)
+        auth = req.headers.get("authorization")
+        if req.url.host == "p.example" and auth == f"Bearer {KEY}":
+            return httpx.Response(200, json={"object": "list", "data": [
+                {"id": "zeta"}, {"id": "alpha"}, {"id": "alpha"}]})
+        if req.url.host == "r.example" and auth == f"Bearer {ROLE_KEY}":
+            return httpx.Response(200, json={"data": [{"id": "role-only"}]})
+        if req.url.host == "server.example":
+            return httpx.Response(200, json={"data": [{"id": "srv-a"}]})
+        return httpx.Response(401, text=f"bad key {auth}")
+
+    app.dependency_overrides[agent_api.get_llm_transport] = lambda: httpx.MockTransport(upstream)
+    agent_client.settings.ai_base_url = "https://server.example/v1"
+    url = "/projects/demo/agent/llm/models"
+    assert agent_client.post(url, headers=MEMBER).status_code == 403
+    # Nothing saved: the server default.
+    out = agent_client.post(url, headers=ADMIN).json()
+    assert out == {"ok": True, "models": ["srv-a"], "source": "server",
+                   "host": "server.example", "error": None}
+    assert seen[-1].method == "GET" and str(seen[-1].url) == "https://server.example/v1/models"
+    agent_client.put("/projects/demo/agent/llm", headers=ADMIN,
+                     json={"base_url": "https://p.example/v1", "model": "m1", "api_key": KEY})
+    r = agent_client.post(url, headers=ADMIN)
+    assert r.json()["models"] == ["alpha", "zeta"] and r.json()["source"] == "project"
+    assert KEY not in r.text
+    # A role without its own connection lists the project's provider.
+    role_id = _role(agent_client)
+    r = agent_client.post(url, headers=ADMIN, json={"role_id": role_id})
+    assert (r.json()["source"], r.json()["host"]) == ("project", "p.example")
+    # Unsaved base URL equal to the saved one reuses the stored key ...
+    r = agent_client.post(url, headers=ADMIN, json={"base_url": "https://p.example/v1"})
+    assert r.json()["ok"] is True and r.json()["models"] == ["alpha", "zeta"]
+    # ... another base URL never gets it.
+    r = agent_client.post(url, headers=ADMIN, json={"base_url": "https://other.example/v1"})
+    assert r.json()["ok"] is False and "authorization" not in seen[-1].headers
+    # A wrong typed key: the error is scrubbed.
+    r = agent_client.post(url, headers=ADMIN, json={"base_url": "https://p.example/v1",
+                                                    "api_key": "sk-wrongwrongwrongwrongwrong"})
+    assert r.json()["ok"] is False and "sk-wrongwrong" not in r.text
+    # The role's own connection, and its key is never borrowed by the project.
+    agent_client.put(f"/projects/demo/agent/roles/{role_id}/llm", headers=ADMIN,
+                     json={"base_url": "https://r.example/v1", "model": "role-only",
+                           "api_key": ROLE_KEY})
+    r = agent_client.post(url, headers=ADMIN, json={"role_id": role_id})
+    assert r.json()["models"] == ["role-only"] and r.json()["source"] == "agent"
+    r = agent_client.post(url, headers=ADMIN, json={"role_id": role_id,
+                                                    "base_url": "https://r.example/v1"})
+    assert r.json()["ok"] is True and ROLE_KEY not in r.text
+    r = agent_client.post(url, headers=ADMIN, json={"base_url": "https://r.example/v1"})
+    assert r.json()["ok"] is False
+    # Validation and unknown roles.
+    assert agent_client.post(url, headers=ADMIN,
+                             json={"base_url": "http://8.8.8.8/v1"}).status_code == 422
+    assert agent_client.post(url, headers=ADMIN, json={"role_id": 999}).status_code == 404
+    # Redirects are not followed.
+    app.dependency_overrides[agent_api.get_llm_transport] = lambda: httpx.MockTransport(
+        lambda req: httpx.Response(302, headers={"location": "https://evil.example/"}))
+    r = agent_client.post(url, headers=ADMIN)
+    assert r.json()["ok"] is False and "redirect" in r.json()["error"]
+
+
+def test_role_model_is_optional_and_overrides_in_listing(agent_client):
+    agent_client.put("/projects/demo/agent/llm", headers=ADMIN,
+                     json={"base_url": "https://p.example/v1", "model": "proj-m", "api_key": KEY})
+    inherit = _role(agent_client)
+    r = agent_client.post("/projects/demo/agent/roles", headers=ADMIN,
+                          json={**ROLE, "name": "Own", "model": "other-m"})
+    own = r.json()["id"]
+    roles = {x["id"]: x for x in
+             agent_client.get("/projects/demo/agent/roles", headers=MEMBER).json()["roles"]}
+    assert (roles[inherit]["model"], roles[inherit]["llm_model"]) == ("", "proj-m")
+    assert (roles[own]["llm_source"], roles[own]["llm_model"]) == ("project", "other-m")
 
 
 # --- the /llm/v1 proxy ------------------------------------------------------------

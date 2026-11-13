@@ -174,6 +174,23 @@ export type LlmTest = {
   error: string | null
 } & LlmEffective
 
+/** What to list models for: unsaved values when `base_url` is set (a stored
+ * key is reused only for the base URL it was saved with), else the saved
+ * connection that applies to `role_id` (or the project). */
+export type LlmModelsIn = {
+  role_id?: number
+  base_url?: string
+  api_key?: string
+}
+
+export type LlmModels = {
+  ok: boolean
+  models: string[]
+  source: LlmSource
+  host: string
+  error: string | null
+}
+
 export type RolePrompt = {
   fixed: string
   role: string
@@ -496,9 +513,14 @@ const llmPath = (slug: string, roleId: number | null) =>
     ? `/projects/${slug}/agent/llm`
     : `/projects/${slug}/agent/roles/${roleId}/llm`
 
-export function useLlmLevel(slug: string, roleId: number | null) {
+export function useLlmLevel(
+  slug: string,
+  roleId: number | null,
+  enabled = true
+) {
   return useQuery({
     queryKey: agentKey(slug, 'llm', roleId ?? 0),
+    enabled,
     queryFn: async () =>
       (await api.get<LlmLevel>(llmPath(slug, roleId), base)).data,
   })
@@ -518,6 +540,20 @@ export function useSaveLlmLevel(slug: string, roleId: number | null) {
   })
 }
 
+/** A role's own connection, for a role whose id is known only after it is
+ * created. Errors are shown by the caller. */
+export function useSaveRoleLlm(slug: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ roleId, body }: { roleId: number; body: LlmIn }) =>
+      (await api.put<LlmLevel>(llmPath(slug, roleId), body, base)).data,
+    onSuccess: (data, { roleId }) => {
+      qc.setQueryData(agentKey(slug, 'llm', roleId), data)
+      return qc.invalidateQueries({ queryKey: agentKey(slug) })
+    },
+  })
+}
+
 /** Tests the unsaved values when a body is sent, else the saved connection. */
 export function useTestLlmLevel(slug: string, roleId: number | null) {
   return useMutation({
@@ -526,6 +562,46 @@ export function useTestLlmLevel(slug: string, roleId: number | null) {
         await api.post<LlmTest>(`${llmPath(slug, roleId)}/test`, body, {
           ...base,
           timeout: 60_000,
+        })
+      ).data,
+  })
+}
+
+/** A short, non-reversible tag so a typed key never sits in a query key. */
+function keyTag(key: string) {
+  let h = 0x811c9dc5
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return (h >>> 0).toString(36)
+}
+
+/** The provider's model ids (admin only). Lists stay fresh for 5 minutes. */
+export function useLlmModels(
+  slug: string,
+  body: LlmModelsIn,
+  enabled: boolean
+) {
+  // The typed key is in the query key as a hash only; the rest of the body
+  // is keyed as is.
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps
+  return useQuery({
+    queryKey: agentKey(
+      slug,
+      'llm-models',
+      body.role_id ?? 0,
+      body.base_url ?? '',
+      body.api_key ? keyTag(body.api_key) : ''
+    ),
+    enabled,
+    staleTime: 5 * 60_000,
+    retry: false,
+    queryFn: async () =>
+      (
+        await api.post<LlmModels>(`/projects/${slug}/agent/llm/models`, body, {
+          ...base,
+          timeout: 20_000,
         })
       ).data,
   })

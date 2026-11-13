@@ -84,7 +84,6 @@ export function AgentSettingsPage() {
           <Roles
             slug={slug}
             roles={roles.data?.roles ?? []}
-            models={roles.data?.models ?? []}
             repos={repos.data ?? []}
             canEdit={canEdit}
           />

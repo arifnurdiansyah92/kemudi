@@ -108,14 +108,14 @@ def seed_from_env(db: Session, settings: Settings) -> None:
         db.flush()
         db.add_all([
             AwakRole(project_slug=slug, template="frontend", name="Frontend dev", area="web",
-                     model=settings.awak_model, repo_ids=[repo.id],
+                     model="", repo_ids=[repo.id],
                      denied_paths=["services/kemudi-back/", "infra/", ".github/"],
                      prompt_overlay=KEMUDI_WEB_OVERLAY, enabled=True, updated_by="seed"),
             AwakRole(project_slug=slug, template="backend", name="Backend dev", area="backend",
-                     model=settings.awak_model, repo_ids=[repo.id], enabled=False,
+                     model="", repo_ids=[repo.id], enabled=False,
                      updated_by="seed"),
             AwakRole(project_slug=slug, template="qa", name="QA", area="qa",
-                     model=settings.qa_model, repo_ids=[repo.id], enabled=True,
+                     model="", repo_ids=[repo.id], enabled=True,
                      prompt_overlay=KEMUDI_QA_OVERLAY, updated_by="seed"),
         ])
         db.commit()

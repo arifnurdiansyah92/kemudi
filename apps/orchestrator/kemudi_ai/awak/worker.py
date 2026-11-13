@@ -477,7 +477,8 @@ class Worker:
                        "'Acceptance criteria' berisi daftar poin.")
         qa_role = route.config.qa_role()
         if qa_role is not None:
-            model, system = qa_role.model, render_role(qa_role, route.config.repos)
+            model = qa_role.model or self.s.qa_model
+            system = render_role(qa_role, route.config.repos)
         else:
             model = self.s.qa_model
             system = render("qa", "", RoleScope(repos=[route.rc.name]))

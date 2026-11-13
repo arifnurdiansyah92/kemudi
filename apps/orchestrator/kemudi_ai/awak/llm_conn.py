@@ -1,8 +1,9 @@
 """BYOK model connections: agent > project > Kemudi server default.
 
 A level either supplies a whole connection (base URL, model, key) or inherits
-from the level below; fields are never mixed across levels, so a key is only
-ever sent to the base URL it was saved with. Keys are Fernet tokens at rest and
+from the level below; base URL and key are never mixed across levels, so a key
+is only ever sent to the base URL it was saved with. A role's own model, when
+set, replaces the effective level's model (it carries no secret). Keys are Fernet tokens at rest and
 only leave this module decrypted towards the provider (proxy, test) and the
 secret scanner.
 """
@@ -129,19 +130,23 @@ def server_default(settings: Settings, model: str) -> Connection:
 
 def resolve(db: Session, settings: Settings, slug: str, role_id: int | None,
             fallback_model: str = "", decrypt: bool = True) -> Connection:
-    """agent > project > server default, as whole groups. With decrypt=False
-    the key stays empty (for display). Raises SecretKeyMissing if a stored key
-    does not decrypt."""
+    """The connection (base URL + key) resolves agent > project > server
+    default, as whole groups. The model is the role's own model when it sets
+    one, else the effective level's model (for the server default: the
+    fallback model, then KEMUDI_AWAK_MODEL). So a role can use the project's
+    provider and key with a model of its own. With decrypt=False the key stays
+    empty (for display). Raises SecretKeyMissing if a stored key does not
+    decrypt."""
     role = db.get(AwakRole, role_id) if role_id else None
     if role is not None and role.project_slug != slug:
         role = None
+    own_model = (role.model if role is not None else "") or ""
     p = db.get(AwakProject, slug)
     for row, source in ((role, "agent"), (p, "project")):
         if _is_set(row):
             key = stored_key(settings, row) if decrypt else ""
-            return Connection(row.llm_base_url, key, row.llm_model, source)
-    model = (role.model if role is not None else "") or fallback_model or settings.awak_model
-    conn = server_default(settings, model)
+            return Connection(row.llm_base_url, key, own_model or row.llm_model, source)
+    conn = server_default(settings, own_model or fallback_model or settings.awak_model)
     return conn if decrypt else Connection(conn.base_url, "", conn.model, conn.source)
 
 
@@ -256,4 +261,41 @@ def check_connection(conn: Connection, transport: httpx.BaseTransport | None = N
     except httpx.HTTPError as e:
         out["error"] = scrub(f"{type(e).__name__}: {e}", conn)[:300]
     out["latency_ms"] = int((time.monotonic() - t0) * 1000)
+    return out
+
+
+def list_models(conn: Connection, transport: httpx.BaseTransport | None = None,
+                timeout: float = 10.0) -> dict:
+    """The provider's model ids (`GET {base_url}/models`, OpenAI shape).
+    Never returns the key; errors are scrubbed."""
+    out: dict = {"ok": False, "models": [], "source": conn.source, "host": conn.host,
+                 "error": None}
+    if not conn.base_url:
+        out["error"] = "no base URL: set one here, or KEMUDI_AI_BASE_URL on the server"
+        return out
+    headers = {k: v for k, v in upstream_headers(conn).items() if k != "Content-Type"}
+    try:
+        with httpx.Client(transport=transport, timeout=timeout, follow_redirects=False) as c:
+            r = c.get(f"{conn.base_url}/models", headers=headers)
+        if r.is_redirect:
+            out["error"] = f"the provider answered with a redirect ({r.status_code}); " \
+                           "use the final URL"
+            return out
+        if r.status_code >= 400:
+            out["error"] = scrub(f"HTTP {r.status_code}: {r.text[:300]}", conn)
+            return out
+        data = r.json()
+    except httpx.HTTPError as e:
+        out["error"] = scrub(f"{type(e).__name__}: {e}", conn)[:300]
+        return out
+    except ValueError:
+        out["error"] = "the provider's /models answer is not JSON"
+        return out
+    items = data.get("data") if isinstance(data, dict) else data
+    if not isinstance(items, list):
+        out["error"] = "the provider's /models answer has no model list"
+        return out
+    ids = {str(i.get("id") if isinstance(i, dict) else i).strip() for i in items}
+    out["models"] = sorted(m for m in ids if m and m != "None" and len(m) <= 100)
+    out["ok"] = True
     return out
