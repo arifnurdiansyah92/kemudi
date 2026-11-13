@@ -9,9 +9,15 @@ import {
   useDeleteAttachment,
   useUploadAttachment,
 } from '@/lib/taiga/items'
-import type { Project } from '@/lib/taiga/types'
+import type { Attachment, Project } from '@/lib/taiga/types'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { can } from '@/features/project/use-project'
 
@@ -21,6 +27,10 @@ type AttachmentsProps = {
   item: { id: number }
 }
 
+/** kemudi-back thumbnails these, and every browser shows them inline. */
+const IMAGE_NAME = /\.(png|jpe?g|gif|bmp|webp|avif|svg)$/i
+const isImage = (file: Attachment) => IMAGE_NAME.test(file.name)
+
 export function Attachments({ project, kind, item }: AttachmentsProps) {
   const { t } = useTranslation('item')
   const fmt = useFormat()
@@ -29,6 +39,7 @@ export function Attachments({ project, kind, item }: AttachmentsProps) {
   const remove = useDeleteAttachment(kind, item.id)
   const input = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
+  const [preview, setPreview] = useState<Attachment | null>(null)
   const editable = can(
     project,
     kind === 'wiki' ? 'modify_wiki_page' : KINDS[kind].perm.modify
@@ -62,46 +73,69 @@ export function Attachments({ project, kind, item }: AttachmentsProps) {
     >
       {files.length > 0 && (
         <ul className='grid gap-1'>
-          {files.map((file) => (
-            <li
-              key={file.id}
-              className='group flex items-center gap-3 rounded-md px-1 py-1 text-sm hover:bg-accent/50'
-            >
-              {file.thumbnail_card_url ? (
-                <img
-                  src={file.thumbnail_card_url}
-                  alt=''
-                  className='size-8 shrink-0 rounded object-cover'
-                />
-              ) : (
-                <span className='flex size-8 shrink-0 items-center justify-center rounded bg-muted'>
-                  <FileText className='size-4 text-muted-foreground' />
-                </span>
-              )}
-              <a
-                href={file.url}
-                target='_blank'
-                rel='noreferrer'
-                className='min-w-0 flex-1 truncate hover:underline hover:underline-offset-4'
-              >
-                {file.name}
-              </a>
-              <span className='shrink-0 text-xs text-muted-foreground tabular-nums'>
-                {fmt.bytes(file.size)}
+          {files.map((file) => {
+            // An image without a thumbnail (older uploads) can still show itself.
+            const thumbUrl =
+              file.thumbnail_card_url ?? (isImage(file) ? file.url : null)
+            const thumb = thumbUrl ? (
+              <img
+                src={thumbUrl}
+                alt=''
+                className='size-8 shrink-0 rounded object-cover'
+              />
+            ) : (
+              <span className='flex size-8 shrink-0 items-center justify-center rounded bg-muted'>
+                <FileText className='size-4 text-muted-foreground' />
               </span>
-              {editable && (
-                <Button
-                  variant='ghost'
-                  size='icon'
-                  className='size-7 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
-                  aria-label={t('attachments.delete', { name: file.name })}
-                  onClick={() => remove.mutate(file)}
-                >
-                  <Trash2 />
-                </Button>
-              )}
-            </li>
-          ))}
+            )
+            const nameClass = cn(
+              'min-w-0 flex-1 truncate hover:underline hover:underline-offset-4'
+            )
+            return (
+              <li
+                key={file.id}
+                className='group flex items-center gap-3 rounded-md px-1 py-1 text-sm hover:bg-accent/50'
+              >
+                {isImage(file) ? (
+                  <button
+                    type='button'
+                    onClick={() => setPreview(file)}
+                    aria-label={t('attachments.preview', { name: file.name })}
+                    className='flex min-w-0 flex-1 items-center gap-3 text-start'
+                  >
+                    {thumb}
+                    <span className={nameClass}>{file.name}</span>
+                  </button>
+                ) : (
+                  <>
+                    {thumb}
+                    <a
+                      href={file.url}
+                      target='_blank'
+                      rel='noreferrer'
+                      className={nameClass}
+                    >
+                      {file.name}
+                    </a>
+                  </>
+                )}
+                <span className='shrink-0 text-xs text-muted-foreground tabular-nums'>
+                  {fmt.bytes(file.size)}
+                </span>
+                {editable && (
+                  <Button
+                    variant='ghost'
+                    size='icon'
+                    className='size-7 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+                    aria-label={t('attachments.delete', { name: file.name })}
+                    onClick={() => remove.mutate(file)}
+                  >
+                    <Trash2 />
+                  </Button>
+                )}
+              </li>
+            )
+          })}
         </ul>
       )}
       {editable ? (
@@ -137,6 +171,23 @@ export function Attachments({ project, kind, item }: AttachmentsProps) {
           </p>
         )
       )}
+      <Dialog
+        open={preview !== null}
+        onOpenChange={(open) => !open && setPreview(null)}
+      >
+        <DialogContent className='sm:max-w-3xl' aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className='truncate pe-8'>{preview?.name}</DialogTitle>
+          </DialogHeader>
+          {preview && (
+            <img
+              src={preview.url}
+              alt={preview.name}
+              className='max-h-[75vh] w-full rounded-md object-contain'
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -79,6 +79,7 @@
     "empty": "Empty"
   },
   "attachments": {
+    "preview": "View {{name}}",
     "delete": "Delete {{name}}",
     "uploading": "Uploading…",
     "attach": "Attach files or drop them here",
