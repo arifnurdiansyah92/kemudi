@@ -10,6 +10,7 @@
     "itemMeta": "{{project}}, {{time}}"
   },
   "projects": {
+    "titleWithCount": "{{name}} ({{count}})",
     "intro": "Semua proyek tempat Anda menjadi anggota; seret untuk mengatur urutannya.",
     "newProject": "Proyek baru",
     "loadFailed": "Proyek tidak dapat dimuat.",

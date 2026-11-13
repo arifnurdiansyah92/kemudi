@@ -11,6 +11,7 @@ import { ProjectList } from './project-list'
 export function Projects() {
   const { t } = useTranslation(['home', 'common'])
   const { data: projects, isPending, isError, refetch } = useProjects()
+  const projectCount = projects?.length ?? 0
 
   return (
     <>
@@ -19,7 +20,10 @@ export function Projects() {
         <div className='flex flex-wrap items-end justify-between gap-3'>
           <div>
             <h1 className='text-2xl font-semibold tracking-tight'>
-              {t('common:terms.project_other')}
+              {t('projects.titleWithCount', {
+                name: t('common:terms.project_other'),
+                count: projectCount,
+              })}
             </h1>
             <p className='mt-1 text-sm text-muted-foreground'>
               {t('projects.intro')}
