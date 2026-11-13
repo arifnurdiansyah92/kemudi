@@ -79,3 +79,37 @@ def test_deploy_runs_command_in_job_dir(runner, monkeypatch):
         runner.op_deploy({"job": "awak-us-1", "command": " "})
     with pytest.raises(ValueError):
         runner.op_deploy({"job": "../x", "command": "make deploy"})
+
+
+def _git(cwd, *args):
+    import subprocess
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+
+def test_clean_check_reports_head_and_every_stray_path(runner, tmp_path):
+    d = tmp_path / "awak-us-2"
+    d.mkdir()
+    _git(d, "init", "-q", "-b", "main")
+    _git(d, "config", "user.email", "t@t")
+    _git(d, "config", "user.name", "t")
+    _git(d, "config", "core.autocrlf", "false")
+    (d / ".gitignore").write_text("secret.local\n")
+    (d / "app.ts").write_text("export const a = 1\n")
+    _git(d, "add", "-A")
+    _git(d, "commit", "-q", "-m", "init")
+    head = (d / ".git" / "refs" / "heads" / "main").read_text().strip()
+
+    res = runner.op_clean_check({"job": "awak-us-2"})
+    assert res == {"ok": True, "head": head, "entries": [], "truncated": False}
+
+    (d / "secret.local").write_text("x")       # gitignored
+    (d / "extra.ts").write_text("x")            # untracked
+    (d / "app.ts").write_text("export const a = 2\n")
+    _git(d, "update-index", "--assume-unchanged", "app.ts")  # hidden from a plain status
+    (d / "node_modules" / "pkg").mkdir(parents=True)
+    (d / "node_modules" / "pkg" / "i.js").write_text("x")
+    res = runner.op_clean_check({"job": "awak-us-2"})
+    got = {(e["status"], e["path"]) for e in res["entries"]}
+    assert got == {("!!", "secret.local"), ("??", "extra.ts"), (" M", "app.ts"),
+                   ("??", "node_modules/")}
+    assert res["head"] == head

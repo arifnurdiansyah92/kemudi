@@ -337,6 +337,18 @@ class Worker:
         story = self._ours(story["id"], {"ready-for-test"}, project)
         evidence = self._upload(project, story["id"], verdict, workdir, f"us{job.story_ref}-a{n}")
         if verdict.outcome == "pass":
+            # The checks ran in Awak's workspace; only `sha` gets merged. A pass
+            # counts only if the workspace was exactly that commit.
+            unclean = self._unclean(workdir, sha, rc)
+            if unclean:
+                return Fail("The checks and QA ran with files that are not in your commit "
+                            "(or HEAD was not your commit): " + "; ".join(unclean)
+                            + ". Commit everything the story needs and leave no other "
+                              "files (ignored ones included) in the workspace.",
+                            f"QA lulus, tetapi workspace tidak sama dengan commit `{sha[:8]}` "
+                            "yang akan di-merge, jadi hasilnya tidak dipakai: "
+                            + "; ".join(f"`{u}`" for u in unclean)
+                            + "\n\nKembali ke In progress; Awak akan memperbaiki.")
             with self.sessions() as db:
                 current = config_store.load(db, project.slug).merge_mode
             mode = effective_mode(self._job(job.id).merge_mode, current)
@@ -450,6 +462,20 @@ class Worker:
                         "mode merge proyek sekarang manual; merge dibatalkan.")
             return
         merger.merge(job, project, {"id": job.story_id}, require_qa_rerun=mode == "auto")
+
+    def _unclean(self, workdir: Path, sha: str, rc: RepoConfig) -> list[str]:
+        """What in the workspace differs from `sha`, besides build output."""
+        res = self._runner("clean_check", job=workdir.name)
+        out = []
+        head = str(res.get("head") or "")
+        if head != sha:
+            out.append(f"HEAD {head[:8] or '?'} != {sha[:8]}")
+        entries = res.get("entries") or []
+        out += [f"{e.get('status', '')} {e.get('path', '')}".strip() for e in entries
+                if not build_output(str(e.get("status", "")), str(e.get("path", "")), rc.subdir)]
+        if res.get("truncated"):
+            out.append("(more paths not listed)")
+        return out[:20]
 
     def _runner(self, op: str, **payload) -> dict:
         res = self.runner.call(op, **payload)
@@ -586,6 +612,34 @@ def command_lines(text: str) -> list[list[str]]:
         if line and not line.startswith("#"):
             out.append(shlex.split(line))
     return out
+
+
+# What the install, the gates and QA themselves leave in a workspace. Only
+# untracked or ignored paths qualify; a changed tracked file never does.
+QA_DIR = ".qa"                                   # repo root only
+ANYWHERE_DIRS = {"node_modules", "__pycache__"}  # at any depth
+BUILD_DIRS = {"dist", ".vite", ".turbo", "coverage", ".pytest_cache", ".ruff_cache",
+              ".mypy_cache", ".venv", "target"}  # at the repo root or the repo's subdir
+BUILD_SUFFIXES = (".tsbuildinfo",)               # at any depth
+
+
+def build_output(status: str, path: str, subdir: str = "") -> bool:
+    if status not in ("??", "!!"):
+        return False
+    parts = path.strip("/").split("/")
+    if not parts or any(p in ("", ".", "..") for p in parts):
+        return False
+    if any(p in ANYWHERE_DIRS for p in parts[:-1]) or (
+            path.endswith("/") and parts[-1] in ANYWHERE_DIRS):
+        return True
+    name, parent = parts[-1], "/".join(parts[:-1])
+    if name.endswith(BUILD_SUFFIXES) and not path.endswith("/"):
+        return True
+    if not path.endswith("/"):
+        return False
+    if name == QA_DIR and parent == "":
+        return True
+    return name in BUILD_DIRS and parent in {"", subdir.strip("/")}
 
 
 _TIMEOUTS = {"install_cmd": 900, "check_cmd": 900, "build_cmd": 600}

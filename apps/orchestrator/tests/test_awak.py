@@ -186,7 +186,7 @@ def test_happy_path_moves_to_done_with_evidence(tmp_path, repo):
     texts = taiga.texts(1)
     assert "QA lulus" in texts[-1] and "belum di-merge" in texts[-1]
     assert job_of(sessions).state == "passed"
-    assert runner.calls == ["install", "commit", "gates", "qa_reset", "qa"]
+    assert runner.calls == ["install", "commit", "gates", "qa_reset", "qa", "clean_check"]
     assert not w.tick()  # nothing left
 
 
@@ -400,3 +400,45 @@ def test_disabling_mid_job_stops(tmp_path, repo):
     assert job_of(sessions).state == "stopped"
     assert taiga.status_of(1) == "in-progress"
     assert "dimatikan" in taiga.texts(1)[-1]
+
+
+def test_build_output_allowlist():
+    from kemudi_ai.awak.worker import build_output
+
+    ok = [("??", ".qa/"), ("!!", "node_modules/"), ("!!", "apps/web/node_modules/"),
+          ("!!", "apps/web/dist/"), ("??", "dist/"), ("!!", "tsconfig.app.tsbuildinfo"),
+          ("!!", "svc/pkg/__pycache__/"), ("!!", "apps/web/.vite/")]
+    bad = [(" M", "dist/"), ("??", "src/dist/"), ("!!", ".env.local"), ("??", "apps/.qa/"),
+           ("!!", "src/generated.ts"), ("??", "dist"), ("D ", "README.md")]
+    assert all(build_output(s, p, "apps/web") for s, p in ok)
+    assert not any(build_output(s, p, "apps/web") for s, p in bad)
+
+
+def test_ignored_file_during_qa_fails_the_attempt(tmp_path, repo):
+    def code(d, n):
+        if n == 1:
+            commit_file(d, ".gitignore", "local.env\n")
+            (d / "local.env").write_text("FEATURE=on")  # ignored: never committed
+        commit_file(d, f"feature{n}.txt", "x")
+
+    runner = FakeRunner(tmp_path / "ws", qa=["pass", "pass"])
+    w, taiga, sessions = make_worker(tmp_path, repo, FakeAgent(code=code), runner)
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    fail = next(t for t in taiga.texts(1) if "tidak sama dengan commit" in t)
+    assert "local.env" in fail and "feature1.txt" not in fail
+    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 2
+
+
+def test_head_moved_after_gates_fails_the_attempt(tmp_path, repo):
+    runner = FakeRunner(tmp_path / "ws", qa=["pass", "pass"],
+                        clean=[{"ok": True, "head": "f" * 40, "entries": []}])
+    agent = FakeAgent()
+    w, taiga, sessions = make_worker(tmp_path, repo, agent, runner)
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    assert any("tidak sama dengan commit" in t and "HEAD ffffffff" in t
+               for t in taiga.texts(1))
+    code_tasks = [t for p, t in agent.calls if p == "awak.code"]
+    assert "HEAD was not your commit" in code_tasks[1]
+    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 2

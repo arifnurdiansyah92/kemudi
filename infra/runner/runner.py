@@ -7,6 +7,7 @@ POST /gates      {job, subdir?, commands?}  tsc, eslint, vitest, vite build, or 
 POST /qa_reset   {job}                      empty .qa/ for a fresh spec
 POST /qa         {job, token, user, project, subdir?}  run .qa/spec twice against a dev
                                             server started in subdir (default apps/web)
+POST /clean_check {job}                     HEAD sha and `git status --ignored` entries
 POST /deploy     {job, command}             the project's post-merge deploy command (sh -c)
                                             in the job workspace at the merged commit
 
@@ -270,6 +271,93 @@ def op_qa(body: dict) -> dict:
             os.killpg(vite.pid, signal.SIGKILL)
 
 
+MAX_CLEAN_ENTRIES = 200
+
+
+def _git_out(args: list[str], env: dict, timeout: int = 120) -> tuple[int, str]:
+    try:
+        p = subprocess.run(["git", *GIT_SAFE, *args], capture_output=True, timeout=timeout,
+                           env=env)
+    except subprocess.TimeoutExpired:
+        return 124, f"git {args[0] if args else ''} timed out"
+    if p.returncode != 0:
+        return p.returncode, tail(p.stderr.decode(errors="replace"), 500)
+    return 0, p.stdout.decode(errors="replace")
+
+
+def op_clean_check(body: dict) -> dict:
+    """HEAD and every path `git status` reports, ignored files included, so the
+    orchestrator can tell whether the checks ran on exactly the commit.
+
+    The workspace's .git belongs to the agent: its config (filters, worktree),
+    index (assume-unchanged, skip-worktree) and replace refs could all hide a
+    change. So status runs from a throwaway git dir that only borrows the
+    workspace's objects, with an index rebuilt from HEAD's tree."""
+    d = job_dir(body)
+    gd = d / ".git"
+    if gd.is_symlink() or not gd.is_dir():
+        return {"ok": True, "head": "", "entries": [{"status": "!?", "path": ".git"}],
+                "truncated": False}
+    tmp = Path(tempfile.mkdtemp(prefix="clean-"))
+    try:
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(tmp),
+               "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
+               "GIT_NO_REPLACE_OBJECTS": "1", "GIT_OPTIONAL_LOCKS": "0",
+               "GIT_TERMINAL_PROMPT": "0"}
+        code, out = _git_out(["init", "-q", str(tmp / "w")], env)
+        if code != 0:
+            return {"infra_error": "git init failed: " + out}
+        git_dir = tmp / "w" / ".git"
+        (git_dir / "objects" / "info" / "alternates").write_bytes(
+            ((gd / "objects").resolve().as_posix() + "\n").encode())
+        head_file = (gd / "HEAD").read_text().strip()
+        if head_file.startswith("ref: "):
+            ref = head_file[5:]
+            if not re.match(r"^refs/heads/[A-Za-z0-9._/-]+$", ref) or ".." in ref:
+                return {"infra_error": f"unexpected HEAD {head_file[:100]!r}"}
+            ref_path = gd / ref
+            if ref_path.is_file():
+                head = ref_path.read_text().strip()
+            else:
+                head = ""
+                packed = gd / "packed-refs"
+                for line in packed.read_text().splitlines() if packed.is_file() else []:
+                    if line.endswith(" " + ref):
+                        head = line.split(" ", 1)[0]
+        else:
+            head = head_file
+        if not re.match(r"^[0-9a-f]{40}([0-9a-f]{24})?$", head):
+            return {"infra_error": f"cannot read HEAD ({head[:100]!r})"}
+        base = ["--git-dir", str(git_dir), "--work-tree", str(d)]
+        env["GIT_INDEX_FILE"] = str(tmp / "index")
+        code, out = _git_out([*base, "update-ref", "HEAD", head], env)
+        if code != 0:
+            return {"infra_error": "git update-ref failed: " + out}
+        code, out = _git_out([*base, "read-tree", f"{head}^{{tree}}"], env)
+        if code != 0:
+            return {"infra_error": "git read-tree failed: " + out}
+        code, out = _git_out([*base, "status", "--porcelain=v1", "-z", "--ignored=matching",
+                              "--untracked-files=normal"], env, 300)
+        if code != 0:
+            return {"infra_error": "git status failed: " + out}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    entries = []
+    parts = out.split("\0")
+    i = 0
+    while i < len(parts):
+        item = parts[i]
+        i += 1
+        if len(item) < 4:
+            continue
+        status, path = item[:2], item[3:]
+        if "R" in status or "C" in status:
+            i += 1  # -z puts a rename's source path in the next field
+        entries.append({"status": status, "path": path})
+    return {"ok": True, "head": head, "entries": entries[:MAX_CLEAN_ENTRIES],
+            "truncated": len(entries) > MAX_CLEAN_ENTRIES}
+
+
 DEPLOY_TIMEOUT = 900
 
 
@@ -289,7 +377,7 @@ def op_deploy(body: dict) -> dict:
 
 
 OPS = {"install": op_install, "commit": op_commit, "gates": op_gates, "deploy": op_deploy,
-       "qa_reset": op_qa_reset, "qa": op_qa}
+       "qa_reset": op_qa_reset, "qa": op_qa, "clean_check": op_clean_check}
 
 
 class Handler(BaseHTTPRequestHandler):

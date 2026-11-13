@@ -1,5 +1,6 @@
 """In-memory doubles for the Awak loop: Taiga, the agent and the runner."""
 
+import importlib.util
 import subprocess
 from pathlib import Path
 
@@ -119,20 +120,41 @@ class FakeAgent:
 
 
 def commit_file(workdir: Path, name: str, content: str):
-    (workdir / name).write_text(content)
+    # LF on disk: a Windows autocrlf would otherwise leave the worktree
+    # differing from the commit, which the runner's clean_check reports.
+    (workdir / name).write_text(content, newline="\n")
     git(workdir, "add", "-A")
     git(workdir, "commit", "-m", f"add {name}")
 
 
-class FakeRunner:
-    """`qa` entries are reports, or "pass"/"fail" to build one with real PNGs."""
+def real_runner():
+    """infra/runner/runner.py, loaded once (stdlib only)."""
+    global _REAL_RUNNER
+    if _REAL_RUNNER is None:
+        path = Path(__file__).resolve().parents[3] / "infra" / "runner" / "runner.py"
+        spec = importlib.util.spec_from_file_location("kemudi_runner_for_fakes", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _REAL_RUNNER = mod
+    return _REAL_RUNNER
 
-    def __init__(self, workspace: Path, gates=None, qa=None, n_criteria=2, deploy=None):
+
+_REAL_RUNNER = None
+
+
+class FakeRunner:
+    """`qa` entries are reports, or "pass"/"fail" to build one with real PNGs.
+    `clean_check` runs the real runner's op on the workspace unless `clean`
+    supplies replies."""
+
+    def __init__(self, workspace: Path, gates=None, qa=None, n_criteria=2, deploy=None,
+                 clean=None):
         self.workspace = Path(workspace)
         self.gates = list(gates or [])
         self.qa = list(qa or [])
         self.n = n_criteria
         self.deploy = list(deploy or [])
+        self.clean = list(clean or [])
         self.calls: list[str] = []
         self.payloads: list[tuple[str, dict]] = []
 
@@ -141,6 +163,12 @@ class FakeRunner:
         self.payloads.append((op, payload))
         if op == "deploy" and self.deploy:
             return self.deploy.pop(0)
+        if op == "clean_check":
+            if self.clean:
+                return self.clean.pop(0)
+            mod = real_runner()
+            mod.WORKSPACE = self.workspace
+            return mod.op_clean_check(payload)
         if op == "gates":
             return self.gates.pop(0) if self.gates else {"gates": [{"name": "tsc", "ok": True}]}
         if op == "qa":
