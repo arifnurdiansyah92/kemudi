@@ -567,7 +567,13 @@ export function useIntakeDraft(slug: string) {
         await api.post<{ drafts: IntakeDraftOut[] }>(
           `/projects/${slug}/intake/draft`,
           form,
-          { ...base, timeout: 180_000 }
+          {
+            ...base,
+            timeout: 180_000,
+            // The shared client defaults to JSON, which makes axios turn a
+            // FormData body into JSON; the orchestrator expects multipart.
+            headers: { 'Content-Type': 'multipart/form-data' },
+          }
         )
       ).data.drafts
     },

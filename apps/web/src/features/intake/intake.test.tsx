@@ -133,10 +133,16 @@ describe('Intake', () => {
     await screen.getByLabelText('Text').fill('Client wants login and exports')
     await screen.getByRole('button', { name: 'Draft stories' }).click()
 
-    const [draftUrl, form] = post.mock.calls[0] as [string, FormData]
+    const [draftUrl, form, config] = post.mock.calls[0] as [
+      string,
+      FormData,
+      { headers?: Record<string, string> },
+    ]
     expect(draftUrl).toBe('/projects/demo/intake/draft')
     expect(form.get('text')).toBe('Client wants login and exports')
     expect(form.get('lang')).toBe('en')
+    // The shared client defaults to JSON; without this axios sends JSON.
+    expect(config.headers?.['Content-Type']).toBe('multipart/form-data')
 
     await expect
       .element(screen.getByText('Goes to Ready').first())
