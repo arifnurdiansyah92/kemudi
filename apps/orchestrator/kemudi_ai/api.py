@@ -18,7 +18,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .auth import TaigaUser
-from .awak import agent_api
+from .awak import agent_api, llm_proxy
 from .backtest import metrics, run_backtest
 from .baseline import BaselineItem, draft_baseline
 from .config import Settings, get_settings
@@ -58,6 +58,8 @@ async def _lifespan(_app: FastAPI):
 app = FastAPI(title="Kemudi AI", lifespan=_lifespan)
 app.include_router(agent_api.router)
 app.include_router(agent_api.intake_router)
+# Internal only (kemudi-sandbox): the gateway does not route /llm/.
+app.include_router(llm_proxy.router)
 
 
 def _contract(db: Session, slug: str) -> Contract:

@@ -33,6 +33,7 @@ __all__ = [
     "AwakRepo",
     "AwakRole",
     "AwakWorkerLease",
+    "AwakLlmAlias",
     "record_event",
     "make_session",
     "init_db",
@@ -112,6 +113,9 @@ class AiCall(Base):
     latency_ms: Mapped[int] = mapped_column(default=0)
     cost_idr: Mapped[float] = mapped_column(default=0.0)
     ok: Mapped[bool] = mapped_column(default=True)
+    # Awak runs: which level the model connection came from (agent|project|
+    # server); '' for other calls. Never the key.
+    llm_source: Mapped[str] = mapped_column(String(10), default="")
 
 
 class Decision(Base):
@@ -185,6 +189,12 @@ class AwakProject(Base):
     ssh_user: Mapped[str] = mapped_column(String(64), default="")
     ssh_key_id: Mapped[int | None] = mapped_column(ForeignKey("awak_keys.id"), default=None)
     preflight: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    # BYOK, project level ("all agents"). The key is a Fernet token; set means
+    # base_url and model are both non-empty.
+    llm_base_url: Mapped[str] = mapped_column(String(500), default="")
+    llm_model: Mapped[str] = mapped_column(String(100), default="")
+    llm_api_key_enc: Mapped[str] = mapped_column(Text, default="")
+    llm_key_last4: Mapped[str] = mapped_column(String(4), default="")
     updated_by: Mapped[str] = mapped_column(String(200), default="")
     updated_at: Mapped[datetime] = mapped_column(default=now)
 
@@ -225,8 +235,28 @@ class AwakRole(Base):
     prompt_overlay: Mapped[str] = mapped_column(Text, default="")
     enabled: Mapped[bool] = mapped_column(default=True)
     version: Mapped[int] = mapped_column(default=1)
+    # BYOK, agent level; same shape as AwakProject's.
+    llm_base_url: Mapped[str] = mapped_column(String(500), default="")
+    llm_model: Mapped[str] = mapped_column(String(100), default="")
+    llm_api_key_enc: Mapped[str] = mapped_column(Text, default="")
+    llm_key_last4: Mapped[str] = mapped_column(String(4), default="")
     updated_by: Mapped[str] = mapped_column(String(200), default="")
     updated_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class AwakLlmAlias(Base):
+    """A per-run model name Awak sends to the orchestrator's model proxy. It
+    maps to a project/role, not to a key; rows are deleted when the run ends.
+    Naive UTC times."""
+
+    __tablename__ = "awak_llm_aliases"
+    alias: Mapped[str] = mapped_column(String(64), primary_key=True)
+    project_slug: Mapped[str] = mapped_column(String(200))
+    role_id: Mapped[int | None] = mapped_column(default=None)
+    # The model for the server-default level (the role's model, or QA's).
+    fallback_model: Mapped[str] = mapped_column(String(100), default="")
+    purpose: Mapped[str] = mapped_column(String(50), default="")
+    expires_at: Mapped[datetime] = mapped_column()
 
 
 class AwakWorkerLease(Base):
@@ -279,7 +309,7 @@ def init_db(engine) -> None:
 
 # Tables that existed before a column was added to them. `create_all` never
 # alters an existing table, so missing columns are added here.
-_MIGRATED_TABLES = ("awak_jobs",)
+_MIGRATED_TABLES = ("awak_jobs", "awak_projects", "awak_roles", "ai_calls")
 
 
 def _sql_literal(value: Any) -> str:

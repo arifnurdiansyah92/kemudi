@@ -51,6 +51,18 @@ class Settings(BaseSettings):
     # awak_model and qa_model.
     awak_models: str = ""
 
+    # --- Awak BYOK (docs/superpowers/specs/2026-11-14-awak-byok-design.md)
+    # The server-default model connection, used when neither the agent nor the
+    # project sets one. Awak reaches every connection through the orchestrator's
+    # /llm/v1 proxy, which adds the key.
+    ai_base_url: str = ""
+    ai_api_key: str = ""
+    # Shared bearer token Awak sends to /llm/v1 (infra/awak/config.yaml). Empty
+    # = the per-run alias alone admits a request (dev only).
+    llm_proxy_token: str = ""
+    # Upstream read timeout of the proxy (what kemudi-llm-proxy used).
+    llm_proxy_timeout_s: float = 600.0
+
     def model_choices(self) -> list[str]:
         extra = [m.strip() for m in self.awak_models.split(",") if m.strip()]
         return list(dict.fromkeys([self.awak_model, self.qa_model, *extra]))

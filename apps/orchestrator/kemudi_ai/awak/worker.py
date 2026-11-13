@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import Settings
 from ..store import AwakJob, AwakKey, AwakWorkerLease, record_event
-from . import config_store, secrets, ssh
+from . import config_store, llm_conn, secrets, ssh
 from .config_store import ProjectConfig, RepoConfig, RoleConfig
 from .crypto import SecretKeyMissing
 from .agent import Agent, AgentError
@@ -98,11 +98,18 @@ class Worker:
         self.agent = agent
         self.runner = runner
         self.repo = repo
-        self.secret_values = secrets.known_values() if secret_values is None else secret_values
+        self._secret_values = secrets.known_values() if secret_values is None else secret_values
         self.sleep = sleep
         self.command_runner = command_runner  # deploy over SSH
         self._seeded = False
         self.holder = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
+
+    @property
+    def secret_values(self) -> list[str]:
+        """Env secrets plus every stored BYOK model key (read fresh, so a key
+        saved after the worker started is scanned too)."""
+        with self.sessions() as db:
+            return [*self._secret_values, *llm_conn.stored_keys(db, self.s)]
 
     # ------------------------------------------------------------------ loop
     def _seed(self) -> None:
@@ -360,7 +367,8 @@ class Worker:
             task = code_task(str(workdir), job.story_ref, story["subject"],
                              story.get("description") or "", job.feedback)
             system = render_role(role, route.config.repos)
-            report, cost = self.agent.run("awak.code", role.model, system, task)
+            report, cost = self.agent.run("awak.code", role.model, system, task,
+                                          slug=route.config.slug, role_id=role.id)
             self._add_cost(job.id, cost)
             self._set(job.id, phase="collect")
             self._runner("commit", job=workdir.name,
@@ -479,7 +487,8 @@ class Worker:
             self._runner("qa_reset", job=workdir.name)
             task = qa_task(str(workdir), job.story_ref, story["subject"], texts,
                            self.s.qa_project, spec_feedback, app_dir=route.rc.subdir)
-            _, cost = self.agent.run("awak.qa", model, system, task)
+            _, cost = self.agent.run("awak.qa", model, system, task, slug=route.config.slug,
+                                     role_id=qa_role.id if qa_role else None)
             self._add_cost(job.id, cost)
             report = self._runner("qa", job=workdir.name, token=token,
                                   user=self.qa_taiga.me, project=self.s.qa_project,

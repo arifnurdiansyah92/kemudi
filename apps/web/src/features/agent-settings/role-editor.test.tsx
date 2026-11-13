@@ -18,6 +18,9 @@ const role: Role = {
   prompt_version: '3.v2.abcdef1234',
   updated_by: 'webdev',
   updated_at: '2026-11-14T00:00:00Z',
+  llm_source: 'server',
+  llm_model: 'deepseek-flash',
+  llm_host: 'ai.sumopod.com',
 }
 
 const prompt: RolePrompt = {

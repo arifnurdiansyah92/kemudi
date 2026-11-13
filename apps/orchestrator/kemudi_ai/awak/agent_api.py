@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated, Callable, Iterator, Literal
 
+import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session, sessionmaker
@@ -21,7 +22,7 @@ from ..config import Settings, get_settings
 from ..deps import access, actor, admin, get_db, get_llm, get_sessions, member
 from ..llm import LLM
 from ..store import AwakJob, AwakKey, AwakProject, AwakRepo, AwakRole, record_decision
-from . import config_store, crypto, gitops, prompts, secrets, ssh
+from . import config_store, crypto, gitops, llm_conn, prompts, secrets, ssh
 from .crypto import SecretKeyMissing
 from .detect import FIELDS as COMMAND_FIELDS
 from .detect import detect_commands
@@ -627,7 +628,7 @@ class RoleIn(BaseModel):
         return v
 
 
-def _role_out(db: Session, r: AwakRole) -> dict:
+def _role_out(db: Session, r: AwakRole, settings: Settings) -> dict:
     cfg = config_store.load(db, r.project_slug)
     role = cfg.role(r.id)
     return {
@@ -635,6 +636,8 @@ def _role_out(db: Session, r: AwakRole) -> dict:
         "id": r.id,
         "version": r.version,
         "prompt_version": prompts.prompt_version(role, cfg.repos),
+        # The resolved model connection (agent > project > server), no key.
+        **llm_conn.describe(db, settings, r.project_slug, r.id).public(),
         "updated_by": r.updated_by,
         "updated_at": r.updated_at,
     }
@@ -660,18 +663,19 @@ def _check_repo_ids(db: Session, slug: str, repo_ids: list[int]) -> list[int]:
 def list_roles(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(get_db),
                settings: Settings = Depends(get_settings)):
     rows = db.query(AwakRole).filter_by(project_slug=slug).order_by(AwakRole.id).all()
-    return {"roles": [_role_out(db, r) for r in rows], "models": settings.model_choices()}
+    return {"roles": [_role_out(db, r, settings) for r in rows],
+            "models": settings.model_choices()}
 
 
 @router.post("/roles")
 def create_role(slug: str, body: RoleIn, user: TaigaUser = Depends(admin),
-                db: Session = Depends(get_db)):
+                db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
     data = body.model_dump()
     data["repo_ids"] = _check_repo_ids(db, slug, body.repo_ids)
     r = AwakRole(project_slug=slug, version=1, updated_by=actor(user), **data)
     db.add(r)
     db.commit()
-    out = _role_out(db, r)
+    out = _role_out(db, r, settings)
     record_decision(db, actor(user), "awak_role", slug,
                     {"op": "create", "role": r.name, "role_id": r.id, "old_overlay": None,
                      "new_overlay": r.prompt_overlay, "version": out["prompt_version"]})
@@ -680,22 +684,22 @@ def create_role(slug: str, body: RoleIn, user: TaigaUser = Depends(admin),
 
 @router.put("/roles/{role_id}")
 def update_role(slug: str, role_id: int, body: RoleIn, user: TaigaUser = Depends(admin),
-                db: Session = Depends(get_db)):
+                db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
     r = _get_role(db, slug, role_id)
     new = body.model_dump()
     new["repo_ids"] = _check_repo_ids(db, slug, body.repo_ids)
     changed = sorted(k for k, v in new.items() if getattr(r, k) != v)
     if not changed:
-        return _role_out(db, r)
+        return _role_out(db, r, settings)
     old_overlay = r.prompt_overlay
-    old_version = _role_out(db, r)["prompt_version"]
+    old_version = _role_out(db, r, settings)["prompt_version"]
     for k in changed:
         setattr(r, k, new[k])
     if set(changed) & set(PROMPT_FIELDS):
         r.version += 1
     r.updated_by, r.updated_at = actor(user), config_store.now()
     db.commit()
-    out = _role_out(db, r)
+    out = _role_out(db, r, settings)
     record_decision(db, actor(user), "awak_role", slug,
                     {"op": "update", "role": r.name, "role_id": r.id, "changed": changed,
                      "old_overlay": old_overlay, "new_overlay": r.prompt_overlay,
@@ -719,6 +723,137 @@ def get_role_prompt(slug: str, role_id: int, _: TaigaUser = Depends(member),
         "rendered": prompts.render_role(role, cfg.repos),
         "version": prompts.prompt_version(role, cfg.repos),
     }
+
+
+# --- model connection (BYOK) -------------------------------------------------
+# docs/superpowers/specs/2026-11-14-awak-byok-design.md. A level is a whole
+# connection or nothing; the key is write-only (key_set + key_last4).
+
+
+class LlmIn(BaseModel):
+    base_url: str = Field("", max_length=500)
+    model: str = Field("", max_length=100)
+    # Empty keeps the stored key.
+    api_key: str = Field("", max_length=1000)
+    # Removes the level (the agent then uses the project default, the project
+    # the server default).
+    clear: bool = False
+
+    @field_validator("api_key")
+    @classmethod
+    def _key(cls, v: str) -> str:
+        v = v.strip()
+        if any(c.isspace() for c in v):
+            raise ValueError("the API key cannot contain spaces")
+        return v
+
+    @model_validator(mode="after")
+    def _level(self):
+        if self.clear:
+            return self
+        self.base_url = llm_conn.validate_base_url(self.base_url)
+        self.model = self.model.strip()
+        if not self.model or any(c.isspace() for c in self.model):
+            raise ValueError("enter the provider's model name, e.g. gpt-4o-mini")
+        return self
+
+
+def get_llm_transport() -> httpx.BaseTransport | None:
+    """Overridden in tests with an httpx.MockTransport."""
+    return None
+
+
+def _llm_out(db: Session, settings: Settings, slug: str, row, role_id: int | None) -> dict:
+    return {
+        **llm_conn.level_out(row),
+        "effective": llm_conn.describe(db, settings, slug, role_id).public(),
+        "server_default": {"model": settings.awak_model,
+                           "host": llm_conn.server_default(settings, "").host},
+        "updated_by": getattr(row, "updated_by", None),
+        "updated_at": getattr(row, "updated_at", None),
+    }
+
+
+def _put_level(db: Session, settings: Settings, user: TaigaUser, slug: str, row,
+               body: LlmIn, role_id: int | None) -> None:
+    if body.clear:
+        llm_conn.clear_level(row)
+        detail = {"op": "clear"}
+    else:
+        try:
+            key_changed = llm_conn.set_level(settings, row, body.base_url, body.model,
+                                             body.api_key)
+        except SecretKeyMissing as e:
+            db.rollback()
+            raise _no_secret_key(e) from e
+        detail = {"op": "set", "base_url": body.base_url, "model": body.model,
+                  "key_changed": key_changed}
+    row.updated_by, row.updated_at = actor(user), config_store.now()
+    db.commit()
+    record_decision(db, actor(user), "awak_llm", slug,
+                    {"level": "agent" if role_id else "project", "role_id": role_id, **detail})
+
+
+def _test(db: Session, settings: Settings, slug: str, row, role_id: int | None,
+          body: LlmIn | None, transport) -> dict:
+    """Test unsaved values when a body is sent, else the resolved connection.
+    A stored key is reused only for the base URL it was saved with."""
+    try:
+        if body is not None and not body.clear:
+            key = body.api_key
+            if not key and row is not None and row.llm_base_url == body.base_url:
+                key = llm_conn.stored_key(settings, row)
+            conn = llm_conn.Connection(body.base_url, key, body.model,
+                                       "agent" if role_id else "project")
+        else:
+            conn = llm_conn.resolve(db, settings, slug, role_id)
+    except SecretKeyMissing as e:
+        raise _no_secret_key(e) from e
+    return llm_conn.check_connection(conn, transport)
+
+
+@router.get("/llm")
+def get_project_llm(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(get_db),
+                    settings: Settings = Depends(get_settings)):
+    return _llm_out(db, settings, slug, db.get(AwakProject, slug), None)
+
+
+@router.put("/llm")
+def put_project_llm(slug: str, body: LlmIn, user: TaigaUser = Depends(admin),
+                    db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
+    p = _project_row(db, slug)
+    _put_level(db, settings, user, slug, p, body, None)
+    return _llm_out(db, settings, slug, p, None)
+
+
+@router.post("/llm/test")
+def test_project_llm(slug: str, body: LlmIn | None = None, _: TaigaUser = Depends(admin),
+                     db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
+                     transport=Depends(get_llm_transport)):
+    return _test(db, settings, slug, db.get(AwakProject, slug), None, body, transport)
+
+
+@router.get("/roles/{role_id}/llm")
+def get_role_llm(slug: str, role_id: int, _: TaigaUser = Depends(member),
+                 db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
+    return _llm_out(db, settings, slug, _get_role(db, slug, role_id), role_id)
+
+
+@router.put("/roles/{role_id}/llm")
+def put_role_llm(slug: str, role_id: int, body: LlmIn, user: TaigaUser = Depends(admin),
+                 db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
+    r = _get_role(db, slug, role_id)
+    _put_level(db, settings, user, slug, r, body, role_id)
+    return _llm_out(db, settings, slug, r, role_id)
+
+
+@router.post("/roles/{role_id}/llm/test")
+def test_role_llm(slug: str, role_id: int, body: LlmIn | None = None,
+                  _: TaigaUser = Depends(admin), db: Session = Depends(get_db),
+                  settings: Settings = Depends(get_settings),
+                  transport=Depends(get_llm_transport)):
+    r = _get_role(db, slug, role_id)
+    return _test(db, settings, slug, r, role_id, body, transport)
 
 
 # --- story merge (approve mode) ----------------------------------------------
