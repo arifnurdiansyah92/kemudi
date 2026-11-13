@@ -1,4 +1,9 @@
-"""Calls to the tool-using Hermes (kemudi-awak): one run per call, logged."""
+"""Calls to the tool-using Hermes (kemudi-awak): one run per call, logged.
+
+Awak holds no model key. Each run gets a short-lived alias as its model name;
+Hermes sends it to the orchestrator's /llm/v1 proxy, which maps it to the
+run's resolved connection (agent > project > server default).
+"""
 
 import time
 from typing import Protocol
@@ -8,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import Settings
 from ..store import record_ai_call
+from . import llm_conn
 
 
 class AgentError(Exception):
@@ -15,8 +21,10 @@ class AgentError(Exception):
 
 
 class Agent(Protocol):
-    def run(self, purpose: str, model: str, system: str, task: str) -> tuple[str, float]:
-        """Run to completion; returns (final text, cost in IDR)."""
+    def run(self, purpose: str, model: str, system: str, task: str, *,
+            slug: str = "", role_id: int | None = None) -> tuple[str, float]:
+        """Run to completion; returns (final text, cost in IDR). `model` is the
+        server-default model; `slug`/`role_id` pick the BYOK connection."""
         ...
 
 
@@ -36,9 +44,13 @@ class HermesAgent:
             transport=transport,
         )
 
-    def run(self, purpose: str, model: str, system: str, task: str) -> tuple[str, float]:
+    def run(self, purpose: str, model: str, system: str, task: str, *,
+            slug: str = "", role_id: int | None = None) -> tuple[str, float]:
+        with self.sessions() as db:
+            conn = llm_conn.describe(db, self.settings, slug, role_id, model)
+            alias = llm_conn.register_alias(db, self.settings, slug, role_id, model, purpose)
         body = {
-            "model": model,
+            "model": alias,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": task},
@@ -62,10 +74,12 @@ class HermesAgent:
             pt = int(usage.get("prompt_tokens") or 0)
             ct = int(usage.get("completion_tokens") or 0)
             with self.sessions() as s:
+                llm_conn.drop_alias(s, alias)
                 record_ai_call(
                     s,
                     purpose=purpose,
-                    model=model,
+                    model=conn.model,
+                    llm_source=conn.source,
                     prompt=f"[system]\n{system}\n\n[user]\n{task}",
                     response=content,
                     prompt_tokens=pt,

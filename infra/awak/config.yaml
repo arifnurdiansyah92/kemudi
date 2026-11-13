@@ -1,14 +1,19 @@
 # Kemudi: Awak, the coding agent (Hermes with terminal and file tools).
 #
 # Mounted read-only at /etc/hermes/config.yaml (Hermes' managed scope), so the
-# agent cannot change its own settings. No secrets here: the model is reached
-# through kemudi-llm-proxy, which adds the provider key; this container never
-# holds it. See docs/superpowers/specs/2026-11-13-awak-dev-loop-design.md.
+# agent cannot change its own settings. No provider key here: the model is
+# reached through the orchestrator's internal /llm/v1 proxy. Each run's model
+# name is a short-lived alias (awak-run-<hex>) that the orchestrator maps to the
+# run's connection (agent > project > server default, BYOK) and the real key.
+# api_key is only the proxy's shared token, not a provider key.
+# See docs/superpowers/specs/2026-11-14-awak-byok-design.md.
 
 model:
   provider: custom
-  base_url: http://kemudi-llm-proxy/v1
-  api_key: via-proxy
+  base_url: http://kemudi-orchestrator:8700/llm/v1
+  api_key: ${KEMUDI_LLM_PROXY_TOKEN}
+  # Only a fallback name: the orchestrator sends an alias with every run, and
+  # the proxy refuses any other model name.
   default: ${KEMUDI_AWAK_MODEL}
 
 # --- Tools: terminal and file only -------------------------------------------

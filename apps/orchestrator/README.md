@@ -88,13 +88,15 @@ move it to In progress and write what is wrong in a comment.
 | `KEMUDI_AWAK_PROJECTS` | (empty: worker off) | project slugs, comma-separated |
 | `KEMUDI_AWAK_PASSWORD`, `KEMUDI_QA_PASSWORD` | | Taiga users `awak`, `awak-qa` |
 | `KEMUDI_AWAK_API_KEY`, `KEMUDI_RUNNER_KEY` | | guard kemudi-awak / kemudi-runner ports |
-| `KEMUDI_AWAK_MODEL`, `KEMUDI_QA_MODEL` | `deepseek-flash` | |
+| `KEMUDI_AWAK_MODEL`, `KEMUDI_QA_MODEL` | `deepseek-flash` | server-default models |
+| `KEMUDI_AI_BASE_URL`, `KEMUDI_AI_API_KEY` | | server-default model connection |
+| `KEMUDI_LLM_PROXY_TOKEN` | (empty: alias only) | Awak's token for `/llm/v1` |
 | `KEMUDI_MAX_ATTEMPTS` | `3` | |
 
 ### Boundaries
 
-- kemudi-awak runs on an internal network only and holds no secrets; the
-  model key is added by kemudi-llm-proxy. kemudi-runner also holds no
+- kemudi-awak runs on an internal network only and holds no provider key;
+  the orchestrator's `/llm/v1` proxy adds it (see BYOK below). kemudi-runner also holds no
   secrets but can reach the internet (for npm); the QA token it gets per run
   belongs to `awak-qa`, a member of the QA sandbox project only.
 - Only `awak/us-<n>` branches are pushed, and only into the local repo's git
@@ -144,3 +146,45 @@ keys at rest. Without a valid one, every endpoint that makes or uses a key
 answers 503; nothing falls back to plaintext. Generate one with
 `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
 and keep it: losing it makes stored keys unusable (generate new ones).
+
+## BYOK: model connections
+
+A project, and each agent role within it, can bring its own
+OpenAI-compatible provider (sumopod, OpenAI, OpenRouter, DeepSeek, Groq,
+vLLM, Ollama). See
+[the design](../../docs/superpowers/specs/2026-11-14-awak-byok-design.md).
+
+**Precedence: agent > project > server default**, resolved as whole groups
+(a level's key only ever goes to that level's base URL). The server default is
+`KEMUDI_AI_BASE_URL` / `KEMUDI_AI_API_KEY` with the role's model (or
+`KEMUDI_AWAK_MODEL` / `KEMUDI_QA_MODEL`).
+
+**API** under `/api/kemudi/projects/{slug}/agent/` (reads: members; writes
+and tests: admins; every write is an `awak_llm` decision without the key):
+
+- `GET/PUT llm` (project level), `GET/PUT roles/{id}/llm` (agent level).
+  Body `{base_url, model, api_key?, clear?}`: an empty `api_key` keeps the
+  stored one, `clear: true` removes the level. Responses carry `set`,
+  `base_url`, `model`, `key_set`, `key_last4`, `effective` (`llm_source`,
+  `llm_model`, `llm_host`) and `server_default` — never the key.
+- `POST llm/test`, `POST roles/{id}/llm/test`: a 1-token chat completion,
+  `{ok, latency_ms, status, error, llm_source, llm_model, llm_host}`. With a
+  body it tests those (unsaved) values; the stored key is reused only for the
+  same base URL.
+- `GET roles` rows carry `llm_source` (`agent|project|server`), `llm_model`,
+  `llm_host`.
+
+The base URL must be `https://`, or `http://` to a private or loopback
+address. Redirects are not followed. Keys are Fernet tokens under
+`KEMUDI_SECRET_KEY` and are added to the secret scan of Awak's diffs and
+comments. `ai_calls` records the real model and `llm_source` per run.
+
+**The orchestrator is Awak's model proxy** (`kemudi-llm-proxy` is gone).
+Each Awak or QA run registers an alias `awak-run-<hex>` (`awak_llm_aliases`)
+and Hermes sends it as the model name to
+`http://kemudi-orchestrator:8700/llm/v1/chat/completions` on kemudi-sandbox.
+The proxy swaps in the real model and `Authorization`, forwards to the base
+URL (SSE streamed through), and answers 403 for an unknown or expired alias.
+The alias is deleted when the run ends. With `KEMUDI_LLM_PROXY_TOKEN` set,
+requests must also carry it as their bearer token (Awak's config sends it).
+The gateway answers 404 for `/api/kemudi/llm/`.

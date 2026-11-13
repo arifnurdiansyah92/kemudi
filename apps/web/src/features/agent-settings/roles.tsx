@@ -18,6 +18,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
+import { LlmSourceBadge, RoleLlmSection } from './llm-connection'
 import { RoleEditor } from './role-editor'
 
 export function Roles({
@@ -76,7 +77,13 @@ export function Roles({
                 <span className='truncate text-sm font-medium'>{r.name}</span>
                 <span className='flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs text-muted-foreground'>
                   <span className='font-mono'>{`area:${r.area}`}</span>
-                  <span className='font-mono'>{r.model}</span>
+                  <span
+                    className='flex items-center gap-1.5'
+                    title={r.llm_host || undefined}
+                  >
+                    <LlmSourceBadge source={r.llm_source} />
+                    <span className='font-mono'>{r.llm_model}</span>
+                  </span>
                   <span>
                     {r.repo_ids.length
                       ? t('roles.repoCount', { count: r.repo_ids.length })
@@ -165,6 +172,21 @@ function RoleSheetBody({
           }
         />
       </div>
+      <section className='grid gap-3 border-t px-6 py-5'>
+        <div className='grid gap-1'>
+          <h3 className='font-semibold'>{t('llm.roleTitle')}</h3>
+          <p className='text-sm text-muted-foreground'>
+            {t('llm.roleDescription')}
+          </p>
+        </div>
+        {role ? (
+          <RoleLlmSection slug={slug} roleId={role.id} canEdit={canEdit} />
+        ) : (
+          <p className='text-sm text-muted-foreground'>
+            {t('llm.roleSaveFirst')}
+          </p>
+        )}
+      </section>
     </>
   )
 }

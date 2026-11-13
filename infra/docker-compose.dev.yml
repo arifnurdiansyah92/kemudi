@@ -178,9 +178,14 @@ services:
       # Fernet key that encrypts the SSH keys Kemudi generates (Project
       # settings -> Agent). Empty = key generation answers 503.
       KEMUDI_SECRET_KEY: "${KEMUDI_SECRET_KEY:-}"
-      # Not used to call anything: the secret scanner looks for this value in
-      # Awak's diffs and comments.
+      # The server-default model connection. The orchestrator is Awak's model
+      # proxy (/llm/v1, on kemudi-sandbox; egress through default) and adds the
+      # key, a project's or agent's own (BYOK) or this one. The secret scanner
+      # also looks for this value in Awak's diffs and comments.
+      KEMUDI_AI_BASE_URL: "${KEMUDI_AI_BASE_URL}"
       KEMUDI_AI_API_KEY: "${KEMUDI_AI_API_KEY}"
+      # Shared token kemudi-awak sends to /llm/v1 (infra/awak/config.yaml).
+      KEMUDI_LLM_PROXY_TOKEN: "${KEMUDI_LLM_PROXY_TOKEN:-}"
     volumes:
       # Contracts are confidential: a named volume, never the repo.
       - kemudi-ai-data:/var/lib/kemudi-ai
@@ -195,8 +200,9 @@ services:
 
   # --- Awak dev loop (profile "awak") -------------------------------------
   # docs/superpowers/specs/2026-11-13-awak-dev-loop-design.md
-  # kemudi-sandbox is internal (no internet). Awak holds no secrets: it
-  # reaches the model through kemudi-llm-proxy, which adds the key.
+  # kemudi-sandbox is internal (no internet). Awak holds no provider key: it
+  # reaches the model through the orchestrator's /llm/v1 proxy, which maps the
+  # run's alias to the real model and key.
   kemudi-awak:
     image: kemudi/kemudi-hermes:dev
     profiles: [awak]
@@ -208,6 +214,8 @@ services:
       API_SERVER_KEY: "${KEMUDI_AWAK_API_KEY:-}"
       API_SERVER_MODEL_NAME: "kemudi-awak"
       KEMUDI_AWAK_MODEL: "${KEMUDI_AWAK_MODEL:-deepseek-flash}"
+      # Only admits Awak to the orchestrator's model proxy; not a provider key.
+      KEMUDI_LLM_PROXY_TOKEN: "${KEMUDI_LLM_PROXY_TOKEN:-unset}"
     volumes:
       - ./awak/config.yaml:/etc/hermes/config.yaml:ro
       - kemudi-awak-data:/opt/data
@@ -224,17 +232,6 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
-    restart: unless-stopped
-
-  kemudi-llm-proxy:
-    image: nginx:1.27-alpine
-    profiles: [awak]
-    environment:
-      KEMUDI_AI_BASE_URL: "${KEMUDI_AI_BASE_URL}"
-      KEMUDI_AI_API_KEY: "${KEMUDI_AI_API_KEY}"
-    volumes:
-      - ./llm-proxy/default.conf.template:/etc/nginx/templates/default.conf.template:ro
-    networks: [kemudi-sandbox, kemudi-egress]
     restart: unless-stopped
 
   # Runs branch code (pnpm install, gates, Playwright). No secrets; it has

@@ -44,6 +44,50 @@
       "notSet": "Belum ada perintah deploy; merge tidak menjalankan deploy."
     }
   },
+  "llm": {
+    "title": "Koneksi model (semua agen)",
+    "description": "Penyedia yang kompatibel dengan OpenAI yang dipanggil agen Awak, misalnya sumopod, OpenAI, OpenRouter, DeepSeek, Groq, atau vLLM maupun Ollama yang di-host sendiri.",
+    "hierarchy": "Pengaturan milik agen didahulukan, lalu pengaturan ini, lalu default server Kemudi ({{model}}, {{host}}).",
+    "roleTitle": "Koneksi model",
+    "roleDescription": "Penyedia dan kunci yang dipanggil agen ini.",
+    "roleSaveFirst": "Simpan peran ini terlebih dahulu, lalu Anda dapat memberinya koneksi model sendiri.",
+    "roleHierarchy": "Jika default proyek aktif, agen ini memakai koneksi proyek, atau jika tidak ada, default server Kemudi ({{model}}, {{host}}).",
+    "useDefault": "Gunakan default proyek",
+    "inUse": "Dipakai:",
+    "noHost": "alamat belum diatur",
+    "source": {
+      "agent": "Dari agen ini",
+      "project": "Dari proyek",
+      "server": "Default server Kemudi"
+    },
+    "baseUrl": "Base URL",
+    "baseUrlHint": "https://, atau http:// ke alamat privat untuk model yang di-host sendiri.",
+    "model": "Model",
+    "modelHint": "Nama model dari penyedia, misalnya gpt-4o-mini.",
+    "key": "API key",
+    "keyStored": "Kunci tersimpan berakhiran {{last4}}",
+    "keyReplace": "Ganti",
+    "keyKeep": "Pertahankan kunci tersimpan",
+    "keyHintNew": "Disimpan terenkripsi dan tidak akan ditampilkan lagi. Kosongkan untuk model yang di-host sendiri tanpa kunci.",
+    "keyHintStored": "Disimpan terenkripsi. Hanya 4 karakter terakhir yang ditampilkan.",
+    "keyHintReplace": "Menggantikan kunci tersimpan saat Anda menyimpan.",
+    "keyMoves": "Kunci tersimpan berakhiran {{last4}} akan dikirim ke alamat baru ini. Ganti kuncinya jika milik penyedia lain.",
+    "test": "Uji koneksi",
+    "testing": "Menguji…",
+    "testOk": "Terhubung dalam {{ms}} md",
+    "testFailed": "Koneksi gagal.",
+    "testTarget": "{{model}} di {{host}}",
+    "saved": "Koneksi model disimpan",
+    "cleared": "Koneksi model dihapus",
+    "clear": "Hapus",
+    "clearConfirm": {
+      "title": "Hapus koneksi model ini?",
+      "projectBody": "Base URL, model, dan kunci tersimpan akan dihapus. Agen yang tidak memiliki pengaturan sendiri kembali memakai default server Kemudi.",
+      "roleBody": "Base URL, model, dan kunci tersimpan akan dihapus. Agen ini kembali memakai default proyek.",
+      "action": "Hapus koneksi"
+    },
+    "unavailable": "Koneksi model tidak dapat dijangkau. Pastikan orchestrator Kemudi AI sedang berjalan."
+  },
   "machine": {
     "title": "Mesin eksekusi",
     "description": "Tempat perintah deploy dijalankan, dan mesin yang diperiksa Kemudi terhadap kebutuhan minimum sebuah job.",
@@ -208,6 +252,7 @@
       "area": "Tag area",
       "areaHint": "Story dengan tag area:{{area}} diberikan ke peran ini.",
       "model": "Model",
+      "modelHint": "Dipakai bersama default server Kemudi. Koneksi model di bawah membawa modelnya sendiri.",
       "repos": "Repositori",
       "reposHint": "Repo yang boleh diubah oleh peran ini. Jika tidak ada yang dipilih, berarti semua repo.",
       "reposAll": "Semua repo",

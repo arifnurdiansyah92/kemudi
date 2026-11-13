@@ -44,6 +44,50 @@
       "notSet": "No deploy command is set; merges do not deploy."
     }
   },
+  "llm": {
+    "title": "Model connection (all agents)",
+    "description": "The OpenAI-compatible provider Awak's agents call, such as sumopod, OpenAI, OpenRouter, DeepSeek, Groq, or a self-hosted vLLM or Ollama.",
+    "hierarchy": "An agent's own setting comes first, then this one, then the Kemudi server default ({{model}}, {{host}}).",
+    "roleTitle": "Model connection",
+    "roleDescription": "The provider and key this agent calls.",
+    "roleSaveFirst": "Save the role first, then you can give it its own model connection.",
+    "roleHierarchy": "With project default on, this agent uses the project's connection, or else the Kemudi server default ({{model}}, {{host}}).",
+    "useDefault": "Use project default",
+    "inUse": "In use:",
+    "noHost": "no address set",
+    "source": {
+      "agent": "From this agent",
+      "project": "From project",
+      "server": "Kemudi server default"
+    },
+    "baseUrl": "Base URL",
+    "baseUrlHint": "https://, or http:// to a private address for a self-hosted model.",
+    "model": "Model",
+    "modelHint": "The provider's model name, e.g. gpt-4o-mini.",
+    "key": "API key",
+    "keyStored": "Stored key ending in {{last4}}",
+    "keyReplace": "Replace",
+    "keyKeep": "Keep the stored key",
+    "keyHintNew": "Stored encrypted and never shown again. Leave empty for a self-hosted model that needs no key.",
+    "keyHintStored": "Stored encrypted. Only the last 4 characters are shown.",
+    "keyHintReplace": "Replaces the stored key when you save.",
+    "keyMoves": "The stored key ending in {{last4}} will be sent to this new address. Replace it if it belongs to another provider.",
+    "test": "Test connection",
+    "testing": "Testing…",
+    "testOk": "Connected in {{ms}} ms",
+    "testFailed": "Connection failed.",
+    "testTarget": "{{model}} at {{host}}",
+    "saved": "Model connection saved",
+    "cleared": "Model connection cleared",
+    "clear": "Clear",
+    "clearConfirm": {
+      "title": "Clear this model connection?",
+      "projectBody": "The base URL, model and stored key are removed. Agents without their own setting go back to the Kemudi server default.",
+      "roleBody": "The base URL, model and stored key are removed. This agent goes back to the project default.",
+      "action": "Clear connection"
+    },
+    "unavailable": "The model connection isn't reachable. Check that the Kemudi AI orchestrator is running."
+  },
   "machine": {
     "title": "Execution machine",
     "description": "Where the deploy command runs, and the machine Kemudi checks against the minimum a job needs.",
@@ -210,6 +254,7 @@
       "area": "Area tag",
       "areaHint": "Stories tagged area:{{area}} go to this role.",
       "model": "Model",
+      "modelHint": "Used with the Kemudi server default. A model connection below brings its own model.",
       "repos": "Repositories",
       "reposHint": "The repos this role may change. None selected means every repo.",
       "reposAll": "All repos",

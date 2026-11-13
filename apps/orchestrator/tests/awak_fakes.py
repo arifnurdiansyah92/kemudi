@@ -99,9 +99,10 @@ class FakeAgent:
         self.calls: list[tuple[str, str]] = []
         self.runs: list[dict] = []
 
-    def run(self, purpose, model, system, task):
+    def run(self, purpose, model, system, task, slug="", role_id=None):
         self.calls.append((purpose, task))
-        self.runs.append({"purpose": purpose, "model": model, "system": system, "task": task})
+        self.runs.append({"purpose": purpose, "model": model, "system": system, "task": task,
+                          "slug": slug, "role_id": role_id})
         if self.fail_with:
             err = self.fail_with.pop(0)
             if err:

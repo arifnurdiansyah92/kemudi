@@ -132,7 +132,47 @@ export type Role = RoleIn & {
   prompt_version: string
   updated_by: string | null
   updated_at: string | null
+} & LlmEffective
+
+/* ---------- model connection (BYOK) ---------- */
+
+/** Where a model connection comes from: agent > project > server default. */
+export type LlmSource = 'agent' | 'project' | 'server'
+
+export type LlmEffective = {
+  llm_source: LlmSource
+  llm_model: string
+  llm_host: string
 }
+
+/** One level (project or agent) as the API shows it. The key is write-only:
+ * only whether one is stored and its last 4 characters come back. */
+export type LlmLevel = {
+  set: boolean
+  base_url: string
+  model: string
+  key_set: boolean
+  key_last4: string | null
+  effective: LlmEffective
+  server_default: { model: string; host: string }
+  updated_by: string | null
+  updated_at: string | null
+}
+
+/** An empty `api_key` keeps the stored key; `clear` removes the level. */
+export type LlmIn = {
+  base_url: string
+  model: string
+  api_key?: string
+  clear?: boolean
+}
+
+export type LlmTest = {
+  ok: boolean
+  latency_ms: number
+  status: number | null
+  error: string | null
+} & LlmEffective
 
 export type RolePrompt = {
   fixed: string
@@ -444,6 +484,49 @@ export function useRolePrompt(slug: string, roleId: number | null) {
           `/projects/${slug}/agent/roles/${roleId}/prompt`,
           base
         )
+      ).data,
+  })
+}
+
+/* ---------- model connection (BYOK) ---------- */
+
+/** `roleId` null is the project level ("all agents"). */
+const llmPath = (slug: string, roleId: number | null) =>
+  roleId === null
+    ? `/projects/${slug}/agent/llm`
+    : `/projects/${slug}/agent/roles/${roleId}/llm`
+
+export function useLlmLevel(slug: string, roleId: number | null) {
+  return useQuery({
+    queryKey: agentKey(slug, 'llm', roleId ?? 0),
+    queryFn: async () =>
+      (await api.get<LlmLevel>(llmPath(slug, roleId), base)).data,
+  })
+}
+
+/** Errors are shown inline by the form, so no toast here. */
+export function useSaveLlmLevel(slug: string, roleId: number | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (body: LlmIn) =>
+      (await api.put<LlmLevel>(llmPath(slug, roleId), body, base)).data,
+    onSuccess: (data) => {
+      qc.setQueryData(agentKey(slug, 'llm', roleId ?? 0), data)
+      // Role rows show the resolved source; other levels' `effective` moves too.
+      return qc.invalidateQueries({ queryKey: agentKey(slug) })
+    },
+  })
+}
+
+/** Tests the unsaved values when a body is sent, else the saved connection. */
+export function useTestLlmLevel(slug: string, roleId: number | null) {
+  return useMutation({
+    mutationFn: async (body: LlmIn | null) =>
+      (
+        await api.post<LlmTest>(`${llmPath(slug, roleId)}/test`, body, {
+          ...base,
+          timeout: 60_000,
+        })
       ).data,
   })
 }

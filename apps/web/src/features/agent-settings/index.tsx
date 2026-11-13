@@ -21,6 +21,7 @@ import { Switch } from '@/components/ui/switch'
 import { SettingsSection } from '@/features/project-settings/layout'
 import { useProject } from '@/features/project/use-project'
 import { Jobs } from './jobs'
+import { ProjectLlmSection } from './llm-connection'
 import { Machine } from './machine'
 import { DeployCommand, MergePolicy } from './merge-policy'
 import { Repos } from './repos'
@@ -103,7 +104,7 @@ export function AgentSettingsPage() {
   )
 }
 
-/** Status, merge policy and machine: the three that write agent/settings. */
+/** Status, merge policy, model connection and machine. */
 function SettingsBlocks({
   slug,
   settings,
@@ -197,6 +198,13 @@ function SettingsBlocks({
             }
           />
         </div>
+      </SettingsSection>
+
+      <SettingsSection
+        title={t('llm.title')}
+        description={t('llm.description')}
+      >
+        <ProjectLlmSection slug={slug} canEdit={canEdit} />
       </SettingsSection>
 
       <SettingsSection

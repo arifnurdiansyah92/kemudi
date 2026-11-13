@@ -24,7 +24,6 @@ kemudi/
 │   ├── docker-compose.dev.yml
 │   ├── gateway/          # nginx config for the dev stack
 │   ├── awak/             # Awak's Hermes config and Taiga bootstrap
-│   ├── llm-proxy/        # adds the model key so agents never hold it
 │   └── runner/           # runs Awak's branches: install, gates, Playwright QA
 ├── docs/                 # ADRs, architecture, third-party licenses
 └── LICENSES/             # AGPL-3.0, MPL-2.0, MIT

@@ -124,6 +124,7 @@ export function RoleEditor({
             id='role-model'
             value={model}
             disabled={ro}
+            aria-describedby='role-model-hint'
             onChange={(e) => setModel(e.target.value)}
             className={cn(fieldClass, 'font-mono text-xs')}
           >
@@ -133,6 +134,9 @@ export function RoleEditor({
               </option>
             ))}
           </select>
+          <p id='role-model-hint' className='text-xs text-muted-foreground'>
+            {t('roles.editor.modelHint')}
+          </p>
         </div>
         <div className='grid gap-1.5'>
           <Label htmlFor='role-template'>{t('roles.editor.template')}</Label>
