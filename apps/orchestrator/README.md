@@ -101,3 +101,46 @@ move it to In progress and write what is wrong in a comment.
   data (`.git`, mounted into the orchestrator). Nothing goes to GitHub.
 - Diffs and comments are scanned for secrets before they leave the sandbox.
 - The worker refuses any Taiga that is not the local dev stack.
+
+## Project setup (iteration 2)
+
+Per-project Awak settings live in the orchestrator DB (`awak_projects`,
+`awak_repos`, `awak_roles`, `awak_keys`); `KEMUDI_AWAK_PROJECTS` only seeds
+them once. See
+[the design](../../docs/superpowers/specs/2026-11-14-awak-project-setup-design.md).
+
+**Agent settings API** under `/api/kemudi/projects/{slug}/agent/`. Reads
+need project membership, writes need project admin, and every write is a
+`decisions` row without secrets.
+
+- `GET/PUT settings`: on/off, merge mode, deploy command, executor
+  (`local` or `ssh` with host, port, user), last preflight.
+- `GET/POST repos`, `PUT/DELETE repos/{id}`, `POST repos/{id}/key` (a
+  Kemudi-generated deploy key; only the public key is returned),
+  `POST repos/{id}/check` (clone, push dry-run, detected commands).
+- `GET/POST roles`, `PUT roles/{id}`, `GET roles/{id}/prompt` (the fixed
+  Kemudi rules, role template and project overlay).
+- `POST machine/key`, `POST machine/check` (CPU, RAM, disk and Docker
+  against 4 vCPU / 8 GB / 40 GB per job, and job slots),
+  `DELETE machine/host-key`. Jobs still run on `local` until remote
+  execution ships; the SSH machine is only checked and used for deploys.
+- `GET jobs`, `GET stories/{id}`, `POST stories/{id}/merge`.
+
+Intake for the UI is `POST /projects/{slug}/intake/draft` (drafts, creates
+nothing) then `POST /projects/{slug}/intake/create` (as the caller, so
+Taiga's permissions apply; the server decides Ready, the PM can only hold a
+story in New).
+
+**Merge modes.** `manual`: QA passed means Done plus `awaiting-merge`, a
+human merges (iteration 1). `approve` (the default): an admin clicks Merge
+and Kemudi merges into the default branch and pushes. `auto`: Kemudi merges
+and pushes as soon as QA passes. A merge that is not a fast-forward of the
+QA'd commit runs the gates again (and in `auto` the QA spec too) before the
+push; the push is never forced. The optional deploy command runs after a
+merge, over SSH or in the runner sandbox.
+
+**`KEMUDI_SECRET_KEY`** is a Fernet key that encrypts the generated private
+keys at rest. Without a valid one, every endpoint that makes or uses a key
+answers 503; nothing falls back to plaintext. Generate one with
+`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+and keep it: losing it makes stored keys unusable (generate new ones).

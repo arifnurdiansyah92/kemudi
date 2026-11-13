@@ -47,6 +47,7 @@ import { Route as AuthenticatedPSlugTimelineRouteImport } from './routes/_authen
 import { Route as AuthenticatedPSlugTeamRouteImport } from './routes/_authenticated/p/$slug/team'
 import { Route as AuthenticatedPSlugKanbanRouteImport } from './routes/_authenticated/p/$slug/kanban'
 import { Route as AuthenticatedPSlugIssuesRouteImport } from './routes/_authenticated/p/$slug/issues'
+import { Route as AuthenticatedPSlugIntakeRouteImport } from './routes/_authenticated/p/$slug/intake'
 import { Route as AuthenticatedPSlugEpicsRouteImport } from './routes/_authenticated/p/$slug/epics'
 import { Route as AuthenticatedPSlugContractRouteImport } from './routes/_authenticated/p/$slug/contract'
 import { Route as AuthenticatedPSlugBacklogRouteImport } from './routes/_authenticated/p/$slug/backlog'
@@ -68,6 +69,7 @@ import { Route as AuthenticatedPSlugSettingsGeneralRouteImport } from './routes/
 import { Route as AuthenticatedPSlugSettingsDataRouteImport } from './routes/_authenticated/p/$slug/settings/data'
 import { Route as AuthenticatedPSlugSettingsCustomFieldsRouteImport } from './routes/_authenticated/p/$slug/settings/custom-fields'
 import { Route as AuthenticatedPSlugSettingsAttributesRouteImport } from './routes/_authenticated/p/$slug/settings/attributes'
+import { Route as AuthenticatedPSlugSettingsAgentRouteImport } from './routes/_authenticated/p/$slug/settings/agent'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
@@ -276,6 +278,12 @@ const AuthenticatedPSlugIssuesRoute =
     path: '/issues',
     getParentRoute: () => AuthenticatedPSlugRouteRoute,
   } as any)
+const AuthenticatedPSlugIntakeRoute =
+  AuthenticatedPSlugIntakeRouteImport.update({
+    id: '/intake',
+    path: '/intake',
+    getParentRoute: () => AuthenticatedPSlugRouteRoute,
+  } as any)
 const AuthenticatedPSlugEpicsRoute = AuthenticatedPSlugEpicsRouteImport.update({
   id: '/epics',
   path: '/epics',
@@ -401,6 +409,12 @@ const AuthenticatedPSlugSettingsAttributesRoute =
     path: '/attributes',
     getParentRoute: () => AuthenticatedPSlugSettingsRouteRoute,
   } as any)
+const AuthenticatedPSlugSettingsAgentRoute =
+  AuthenticatedPSlugSettingsAgentRouteImport.update({
+    id: '/agent',
+    path: '/agent',
+    getParentRoute: () => AuthenticatedPSlugSettingsRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -435,6 +449,7 @@ export interface FileRoutesByFullPath {
   '/p/$slug/backlog': typeof AuthenticatedPSlugBacklogRoute
   '/p/$slug/contract': typeof AuthenticatedPSlugContractRoute
   '/p/$slug/epics': typeof AuthenticatedPSlugEpicsRoute
+  '/p/$slug/intake': typeof AuthenticatedPSlugIntakeRoute
   '/p/$slug/issues': typeof AuthenticatedPSlugIssuesRoute
   '/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
   '/p/$slug/team': typeof AuthenticatedPSlugTeamRoute
@@ -444,6 +459,7 @@ export interface FileRoutesByFullPath {
   '/p/$slug/': typeof AuthenticatedPSlugIndexRoute
   '/project/$slug/': typeof AuthenticatedProjectSlugIndexRoute
   '/project/new/': typeof AuthenticatedProjectNewIndexRoute
+  '/p/$slug/settings/agent': typeof AuthenticatedPSlugSettingsAgentRoute
   '/p/$slug/settings/attributes': typeof AuthenticatedPSlugSettingsAttributesRoute
   '/p/$slug/settings/custom-fields': typeof AuthenticatedPSlugSettingsCustomFieldsRoute
   '/p/$slug/settings/data': typeof AuthenticatedPSlugSettingsDataRoute
@@ -492,6 +508,7 @@ export interface FileRoutesByTo {
   '/p/$slug/backlog': typeof AuthenticatedPSlugBacklogRoute
   '/p/$slug/contract': typeof AuthenticatedPSlugContractRoute
   '/p/$slug/epics': typeof AuthenticatedPSlugEpicsRoute
+  '/p/$slug/intake': typeof AuthenticatedPSlugIntakeRoute
   '/p/$slug/issues': typeof AuthenticatedPSlugIssuesRoute
   '/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
   '/p/$slug/team': typeof AuthenticatedPSlugTeamRoute
@@ -501,6 +518,7 @@ export interface FileRoutesByTo {
   '/p/$slug': typeof AuthenticatedPSlugIndexRoute
   '/project/$slug': typeof AuthenticatedProjectSlugIndexRoute
   '/project/new': typeof AuthenticatedProjectNewIndexRoute
+  '/p/$slug/settings/agent': typeof AuthenticatedPSlugSettingsAgentRoute
   '/p/$slug/settings/attributes': typeof AuthenticatedPSlugSettingsAttributesRoute
   '/p/$slug/settings/custom-fields': typeof AuthenticatedPSlugSettingsCustomFieldsRoute
   '/p/$slug/settings/data': typeof AuthenticatedPSlugSettingsDataRoute
@@ -554,6 +572,7 @@ export interface FileRoutesById {
   '/_authenticated/p/$slug/backlog': typeof AuthenticatedPSlugBacklogRoute
   '/_authenticated/p/$slug/contract': typeof AuthenticatedPSlugContractRoute
   '/_authenticated/p/$slug/epics': typeof AuthenticatedPSlugEpicsRoute
+  '/_authenticated/p/$slug/intake': typeof AuthenticatedPSlugIntakeRoute
   '/_authenticated/p/$slug/issues': typeof AuthenticatedPSlugIssuesRoute
   '/_authenticated/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
   '/_authenticated/p/$slug/team': typeof AuthenticatedPSlugTeamRoute
@@ -563,6 +582,7 @@ export interface FileRoutesById {
   '/_authenticated/p/$slug/': typeof AuthenticatedPSlugIndexRoute
   '/_authenticated/project/$slug/': typeof AuthenticatedProjectSlugIndexRoute
   '/_authenticated/project/new/': typeof AuthenticatedProjectNewIndexRoute
+  '/_authenticated/p/$slug/settings/agent': typeof AuthenticatedPSlugSettingsAgentRoute
   '/_authenticated/p/$slug/settings/attributes': typeof AuthenticatedPSlugSettingsAttributesRoute
   '/_authenticated/p/$slug/settings/custom-fields': typeof AuthenticatedPSlugSettingsCustomFieldsRoute
   '/_authenticated/p/$slug/settings/data': typeof AuthenticatedPSlugSettingsDataRoute
@@ -616,6 +636,7 @@ export interface FileRouteTypes {
     | '/p/$slug/backlog'
     | '/p/$slug/contract'
     | '/p/$slug/epics'
+    | '/p/$slug/intake'
     | '/p/$slug/issues'
     | '/p/$slug/kanban'
     | '/p/$slug/team'
@@ -625,6 +646,7 @@ export interface FileRouteTypes {
     | '/p/$slug/'
     | '/project/$slug/'
     | '/project/new/'
+    | '/p/$slug/settings/agent'
     | '/p/$slug/settings/attributes'
     | '/p/$slug/settings/custom-fields'
     | '/p/$slug/settings/data'
@@ -673,6 +695,7 @@ export interface FileRouteTypes {
     | '/p/$slug/backlog'
     | '/p/$slug/contract'
     | '/p/$slug/epics'
+    | '/p/$slug/intake'
     | '/p/$slug/issues'
     | '/p/$slug/kanban'
     | '/p/$slug/team'
@@ -682,6 +705,7 @@ export interface FileRouteTypes {
     | '/p/$slug'
     | '/project/$slug'
     | '/project/new'
+    | '/p/$slug/settings/agent'
     | '/p/$slug/settings/attributes'
     | '/p/$slug/settings/custom-fields'
     | '/p/$slug/settings/data'
@@ -734,6 +758,7 @@ export interface FileRouteTypes {
     | '/_authenticated/p/$slug/backlog'
     | '/_authenticated/p/$slug/contract'
     | '/_authenticated/p/$slug/epics'
+    | '/_authenticated/p/$slug/intake'
     | '/_authenticated/p/$slug/issues'
     | '/_authenticated/p/$slug/kanban'
     | '/_authenticated/p/$slug/team'
@@ -743,6 +768,7 @@ export interface FileRouteTypes {
     | '/_authenticated/p/$slug/'
     | '/_authenticated/project/$slug/'
     | '/_authenticated/project/new/'
+    | '/_authenticated/p/$slug/settings/agent'
     | '/_authenticated/p/$slug/settings/attributes'
     | '/_authenticated/p/$slug/settings/custom-fields'
     | '/_authenticated/p/$slug/settings/data'
@@ -1049,6 +1075,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPSlugIssuesRouteImport
       parentRoute: typeof AuthenticatedPSlugRouteRoute
     }
+    '/_authenticated/p/$slug/intake': {
+      id: '/_authenticated/p/$slug/intake'
+      path: '/intake'
+      fullPath: '/p/$slug/intake'
+      preLoaderRoute: typeof AuthenticatedPSlugIntakeRouteImport
+      parentRoute: typeof AuthenticatedPSlugRouteRoute
+    }
     '/_authenticated/p/$slug/epics': {
       id: '/_authenticated/p/$slug/epics'
       path: '/epics'
@@ -1196,6 +1229,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPSlugSettingsAttributesRouteImport
       parentRoute: typeof AuthenticatedPSlugSettingsRouteRoute
     }
+    '/_authenticated/p/$slug/settings/agent': {
+      id: '/_authenticated/p/$slug/settings/agent'
+      path: '/agent'
+      fullPath: '/p/$slug/settings/agent'
+      preLoaderRoute: typeof AuthenticatedPSlugSettingsAgentRouteImport
+      parentRoute: typeof AuthenticatedPSlugSettingsRouteRoute
+    }
   }
 }
 
@@ -1225,6 +1265,7 @@ const AuthenticatedSettingsRouteRouteWithChildren =
   )
 
 interface AuthenticatedPSlugSettingsRouteRouteChildren {
+  AuthenticatedPSlugSettingsAgentRoute: typeof AuthenticatedPSlugSettingsAgentRoute
   AuthenticatedPSlugSettingsAttributesRoute: typeof AuthenticatedPSlugSettingsAttributesRoute
   AuthenticatedPSlugSettingsCustomFieldsRoute: typeof AuthenticatedPSlugSettingsCustomFieldsRoute
   AuthenticatedPSlugSettingsDataRoute: typeof AuthenticatedPSlugSettingsDataRoute
@@ -1240,6 +1281,7 @@ interface AuthenticatedPSlugSettingsRouteRouteChildren {
 
 const AuthenticatedPSlugSettingsRouteRouteChildren: AuthenticatedPSlugSettingsRouteRouteChildren =
   {
+    AuthenticatedPSlugSettingsAgentRoute: AuthenticatedPSlugSettingsAgentRoute,
     AuthenticatedPSlugSettingsAttributesRoute:
       AuthenticatedPSlugSettingsAttributesRoute,
     AuthenticatedPSlugSettingsCustomFieldsRoute:
@@ -1270,6 +1312,7 @@ interface AuthenticatedPSlugRouteRouteChildren {
   AuthenticatedPSlugBacklogRoute: typeof AuthenticatedPSlugBacklogRoute
   AuthenticatedPSlugContractRoute: typeof AuthenticatedPSlugContractRoute
   AuthenticatedPSlugEpicsRoute: typeof AuthenticatedPSlugEpicsRoute
+  AuthenticatedPSlugIntakeRoute: typeof AuthenticatedPSlugIntakeRoute
   AuthenticatedPSlugIssuesRoute: typeof AuthenticatedPSlugIssuesRoute
   AuthenticatedPSlugKanbanRoute: typeof AuthenticatedPSlugKanbanRoute
   AuthenticatedPSlugTeamRoute: typeof AuthenticatedPSlugTeamRoute
@@ -1289,6 +1332,7 @@ const AuthenticatedPSlugRouteRouteChildren: AuthenticatedPSlugRouteRouteChildren
     AuthenticatedPSlugBacklogRoute: AuthenticatedPSlugBacklogRoute,
     AuthenticatedPSlugContractRoute: AuthenticatedPSlugContractRoute,
     AuthenticatedPSlugEpicsRoute: AuthenticatedPSlugEpicsRoute,
+    AuthenticatedPSlugIntakeRoute: AuthenticatedPSlugIntakeRoute,
     AuthenticatedPSlugIssuesRoute: AuthenticatedPSlugIssuesRoute,
     AuthenticatedPSlugKanbanRoute: AuthenticatedPSlugKanbanRoute,
     AuthenticatedPSlugTeamRoute: AuthenticatedPSlugTeamRoute,

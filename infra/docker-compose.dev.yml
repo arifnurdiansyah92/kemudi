@@ -175,6 +175,9 @@ services:
       KEMUDI_AWAK_MODEL: "${KEMUDI_AWAK_MODEL:-deepseek-flash}"
       KEMUDI_QA_MODEL: "${KEMUDI_QA_MODEL:-deepseek-flash}"
       KEMUDI_RUNNER_KEY: "${KEMUDI_RUNNER_KEY:-}"
+      # Fernet key that encrypts the SSH keys Kemudi generates (Project
+      # settings -> Agent). Empty = key generation answers 503.
+      KEMUDI_SECRET_KEY: "${KEMUDI_SECRET_KEY:-}"
       # Not used to call anything: the secret scanner looks for this value in
       # Awak's diffs and comments.
       KEMUDI_AI_API_KEY: "${KEMUDI_AI_API_KEY}"

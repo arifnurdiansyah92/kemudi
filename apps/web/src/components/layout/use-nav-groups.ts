@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
 import {
   FileSignature,
+  Inbox,
   UserCog,
   Settings,
   House,
@@ -83,6 +84,11 @@ export function useNavGroups(): NavGroup[] {
         url: `/p/${project.slug}/wiki`,
         icon: BookOpen,
       })
+    items.push({
+      title: t('nav.intake'),
+      url: `/p/${project.slug}/intake`,
+      icon: Inbox,
+    })
     items.push({
       title: t('contract:title'),
       url: `/p/${project.slug}/contract`,

@@ -77,8 +77,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.forever:
             worker.run_forever()
             return 0
-        worker.recover()
-        print("worked" if worker.tick() else "nothing to do")
+        if not worker.claim_lease():
+            print("another Awak worker is running; nothing done")
+            return 1
+        try:
+            worker.recover()
+            with worker.heartbeat():
+                print("worked" if worker.tick() else "nothing to do")
+        finally:
+            worker.release_lease()
         return 0
     with S() as s:
         if args.cmd == "baseline":

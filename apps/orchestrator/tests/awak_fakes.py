@@ -1,5 +1,6 @@
 """In-memory doubles for the Awak loop: Taiga, the agent and the runner."""
 
+import importlib.util
 import subprocess
 from pathlib import Path
 
@@ -96,9 +97,11 @@ class FakeAgent:
         self.code = code or (lambda workdir, n: commit_file(workdir, f"feature{n}.txt", "x"))
         self.fail_with = fail_with or []
         self.calls: list[tuple[str, str]] = []
+        self.runs: list[dict] = []
 
     def run(self, purpose, model, system, task):
         self.calls.append((purpose, task))
+        self.runs.append({"purpose": purpose, "model": model, "system": system, "task": task})
         if self.fail_with:
             err = self.fail_with.pop(0)
             if err:
@@ -108,27 +111,64 @@ class FakeAgent:
             n = sum(1 for p, _ in self.calls if p == "awak.code")
             self.code(Path(workdir), n)
             return "changed things", 10.0
+        if purpose == "awak.qa":
+            workdir = Path(task.splitlines()[0].removeprefix("Workspace: ").strip())
+            spec = workdir / ".qa" / "spec" / "story.spec.ts"
+            spec.parent.mkdir(parents=True, exist_ok=True)
+            spec.write_text("test('AC1: thing', () => {})")
         return "spec written", 5.0
 
 
 def commit_file(workdir: Path, name: str, content: str):
-    (workdir / name).write_text(content)
+    # LF on disk: a Windows autocrlf would otherwise leave the worktree
+    # differing from the commit, which the runner's clean_check reports.
+    (workdir / name).write_text(content, newline="\n")
     git(workdir, "add", "-A")
     git(workdir, "commit", "-m", f"add {name}")
 
 
-class FakeRunner:
-    """`qa` entries are reports, or "pass"/"fail" to build one with real PNGs."""
+def real_runner():
+    """infra/runner/runner.py, loaded once (stdlib only)."""
+    global _REAL_RUNNER
+    if _REAL_RUNNER is None:
+        path = Path(__file__).resolve().parents[3] / "infra" / "runner" / "runner.py"
+        spec = importlib.util.spec_from_file_location("kemudi_runner_for_fakes", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _REAL_RUNNER = mod
+    return _REAL_RUNNER
 
-    def __init__(self, workspace: Path, gates=None, qa=None, n_criteria=2):
+
+_REAL_RUNNER = None
+
+
+class FakeRunner:
+    """`qa` entries are reports, or "pass"/"fail" to build one with real PNGs.
+    `clean_check` runs the real runner's op on the workspace unless `clean`
+    supplies replies."""
+
+    def __init__(self, workspace: Path, gates=None, qa=None, n_criteria=2, deploy=None,
+                 clean=None):
         self.workspace = Path(workspace)
         self.gates = list(gates or [])
         self.qa = list(qa or [])
         self.n = n_criteria
+        self.deploy = list(deploy or [])
+        self.clean = list(clean or [])
         self.calls: list[str] = []
+        self.payloads: list[tuple[str, dict]] = []
 
     def call(self, op, **payload):
         self.calls.append(op)
+        self.payloads.append((op, payload))
+        if op == "deploy" and self.deploy:
+            return self.deploy.pop(0)
+        if op == "clean_check":
+            if self.clean:
+                return self.clean.pop(0)
+            mod = real_runner()
+            mod.WORKSPACE = self.workspace
+            return mod.op_clean_check(payload)
         if op == "gates":
             return self.gates.pop(0) if self.gates else {"gates": [{"name": "tsc", "ok": True}]}
         if op == "qa":

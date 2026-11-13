@@ -12,7 +12,7 @@ from kemudi_ai.awak.taiga import TaigaError, assert_local
 from kemudi_ai.awak.verdict import evaluate, safe_screenshot
 from kemudi_ai.awak.worker import Worker
 from kemudi_ai.config import Settings
-from kemudi_ai.store import AwakJob, make_session
+from kemudi_ai.store import AwakJob, AwakProject, AwakRepo, AwakRole, make_session
 
 from .awak_fakes import PNG, FakeAgent, FakeRunner, FakeTaiga, commit_file, git, qa_report
 from .fakes import FakeLLM
@@ -50,8 +50,9 @@ def test_intake_creates_ready_and_held_stories():
     created = create_stories(taiga, "kemudi", draft_stories(llm, "butuh badge"))
     assert [c["ready"] for c in created] == [True, False]
     first, second = (taiga.stories_by_id[c["id"]] for c in created)
-    assert taiga.status_of(first["id"]) == "ready" and first["tags"] == [["agent-ready", None]]
-    assert taiga.status_of(second["id"]) == "new" and second["tags"] == []
+    assert taiga.status_of(first["id"]) == "ready"
+    assert first["tags"] == [["agent-ready", None], ["area-web", None]]
+    assert taiga.status_of(second["id"]) == "new" and second["tags"] == [["area-backend", None]]
     assert "backend" in taiga.texts(second["id"])[0]
     assert criteria(first["description"]) == ["satu", "dua"]
 
@@ -138,6 +139,16 @@ def test_git_roundtrip_pushes_only_awak_branches(repo, host):
         repo.prepare("feature/x")
 
 
+def test_changed_files_lists_both_sides_of_a_rename(repo):
+    repo.sync_main()
+    d = repo.prepare("awak/us-4")
+    (d / "apps" / "web").mkdir(parents=True)
+    git(d, "mv", "README.md", "apps/web/README.md")
+    git(d, "commit", "-m", "move")
+    repo.collect("awak/us-4")
+    assert sorted(repo.changed_files("awak/us-4")) == ["README.md", "apps/web/README.md"]
+
+
 def test_rework_reuses_branch(repo):
     repo.sync_main()
     d = repo.prepare("awak/us-3")
@@ -175,7 +186,7 @@ def test_happy_path_moves_to_done_with_evidence(tmp_path, repo):
     texts = taiga.texts(1)
     assert "QA lulus" in texts[-1] and "belum di-merge" in texts[-1]
     assert job_of(sessions).state == "passed"
-    assert runner.calls == ["install", "commit", "gates", "qa_reset", "qa"]
+    assert runner.calls == ["install", "commit", "gates", "qa_reset", "qa", "clean_check"]
     assert not w.tick()  # nothing left
 
 
@@ -256,7 +267,8 @@ def test_backend_change_is_rejected(tmp_path, repo):
     w, taiga, _ = make_worker(tmp_path, repo, FakeAgent(code=code), runner)
     taiga.add(1, 12, "Badge jumlah", DESC)
     w.tick()
-    assert any("mengubah backend" in t for t in taiga.texts(1))
+    assert any("di luar cakupan peran Frontend dev" in t and "services/kemudi-back/x.py" in t
+               for t in taiga.texts(1))
     assert taiga.status_of(1) == "done"
 
 
@@ -341,3 +353,126 @@ def test_infra_error_after_coding_resumes_without_recoding(tmp_path, repo):
     assert taiga.status_of(1) == "done"
     assert [p for p, _ in agent.calls].count("awak.code") == 1
     assert job_of(sessions).infra_errors == 1
+
+
+# --- iteration 2: projects come from the database -------------------------------
+
+def test_worker_serves_db_enabled_projects(tmp_path, repo):
+    settings = Settings(awak_projects="", ai_db_url="sqlite:///:memory:")
+    sessions = make_session(settings.ai_db_url)
+    with sessions() as db:
+        db.add(AwakProject(slug="kemudi", enabled=True, merge_mode="manual"))
+        repo_row = AwakRepo(project_slug="kemudi", name="kemudi", url=settings.host_git,
+                            subdir="apps/web")
+        db.add(repo_row)
+        db.flush()
+        db.add(AwakRole(project_slug="kemudi", template="frontend", name="FE", area="web",
+                        model="m", repo_ids=[repo_row.id]))
+        db.commit()
+    taiga = FakeTaiga()
+    w = Worker(settings, sessions, taiga, FakeTaiga("awak-qa"), FakeAgent(),
+               FakeRunner(tmp_path / "ws", qa=["pass"]), repo,
+               secret_values=["super-secret-value"], sleep=lambda s: None)
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    assert w.tick()
+    assert taiga.status_of(1) == "done"
+    with sessions() as db:
+        db.get(AwakProject, "kemudi").enabled = False
+        db.commit()
+    taiga.add(2, 13, "Lain", DESC)
+    assert not w.tick()  # disabled projects are not served
+
+
+def test_disabling_mid_job_stops(tmp_path, repo):
+    holder = {}
+
+    def code(d, n):
+        commit_file(d, "f.txt", "x")
+        with holder["S"]() as db:
+            db.get(AwakProject, "kemudi").enabled = False
+            db.commit()
+
+    w, taiga, sessions = make_worker(tmp_path, repo, FakeAgent(code=code),
+                                     FakeRunner(tmp_path / "ws", qa=["pass"]))
+    holder["S"] = sessions
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    assert job_of(sessions).state == "stopped"
+    assert taiga.status_of(1) == "in-progress"
+    assert "dimatikan" in taiga.texts(1)[-1]
+
+
+def test_build_output_allowlist():
+    from kemudi_ai.awak.worker import build_output
+
+    ok = [("??", ".qa/"), ("!!", "node_modules/"), ("!!", "apps/web/node_modules/"),
+          ("!!", "apps/web/dist/"), ("??", "dist/"), ("!!", "tsconfig.app.tsbuildinfo"),
+          ("!!", "svc/pkg/__pycache__/"), ("!!", "apps/web/.vite/")]
+    bad = [(" M", "dist/"), ("??", "src/dist/"), ("!!", ".env.local"), ("??", "apps/.qa/"),
+           ("!!", "src/generated.ts"), ("??", "dist"), ("D ", "README.md")]
+    assert all(build_output(s, p, "apps/web") for s, p in ok)
+    assert not any(build_output(s, p, "apps/web") for s, p in bad)
+
+
+def test_ignored_file_during_qa_fails_the_attempt(tmp_path, repo):
+    def code(d, n):
+        if n == 1:
+            commit_file(d, ".gitignore", "local.env\n")
+            (d / "local.env").write_text("FEATURE=on")  # ignored: never committed
+        commit_file(d, f"feature{n}.txt", "x")
+
+    runner = FakeRunner(tmp_path / "ws", qa=["pass", "pass"])
+    w, taiga, sessions = make_worker(tmp_path, repo, FakeAgent(code=code), runner)
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    fail = next(t for t in taiga.texts(1) if "tidak sama dengan commit" in t)
+    assert "local.env" in fail and "feature1.txt" not in fail
+    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 2
+
+
+def test_head_moved_after_gates_fails_the_attempt(tmp_path, repo):
+    runner = FakeRunner(tmp_path / "ws", qa=["pass", "pass"],
+                        clean=[{"ok": True, "head": "f" * 40, "entries": []}])
+    agent = FakeAgent()
+    w, taiga, sessions = make_worker(tmp_path, repo, agent, runner)
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    assert any("tidak sama dengan commit" in t and "HEAD ffffffff" in t
+               for t in taiga.texts(1))
+    code_tasks = [t for p, t in agent.calls if p == "awak.code"]
+    assert "HEAD was not your commit" in code_tasks[1]
+    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 2
+
+
+# --- one worker at a time --------------------------------------------------------
+
+def test_only_one_worker_holds_the_lease(tmp_path, repo):
+    from datetime import datetime
+
+    from kemudi_ai.store import AwakWorkerLease
+
+    w1, taiga, sessions = make_worker(tmp_path, repo, FakeAgent(),
+                                      FakeRunner(tmp_path / "ws", qa=["pass"]))
+    w2 = Worker(w1.s, sessions, taiga, FakeTaiga("awak-qa"), FakeAgent(),
+                FakeRunner(tmp_path / "ws", qa=["pass"]), repo,
+                secret_values=["super-secret-value"], sleep=lambda s: None)
+    assert w1.claim_lease() and not w2.claim_lease()
+    assert w1.claim_lease()  # renewing
+    # A crash-left running job: the worker without the lease neither recovers
+    # nor works on anything.
+    taiga.add(1, 12, "Badge jumlah", DESC, status="in-progress")
+    with sessions() as db:
+        db.add(AwakJob(project_slug="kemudi", story_id=1, story_ref=12,
+                       branch="awak/us-12", state="running"))
+        db.commit()
+    loops = iter([False, True])
+    w2.run_forever(stop_flag=lambda: next(loops))
+    assert job_of(sessions).state == "running" and taiga.status_of(1) == "in-progress"
+    # The holder's lease lapses (it crashed): the other takes over and recovers.
+    with sessions() as db:
+        db.get(AwakWorkerLease, 1).expires_at = datetime(2000, 1, 1)
+        db.commit()
+    loops = iter([False, True])
+    w2.run_forever(stop_flag=lambda: next(loops))
+    assert taiga.status_of(1) == "done"
+    assert w1.claim_lease()  # w2 released the lease when its loop ended

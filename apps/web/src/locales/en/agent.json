@@ -1,0 +1,334 @@
+{
+  "unavailable": "Awak's settings aren't reachable. Check that the Kemudi AI orchestrator is running.",
+  "lastChange": "Last changed by {{who}}, {{when}}",
+  "status": {
+    "title": "Awak",
+    "description": "When Awak is on, it picks up Ready stories with an area tag, writes the code on a branch, runs the checks and QA, then follows the merge policy below.",
+    "label": "Awak works on this project",
+    "on": "On",
+    "off": "Off",
+    "turnedOn": "Awak is on for this project",
+    "turnedOff": "Awak is off. Running jobs finish; no new ones start."
+  },
+  "merge": {
+    "title": "Merge policy",
+    "description": "What happens after a story passes QA on its branch. Any failure leaves {{branch}} untouched and tags the story needs-human.",
+    "anyBranch": "the default branch",
+    "default": "Default",
+    "saved": "Merge policy saved",
+    "modes": {
+      "manual": {
+        "label": "Manual",
+        "risk": "Awak stops at the branch and tags the story awaiting-merge. Someone on your team reviews and merges outside Kemudi. Nothing reaches {{branch}} without them."
+      },
+      "approve": {
+        "label": "Approve",
+        "risk": "An admin clicks Merge on the story. Kemudi merges into {{branch}}, reruns the checks and pushes, then runs the deploy command. One human look before every merge."
+      },
+      "auto": {
+        "label": "Auto",
+        "risk": "Merges into {{branch}} and runs the deploy command with no human check, right after checks and QA pass on the exact commit. For small or throwaway projects."
+      }
+    },
+    "confirm": {
+      "title": "Merge without a human check?",
+      "body": "Every story that passes QA will be merged into {{branch}} and pushed, and the deploy command will run, without anyone looking first. A bad change can reach production. Use this for small or throwaway projects.",
+      "action": "Turn on Auto"
+    },
+    "deploy": {
+      "label": "Deploy command",
+      "hintLocal": "Runs after each merge in the runner sandbox on Kemudi's server, from the repo's root, without Docker. Leave empty to merge without deploying.",
+      "hintSsh": "Runs after each merge on {{host}} over SSH, as {{user}}. Leave empty to merge without deploying.",
+      "saved": "Deploy command saved",
+      "set": "A deploy command is set. Only project admins can see it.",
+      "notSet": "No deploy command is set; merges do not deploy."
+    }
+  },
+  "machine": {
+    "title": "Execution machine",
+    "description": "Where the deploy command runs, and the machine Kemudi checks against the minimum a job needs.",
+    "label": "Machine",
+    "local": "Kemudi's server",
+    "ssh": "SSH machine",
+    "localHint": "The runner sandbox on the server Kemudi runs on. Nothing to set up.",
+    "remoteNotice": {
+      "title": "Jobs still run on Kemudi's server",
+      "body": "You can set up and check an SSH machine now, and the deploy command runs on it. Awak's coding, checks and QA stay on Kemudi's server until remote execution ships."
+    },
+    "host": "Host",
+    "port": "Port",
+    "user": "User",
+    "save": "Save machine",
+    "saved": "Machine saved",
+    "key": {
+      "title": "Login key",
+      "hint": "Add this public key to <code>{{file}}</code> for the user above on the machine.",
+      "none": "No key yet. Generate one, then add its public key to the machine."
+    },
+    "check": {
+      "run": "Run check",
+      "running": "Checking…",
+      "needsKey": "Generate a key and add it to the machine before checking.",
+      "never": "Not checked yet.",
+      "checkedAt": "Checked {{when}}",
+      "passed_one": "Meets the minimum for {{count}} job at a time",
+      "passed_other": "Meets the minimum for {{count}} jobs at a time",
+      "failed": "Below the minimum for one job",
+      "fact": "Check",
+      "found": "Found",
+      "minimum": "Minimum per job",
+      "cpu": "CPU",
+      "ram": "Memory",
+      "disk": "Free disk",
+      "docker": "Docker",
+      "arch": "Architecture",
+      "slots": "Job slots",
+      "cpuValue": "{{count}} vCPU",
+      "gbValue": "{{value}} GB",
+      "unknown": "Unknown",
+      "notFound": "Not found",
+      "required": "Required",
+      "problems": "Problems"
+    },
+    "hostKey": {
+      "label": "Host key",
+      "hint": "Kemudi trusted this fingerprint on the first connection and refuses the machine if it changes.",
+      "forget": "Forget host key",
+      "forgotten": "Host key forgotten. The next connection trusts the key it sees.",
+      "confirmTitle": "Forget the host key?",
+      "confirmBody": "Do this only if you rebuilt or replaced the machine. The next connection will trust whatever key {{host}} presents."
+    }
+  },
+  "key": {
+    "publicKey": "Public key",
+    "fingerprint": "Fingerprint",
+    "copied": "Public key copied",
+    "generate": "Generate key",
+    "regenerate": "Regenerate key",
+    "generated": "Key generated. Only its public half is shown; the private key stays encrypted on the server.",
+    "regenerateTitle": "Replace the key?",
+    "regenerateBody": "The current key stops working at once. Add the new public key where the old one was before Awak's next job."
+  },
+  "repos": {
+    "title": "Repositories",
+    "description": "The code Awak works on. Each repo gets its own deploy key with write access.",
+    "add": "Add repository",
+    "empty": "No repositories yet. Add one so Awak has somewhere to work.",
+    "local": "Kemudi's own repo",
+    "branchLabel": "Branch {{branch}}",
+    "access": {
+      "ok": "Access checked",
+      "failed": "Access failed",
+      "unchecked": "Not checked"
+    },
+    "editTitle": "Repository {{name}}",
+    "newTitle": "New repository",
+    "created": "Repository added. Generate its deploy key next.",
+    "saved": "Repository saved",
+    "deleted": "Repository removed",
+    "deleteTitle": "Remove {{name}}?",
+    "deleteBody": "Awak stops working on this repo and its deploy key is destroyed. The repo itself is not touched. Roles keep their other repos.",
+    "deployKey": {
+      "title": "Deploy key",
+      "hint": "Add this public key as a deploy key with write access on the git host (GitHub: Settings → Deploy keys → Allow write access).",
+      "none": "No deploy key yet.",
+      "localHint": "This is Kemudi's own repo on the host, so no deploy key is needed."
+    },
+    "checkAccess": {
+      "title": "Access",
+      "run": "Check access",
+      "running": "Checking…",
+      "needsKey": "Generate the deploy key and add it to the git host first.",
+      "hint": "Kemudi lists the branches, fetches {{branch}} and tries a dry-run push. Nothing is written to the remote.",
+      "clone": "Read (clone)",
+      "push": "Write (push)",
+      "branch": "Branch {{branch}} found",
+      "yes": "Yes",
+      "no": "No",
+      "detected": "Commands found in the repo: {{fields}}. Empty fields were filled from them."
+    },
+    "form": {
+      "name": "Name",
+      "nameHint": "Lowercase letters, digits and dashes, as Awak will call it.",
+      "role": "Role",
+      "url": "Git URL",
+      "urlHint": "An SSH URL, like git@github.com:owner/repo.git, so the deploy key can be used.",
+      "branch": "Default branch",
+      "subdir": "App directory",
+      "subdirHint": "Optional. The folder inside the repo where the app lives; empty means the root.",
+      "commands": "Commands",
+      "commandsHint": "One command per line, no shell. Allowed programs: pnpm, npm, npx, yarn, node, python, uv, pytest, make, go, cargo. Check access fills empty fields from what it finds.",
+      "install_cmd": "Install",
+      "check_cmd": "Check (lint, types, tests)",
+      "build_cmd": "Build",
+      "run_cmd": "Run",
+      "submitNew": "Add repository",
+      "invalid": {
+        "name": "Use lowercase letters, digits and dashes, starting with a letter or digit.",
+        "url": "Enter the repo's git URL.",
+        "urlHttps": "Use an SSH URL (git@host:owner/repo.git). HTTPS can't use a deploy key.",
+        "branch": "Enter a branch name, like main.",
+        "subdir": "Use a relative path inside the repo, without ..",
+        "program": "{{program}} is not an allowed program."
+      }
+    },
+    "roles": {
+      "web": "Web",
+      "api": "API",
+      "mobile": "Mobile",
+      "other": "Other"
+    }
+  },
+  "roles": {
+    "title": "Roles",
+    "description": "Each Awak role takes the stories tagged with its area, with its own model, repos and instructions.",
+    "add": "Add role",
+    "empty": "No roles yet. A story is picked up only when a role covers its area.",
+    "enabledLabel": "{{name}} enabled",
+    "enabled": "Role turned on",
+    "disabled": "Role turned off",
+    "saved": "Role saved",
+    "created": "Role added",
+    "newTitle": "New role",
+    "editTitle": "Role {{name}}",
+    "promptVersion": "Prompt version {{version}}",
+    "repoCount_one": "{{count}} repo",
+    "repoCount_other": "{{count}} repos",
+    "templates": {
+      "frontend": "Frontend",
+      "backend": "Backend",
+      "qa": "QA"
+    },
+    "areas": {
+      "web": "web",
+      "backend": "backend",
+      "qa": "qa"
+    },
+    "editor": {
+      "name": "Name",
+      "template": "Template",
+      "area": "Area tag",
+      "areaHint": "Stories tagged area:{{area}} go to this role.",
+      "model": "Model",
+      "repos": "Repositories",
+      "reposHint": "The repos this role may change. None selected means every repo.",
+      "reposAll": "All repos",
+      "noRepos": "No repositories yet.",
+      "allowed": "Allowed paths",
+      "denied": "Denied paths",
+      "pathsHint": "One relative path per line. Empty means no limit.",
+      "enabled": "Enabled",
+      "fixed": "Kemudi rules, not editable",
+      "fixedHint": "Every Awak prompt starts with these rules and repeats them at the end. Your instructions can't override them.",
+      "templateFixed": "Role template, not editable",
+      "fixedAfterSave": "The Kemudi rules and the role template show here once the role is saved.",
+      "overlay": "Your instructions",
+      "overlayHint": "Project conventions, libraries to prefer, things to avoid. Never paste tokens or passwords; Kemudi refuses text that looks like a secret.",
+      "count": "{{used}} / {{max}} characters",
+      "tooLong": "{{over}} characters over the limit",
+      "loadingPrompt": "Loading the prompt…"
+    }
+  },
+  "jobs": {
+    "title": "Recent jobs",
+    "description": "Awak's last 50 jobs on this project. The list refreshes while a job runs.",
+    "empty": "No jobs yet. Awak starts one when a Ready story has an area tag and a role covers it.",
+    "story": "Story",
+    "state": "State",
+    "phase": "Phase",
+    "attempts": "Attempts",
+    "cost": "Cost",
+    "branch": "Branch",
+    "merge": "Merge",
+    "updated": "Updated",
+    "states": {
+      "queued": "Queued",
+      "running": "Running",
+      "passed": "Passed",
+      "failed": "Failed",
+      "stopped": "Stopped"
+    },
+    "mergeStates": {
+      "none": "—",
+      "requested": "Requested",
+      "merging": "Merging",
+      "merged": "Merged",
+      "failed": "Failed"
+    }
+  },
+  "intake": {
+    "title": "Intake",
+    "intro": "Paste a brief, meeting notes or a client email, or add a document. Kemudi drafts user stories for you to check and edit, then creates them in the backlog.",
+    "agentOff": {
+      "title": "Awak is off for this project",
+      "body": "Stories are still created. Ready ones wait until Awak is turned on.",
+      "link": "Turn it on in Settings → Agent"
+    },
+    "source": {
+      "text": "Text",
+      "textPlaceholder": "Paste the brief, notes or email here",
+      "file": "Document",
+      "drop": "Drop a PDF or DOCX here, or",
+      "browse": "choose a file",
+      "removeFile": "Remove {{file}}",
+      "badFile": "Only PDF and DOCX files can be read.",
+      "language": "Story language",
+      "submit": "Draft stories",
+      "drafting": "Drafting stories. This can take about half a minute.",
+      "failed": "No drafts this time"
+    },
+    "drafts": {
+      "title": "Drafts",
+      "summary": "{{ready}} will go to Ready, {{waiting}} will wait in New. Nothing is in the backlog until you create them.",
+      "empty": "The model found no stories in this text. Add more detail and draft again.",
+      "story": "Story {{n}}",
+      "subject": "Subject",
+      "subjectShort": "Write at least 3 characters.",
+      "description": "Description",
+      "criteria": "Acceptance criteria",
+      "criterion": "Criterion {{n}}",
+      "addCriterion": "Add criterion",
+      "removeCriterion": "Remove criterion {{n}}",
+      "noCriteria": "No criteria yet.",
+      "area": "Area",
+      "areas": {
+        "web": "Web",
+        "backend": "Backend",
+        "both": "Web and backend"
+      },
+      "hold": "Hold back in New",
+      "remove": "Remove story {{n}}",
+      "ready": "Goes to Ready",
+      "waits": "Waits in New",
+      "held": "Held in New",
+      "rechecked": "Rechecked on create",
+      "create_one": "Create {{count}} story",
+      "create_other": "Create {{count}} stories",
+      "discard": "Discard drafts",
+      "createFailed": "The stories were not created",
+      "keptEdits": "Your drafts and edits are kept. Fix the problem and create again."
+    },
+    "result": {
+      "title_one": "Created {{count}} story",
+      "title_other": "Created {{count}} stories",
+      "ready": "Ready",
+      "new": "New",
+      "more": "Draft more stories"
+    }
+  },
+  "mergeButton": {
+    "summary": "Passed QA on {{branch}}. Waiting for an admin to merge.",
+    "action": "Merge",
+    "retry": "Try again",
+    "confirm": {
+      "title": "Merge this story?",
+      "body": "Kemudi merges {{branch}} into {{target}}, reruns the checks, pushes, then runs the deploy command.",
+      "action": "Merge into {{target}}"
+    },
+    "requested": "Merge requested. Waiting for the worker to pick it up.",
+    "merging": "Merging into {{target}} and rerunning the checks.",
+    "merged": "Merged into {{target}}.",
+    "failed": "Merge failed: {{reason}}",
+    "noReason": "no reason given"
+  }
+}

@@ -1,0 +1,332 @@
+{
+  "unavailable": "Pengaturan Awak tidak dapat dijangkau. Pastikan orchestrator Kemudi AI sedang berjalan.",
+  "lastChange": "Terakhir diubah oleh {{who}}, {{when}}",
+  "status": {
+    "title": "Awak",
+    "description": "Saat Awak aktif, Awak mengambil story berstatus Ready yang memiliki tag area, menulis kodenya di branch tersendiri, menjalankan pemeriksaan dan QA, lalu mengikuti kebijakan merge di bawah.",
+    "label": "Awak bekerja di proyek ini",
+    "on": "Aktif",
+    "off": "Nonaktif",
+    "turnedOn": "Awak aktif untuk proyek ini",
+    "turnedOff": "Awak nonaktif. Job yang sedang berjalan tetap diselesaikan; tidak ada job baru."
+  },
+  "merge": {
+    "title": "Kebijakan merge",
+    "description": "Apa yang terjadi setelah story lolos QA di branch-nya. Jika ada yang gagal, {{branch}} tidak disentuh dan story diberi tag needs-human.",
+    "anyBranch": "branch bawaan",
+    "default": "Bawaan",
+    "saved": "Kebijakan merge disimpan",
+    "modes": {
+      "manual": {
+        "label": "Manual",
+        "risk": "Awak berhenti di branch dan memberi story tag awaiting-merge. Tim Anda meninjau dan melakukan merge di luar Kemudi. Tidak ada yang masuk ke {{branch}} tanpa mereka."
+      },
+      "approve": {
+        "label": "Persetujuan",
+        "risk": "Admin mengeklik Merge pada story. Kemudi melakukan merge ke {{branch}}, menjalankan ulang pemeriksaan, melakukan push, lalu menjalankan perintah deploy. Selalu ada satu orang yang melihat sebelum merge."
+      },
+      "auto": {
+        "label": "Otomatis",
+        "risk": "Melakukan merge ke {{branch}} dan menjalankan perintah deploy tanpa pemeriksaan manusia, segera setelah pemeriksaan dan QA lolos pada commit yang sama. Untuk proyek kecil atau proyek uji coba."
+      }
+    },
+    "confirm": {
+      "title": "Merge tanpa pemeriksaan manusia?",
+      "body": "Setiap story yang lolos QA akan di-merge ke {{branch}} dan di-push, lalu perintah deploy dijalankan, tanpa ada yang melihatnya terlebih dahulu. Perubahan yang keliru dapat sampai ke production. Gunakan untuk proyek kecil atau proyek uji coba.",
+      "action": "Aktifkan Otomatis"
+    },
+    "deploy": {
+      "label": "Perintah deploy",
+      "hintLocal": "Dijalankan setelah setiap merge di sandbox runner pada server Kemudi, dari root repo, tanpa Docker. Kosongkan untuk merge tanpa deploy.",
+      "hintSsh": "Dijalankan setelah setiap merge di {{host}} melalui SSH, sebagai {{user}}. Kosongkan untuk merge tanpa deploy.",
+      "saved": "Perintah deploy disimpan",
+      "set": "Perintah deploy sudah diatur. Hanya admin proyek yang dapat melihatnya.",
+      "notSet": "Belum ada perintah deploy; merge tidak menjalankan deploy."
+    }
+  },
+  "machine": {
+    "title": "Mesin eksekusi",
+    "description": "Tempat perintah deploy dijalankan, dan mesin yang diperiksa Kemudi terhadap kebutuhan minimum sebuah job.",
+    "label": "Mesin",
+    "local": "Server Kemudi",
+    "ssh": "Mesin SSH",
+    "localHint": "Sandbox runner di server tempat Kemudi berjalan. Tidak perlu pengaturan apa pun.",
+    "remoteNotice": {
+      "title": "Job tetap berjalan di server Kemudi",
+      "body": "Anda sudah dapat menyiapkan dan memeriksa mesin SSH, dan perintah deploy dijalankan di sana. Penulisan kode, pemeriksaan, dan QA oleh Awak tetap di server Kemudi sampai eksekusi jarak jauh tersedia."
+    },
+    "host": "Host",
+    "port": "Port",
+    "user": "Pengguna",
+    "save": "Simpan mesin",
+    "saved": "Mesin disimpan",
+    "key": {
+      "title": "Kunci login",
+      "hint": "Tambahkan public key ini ke <code>{{file}}</code> milik pengguna di atas pada mesin tersebut.",
+      "none": "Belum ada kunci. Buat kunci, lalu tambahkan public key-nya ke mesin."
+    },
+    "check": {
+      "run": "Jalankan pemeriksaan",
+      "running": "Memeriksa…",
+      "needsKey": "Buat kunci dan tambahkan ke mesin sebelum memeriksa.",
+      "never": "Belum diperiksa.",
+      "checkedAt": "Diperiksa {{when}}",
+      "passed_other": "Memenuhi kebutuhan minimum untuk {{count}} job sekaligus",
+      "failed": "Di bawah kebutuhan minimum untuk satu job",
+      "fact": "Pemeriksaan",
+      "found": "Ditemukan",
+      "minimum": "Minimum per job",
+      "cpu": "CPU",
+      "ram": "Memori",
+      "disk": "Disk kosong",
+      "docker": "Docker",
+      "arch": "Arsitektur",
+      "slots": "Slot job",
+      "cpuValue": "{{count}} vCPU",
+      "gbValue": "{{value}} GB",
+      "unknown": "Tidak diketahui",
+      "notFound": "Tidak ditemukan",
+      "required": "Wajib",
+      "problems": "Masalah"
+    },
+    "hostKey": {
+      "label": "Host key",
+      "hint": "Kemudi memercayai fingerprint ini pada koneksi pertama dan akan menolak mesin jika fingerprint-nya berubah.",
+      "forget": "Lupakan host key",
+      "forgotten": "Host key dilupakan. Koneksi berikutnya akan memercayai kunci yang diterimanya.",
+      "confirmTitle": "Lupakan host key?",
+      "confirmBody": "Lakukan ini hanya jika Anda membangun ulang atau mengganti mesin. Koneksi berikutnya akan memercayai kunci apa pun yang diberikan {{host}}."
+    }
+  },
+  "key": {
+    "publicKey": "Public key",
+    "fingerprint": "Fingerprint",
+    "copied": "Public key disalin",
+    "generate": "Buat kunci",
+    "regenerate": "Buat ulang kunci",
+    "generated": "Kunci dibuat. Hanya bagian publiknya yang ditampilkan; private key tetap terenkripsi di server.",
+    "regenerateTitle": "Ganti kunci?",
+    "regenerateBody": "Kunci saat ini langsung berhenti berfungsi. Pasang public key yang baru di tempat kunci lama sebelum job Awak berikutnya."
+  },
+  "repos": {
+    "title": "Repositori",
+    "description": "Kode yang dikerjakan Awak. Setiap repo memiliki deploy key sendiri dengan akses tulis.",
+    "add": "Tambah repositori",
+    "empty": "Belum ada repositori. Tambahkan satu agar Awak memiliki tempat untuk bekerja.",
+    "local": "Repo milik Kemudi",
+    "branchLabel": "Branch {{branch}}",
+    "access": {
+      "ok": "Akses sudah diperiksa",
+      "failed": "Akses gagal",
+      "unchecked": "Belum diperiksa"
+    },
+    "editTitle": "Repositori {{name}}",
+    "newTitle": "Repositori baru",
+    "created": "Repositori ditambahkan. Selanjutnya, buat deploy key-nya.",
+    "saved": "Repositori disimpan",
+    "deleted": "Repositori dihapus",
+    "deleteTitle": "Hapus {{name}}?",
+    "deleteBody": "Awak berhenti bekerja di repo ini dan deploy key-nya dimusnahkan. Repo itu sendiri tidak disentuh. Peran tetap memiliki repo lainnya.",
+    "deployKey": {
+      "title": "Deploy key",
+      "hint": "Tambahkan public key ini sebagai deploy key dengan akses tulis di git host (GitHub: Settings → Deploy keys → Allow write access).",
+      "none": "Belum ada deploy key.",
+      "localHint": "Ini repo milik Kemudi sendiri di host, jadi tidak memerlukan deploy key."
+    },
+    "checkAccess": {
+      "title": "Akses",
+      "run": "Periksa akses",
+      "running": "Memeriksa…",
+      "needsKey": "Buat deploy key dan tambahkan ke git host terlebih dahulu.",
+      "hint": "Kemudi membaca daftar branch, mengambil {{branch}}, dan mencoba push dry-run. Tidak ada yang ditulis ke remote.",
+      "clone": "Baca (clone)",
+      "push": "Tulis (push)",
+      "branch": "Branch {{branch}} ditemukan",
+      "yes": "Ya",
+      "no": "Tidak",
+      "detected": "Perintah yang ditemukan di repo: {{fields}}. Kolom yang kosong telah diisi darinya."
+    },
+    "form": {
+      "name": "Nama",
+      "nameHint": "Huruf kecil, angka, dan tanda hubung, sesuai nama yang akan dipakai Awak.",
+      "role": "Peran",
+      "url": "URL git",
+      "urlHint": "URL SSH, misalnya git@github.com:owner/repo.git, agar deploy key dapat digunakan.",
+      "branch": "Branch bawaan",
+      "subdir": "Direktori aplikasi",
+      "subdirHint": "Opsional. Folder di dalam repo tempat aplikasi berada; kosong berarti root.",
+      "commands": "Perintah",
+      "commandsHint": "Satu perintah per baris, tanpa shell. Program yang diizinkan: pnpm, npm, npx, yarn, node, python, uv, pytest, make, go, cargo. Periksa akses akan mengisi kolom yang kosong dari temuannya.",
+      "install_cmd": "Instal",
+      "check_cmd": "Pemeriksaan (lint, tipe, tes)",
+      "build_cmd": "Build",
+      "run_cmd": "Jalankan",
+      "submitNew": "Tambah repositori",
+      "invalid": {
+        "name": "Gunakan huruf kecil, angka, dan tanda hubung, diawali huruf atau angka.",
+        "url": "Masukkan URL git repo.",
+        "urlHttps": "Gunakan URL SSH (git@host:owner/repo.git). HTTPS tidak dapat memakai deploy key.",
+        "branch": "Masukkan nama branch, misalnya main.",
+        "subdir": "Gunakan path relatif di dalam repo, tanpa ..",
+        "program": "{{program}} bukan program yang diizinkan."
+      }
+    },
+    "roles": {
+      "web": "Web",
+      "api": "API",
+      "mobile": "Mobile",
+      "other": "Lainnya"
+    }
+  },
+  "roles": {
+    "title": "Peran",
+    "description": "Setiap peran Awak mengambil story dengan tag area-nya, dengan model, repo, dan instruksinya sendiri.",
+    "add": "Tambah peran",
+    "empty": "Belum ada peran. Story hanya diambil jika ada peran yang mencakup area-nya.",
+    "enabledLabel": "{{name}} aktif",
+    "enabled": "Peran diaktifkan",
+    "disabled": "Peran dinonaktifkan",
+    "saved": "Peran disimpan",
+    "created": "Peran ditambahkan",
+    "newTitle": "Peran baru",
+    "editTitle": "Peran {{name}}",
+    "promptVersion": "Versi prompt {{version}}",
+    "repoCount_other": "{{count}} repo",
+    "templates": {
+      "frontend": "Frontend",
+      "backend": "Backend",
+      "qa": "QA"
+    },
+    "areas": {
+      "web": "web",
+      "backend": "backend",
+      "qa": "qa"
+    },
+    "editor": {
+      "name": "Nama",
+      "template": "Template",
+      "area": "Tag area",
+      "areaHint": "Story dengan tag area:{{area}} diberikan ke peran ini.",
+      "model": "Model",
+      "repos": "Repositori",
+      "reposHint": "Repo yang boleh diubah oleh peran ini. Jika tidak ada yang dipilih, berarti semua repo.",
+      "reposAll": "Semua repo",
+      "noRepos": "Belum ada repositori.",
+      "allowed": "Path yang diizinkan",
+      "denied": "Path yang dilarang",
+      "pathsHint": "Satu path relatif per baris. Kosong berarti tanpa batasan.",
+      "enabled": "Aktif",
+      "fixed": "Aturan Kemudi, tidak dapat diubah",
+      "fixedHint": "Setiap prompt Awak diawali aturan ini dan mengulanginya di bagian akhir. Instruksi Anda tidak dapat menggantikannya.",
+      "templateFixed": "Template peran, tidak dapat diubah",
+      "fixedAfterSave": "Aturan Kemudi dan template peran tampil di sini setelah peran disimpan.",
+      "overlay": "Instruksi Anda",
+      "overlayHint": "Konvensi proyek, library yang diutamakan, hal yang perlu dihindari. Jangan pernah menempelkan token atau kata sandi; Kemudi menolak teks yang tampak seperti rahasia.",
+      "count": "{{used}} / {{max}} karakter",
+      "tooLong": "Melebihi batas {{over}} karakter",
+      "loadingPrompt": "Memuat prompt…"
+    }
+  },
+  "jobs": {
+    "title": "Job terbaru",
+    "description": "50 job terakhir Awak di proyek ini. Daftar diperbarui selama ada job yang berjalan.",
+    "empty": "Belum ada job. Awak memulai job saat story berstatus Ready memiliki tag area dan ada peran yang mencakupnya.",
+    "story": "Story",
+    "state": "Keadaan",
+    "phase": "Tahap",
+    "attempts": "Percobaan",
+    "cost": "Biaya",
+    "branch": "Branch",
+    "merge": "Merge",
+    "updated": "Diperbarui",
+    "states": {
+      "queued": "Antre",
+      "running": "Berjalan",
+      "passed": "Lolos",
+      "failed": "Gagal",
+      "stopped": "Dihentikan"
+    },
+    "mergeStates": {
+      "none": "—",
+      "requested": "Diminta",
+      "merging": "Sedang merge",
+      "merged": "Selesai merge",
+      "failed": "Gagal"
+    }
+  },
+  "intake": {
+    "title": "Intake",
+    "intro": "Tempel brief, catatan rapat, atau email klien, atau tambahkan dokumen. Kemudi menyusun draf user story untuk Anda periksa dan sunting, lalu membuatnya di backlog.",
+    "agentOff": {
+      "title": "Awak nonaktif untuk proyek ini",
+      "body": "Story tetap dibuat. Story berstatus Ready menunggu sampai Awak diaktifkan.",
+      "link": "Aktifkan di Pengaturan → Agent"
+    },
+    "source": {
+      "text": "Teks",
+      "textPlaceholder": "Tempel brief, catatan, atau email di sini",
+      "file": "Dokumen",
+      "drop": "Letakkan file PDF atau DOCX di sini, atau",
+      "browse": "pilih file",
+      "removeFile": "Hapus {{file}}",
+      "badFile": "Hanya file PDF dan DOCX yang dapat dibaca.",
+      "language": "Bahasa story",
+      "submit": "Susun draf story",
+      "drafting": "Menyusun draf story. Proses ini bisa memakan waktu sekitar setengah menit.",
+      "failed": "Draf belum dapat disusun"
+    },
+    "drafts": {
+      "title": "Draf",
+      "summary": "{{ready}} masuk ke Ready, {{waiting}} menunggu di New. Belum ada yang masuk ke backlog sampai Anda membuatnya.",
+      "empty": "Model tidak menemukan story dalam teks ini. Tambahkan detail lalu susun ulang.",
+      "story": "Story {{n}}",
+      "subject": "Judul",
+      "subjectShort": "Tulis minimal 3 karakter.",
+      "description": "Deskripsi",
+      "criteria": "Kriteria penerimaan",
+      "criterion": "Kriteria {{n}}",
+      "addCriterion": "Tambah kriteria",
+      "removeCriterion": "Hapus kriteria {{n}}",
+      "noCriteria": "Belum ada kriteria.",
+      "area": "Area",
+      "areas": {
+        "web": "Web",
+        "backend": "Backend",
+        "both": "Web dan backend"
+      },
+      "hold": "Tahan di New",
+      "remove": "Hapus story {{n}}",
+      "ready": "Masuk ke Ready",
+      "waits": "Menunggu di New",
+      "held": "Ditahan di New",
+      "rechecked": "Diperiksa ulang saat dibuat",
+      "create_one": "Buat {{count}} story",
+      "create_other": "Buat {{count}} story",
+      "discard": "Buang draf",
+      "createFailed": "Story belum dibuat",
+      "keptEdits": "Draf dan suntingan Anda tetap tersimpan. Perbaiki masalahnya lalu buat lagi."
+    },
+    "result": {
+      "title_one": "{{count}} story dibuat",
+      "title_other": "{{count}} story dibuat",
+      "ready": "Ready",
+      "new": "New",
+      "more": "Susun story lain"
+    }
+  },
+  "mergeButton": {
+    "summary": "Lolos QA di {{branch}}. Menunggu admin melakukan merge.",
+    "action": "Merge",
+    "retry": "Coba lagi",
+    "confirm": {
+      "title": "Merge story ini?",
+      "body": "Kemudi melakukan merge {{branch}} ke {{target}}, menjalankan ulang pemeriksaan, melakukan push, lalu menjalankan perintah deploy.",
+      "action": "Merge ke {{target}}"
+    },
+    "requested": "Merge diminta. Menunggu worker mengambilnya.",
+    "merging": "Melakukan merge ke {{target}} dan menjalankan ulang pemeriksaan.",
+    "merged": "Merge ke {{target}} selesai.",
+    "failed": "Merge gagal: {{reason}}",
+    "noReason": "tanpa keterangan"
+  }
+}

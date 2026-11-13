@@ -30,6 +30,7 @@ import {
   WatchersField,
 } from './fields'
 import { ItemActions } from './item-actions'
+import { MergeAction } from './merge-action'
 import { StoryTasks } from './story-tasks'
 
 /** Each item kind's name in common:terms. */
@@ -160,6 +161,7 @@ function ItemBody({
       </header>
 
       <div className='flex-1 overflow-y-auto'>
+        {kind === 'userstory' && <MergeAction project={project} story={item} />}
         {item.is_blocked && (
           <div
             role='status'

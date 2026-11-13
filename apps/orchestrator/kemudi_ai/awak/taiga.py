@@ -64,9 +64,22 @@ class Taiga:
             headers={"x-disable-pagination": "True"},
         )
         self.me: dict = {}
+        self._token_only = False
+
+    @classmethod
+    def with_token(cls, api_url: str, token: str,
+                   transport: httpx.BaseTransport | None = None) -> "Taiga":
+        """A client acting as the caller (their Kemudi/Taiga token), so Taiga's
+        own permissions apply and the caller is the author. Local stack only."""
+        t = cls(api_url, "", "", transport)  # __init__ runs assert_local
+        t.c.headers["Authorization"] = f"Bearer {token}"
+        t._token_only = True
+        return t
 
     # --- auth -----------------------------------------------------------
     def login(self) -> str:
+        if self._token_only:
+            raise TaigaError("the caller's Taiga token was refused (HTTP 401)")
         r = self.c.post(
             "/auth",
             json={"type": "normal", "username": self.username, "password": self._password},
