@@ -1,4 +1,4 @@
-"""CLI: python -m kemudi_ai <extract|baseline|approve|backtest> ..."""
+"""CLI: python -m kemudi_ai <extract|baseline|approve|backtest|intake|awak-tick> ..."""
 
 import argparse
 import json
@@ -35,6 +35,13 @@ def main(argv: list[str] | None = None) -> int:
     t = sub.add_parser("backtest")
     t.add_argument("project")
     t.add_argument("dataset")
+    i = sub.add_parser("intake", help="turn text or a document into agent-ready stories")
+    i.add_argument("project")
+    i.add_argument("text", nargs="?", default="")
+    i.add_argument("--file")
+    i.add_argument("--lang", default="id")
+    w = sub.add_parser("awak-tick", help="process at most one story, then exit")
+    w.add_argument("--forever", action="store_true")
     args = p.parse_args(argv)
 
     if args.cmd == "extract":
@@ -46,6 +53,33 @@ def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     S = make_session(settings.ai_db_url)
     llm = HermesLLM(settings, S)
+
+    if args.cmd == "intake":
+        from .awak.intake import create_stories, draft_stories
+        from .awak.taiga import Taiga
+        from .documents import extract_text
+
+        body = args.text
+        if args.file:
+            path = Path(args.file)
+            body += "\n\n" + extract_text(path.name, path.read_bytes())
+        drafts = draft_stories(llm, body, args.lang)
+        bot = Taiga(settings.taiga_api_url, settings.awak_username, settings.awak_password)
+        for c in create_stories(bot, args.project, drafts):
+            state = "Ready" if c["ready"] else f"New ({c['reason']})"
+            print(f"#{c['ref']:<5} {state:<12} {c['subject']}")
+        return 0
+
+    if args.cmd == "awak-tick":
+        from .awak.service import build_worker
+
+        worker = build_worker(settings, S)
+        if args.forever:
+            worker.run_forever()
+            return 0
+        worker.recover()
+        print("worked" if worker.tick() else "nothing to do")
+        return 0
     with S() as s:
         if args.cmd == "baseline":
             path = Path(args.file)

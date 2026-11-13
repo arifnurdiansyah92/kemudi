@@ -6,7 +6,8 @@ that works alongside the team.
 
 > Status: early. The backend runs, and the new web UI covers what
 > taiga-front does (see [docs/web-feature-coverage.md](docs/web-feature-coverage.md)).
-> The AI service is not written yet. See [Roadmap](#roadmap).
+> The AI service runs the contract baseline / CR check POC and the Awak dev
+> loop (iteration 1). See [Roadmap](#roadmap).
 
 ## Repository layout
 
@@ -14,7 +15,7 @@ that works alongside the team.
 kemudi/
 ├── apps/
 │   ├── web/              # new UI (React, shadcn/ui), see apps/web/README.md
-│   └── orchestrator/     # Kemudi AI service: webhooks, queue, audit log — not started
+│   └── orchestrator/     # Kemudi AI service: contract baseline, CR check, Awak loop
 ├── services/
 │   ├── kemudi-back/      # fork of taiga-back 6.10.2 (MPL-2.0), git subtree
 │   ├── kemudi-events/    # fork of taiga-events 6.10.0 (MPL-2.0), git subtree
@@ -22,7 +23,9 @@ kemudi/
 ├── infra/
 │   ├── docker-compose.dev.yml
 │   ├── gateway/          # nginx config for the dev stack
-│   └── sandbox/          # image Awak runs code in — not started
+│   ├── awak/             # Awak's Hermes config and Taiga bootstrap
+│   ├── llm-proxy/        # adds the model key so agents never hold it
+│   └── runner/           # runs Awak's branches: install, gates, Playwright QA
 ├── docs/                 # ADRs, architecture, third-party licenses
 └── LICENSES/             # AGPL-3.0, MPL-2.0, MIT
 ```
@@ -74,7 +77,13 @@ submodule here.
 2. **`apps/web`**: new UI based on [shadcn-admin](https://github.com/satnaing/shadcn-admin).
    Covers taiga-front's features plus sprint access; the remaining taiga-v2
    patches (link items, clone, board fields, move task) come next.
-3. **Kemudi AI**: `apps/orchestrator`, Awak and `infra/sandbox`.
+3. **Kemudi AI**: `apps/orchestrator`.
+   - Contract baseline and CR check: backtest POC done
+     ([report](docs/poc/2026-11-pilot-backtest.md)); live CR check next.
+   - Awak dev loop, iteration 1: request → stories → Awak codes on an
+     `awak/us-<n>` branch → gates → Playwright QA with screenshots → Done or
+     rework ([design](docs/superpowers/specs/2026-11-13-awak-dev-loop-design.md),
+     [how to run](apps/orchestrator/README.md#awak-dev-loop)).
 
 ## License
 

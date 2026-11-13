@@ -26,6 +26,9 @@ __all__ = [
     "BacktestResult",
     "AiCall",
     "Decision",
+    "AwakJob",
+    "AwakEvent",
+    "record_event",
     "make_session",
     "init_db",
     "record_ai_call",
@@ -114,6 +117,45 @@ class Decision(Base):
     action: Mapped[str] = mapped_column(String(50))
     subject: Mapped[str] = mapped_column(String(200))
     detail: Mapped[dict[str, Any]] = mapped_column(default=dict)
+
+
+class AwakJob(Base):
+    """One story's run through the Awak loop. Mutable: phase and counters."""
+
+    __tablename__ = "awak_jobs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_slug: Mapped[str] = mapped_column(String(200))
+    story_id: Mapped[int] = mapped_column()
+    story_ref: Mapped[int] = mapped_column()
+    branch: Mapped[str] = mapped_column(String(100))
+    # queued, running, passed, failed (gave up), stopped (human took over)
+    state: Mapped[str] = mapped_column(String(20), default="queued")
+    phase: Mapped[str] = mapped_column(String(20), default="")
+    attempts: Mapped[int] = mapped_column(default=0)
+    infra_errors: Mapped[int] = mapped_column(default=0)
+    feedback: Mapped[str] = mapped_column(Text, default="")
+    last_sha: Mapped[str] = mapped_column(String(64), default="")
+    cost_idr: Mapped[float] = mapped_column(default=0.0)
+    started_at: Mapped[datetime] = mapped_column(default=now)
+    updated_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class AwakEvent(Base):
+    """Append-only log of job steps."""
+
+    __tablename__ = "awak_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(default=now)
+    job_id: Mapped[int] = mapped_column(ForeignKey("awak_jobs.id"))
+    kind: Mapped[str] = mapped_column(String(30))
+    detail: Mapped[dict[str, Any]] = mapped_column(default=dict)
+
+
+def record_event(session: Session, job_id: int, kind: str, detail: dict) -> AwakEvent:
+    row = AwakEvent(job_id=job_id, kind=kind, detail=detail)
+    session.add(row)
+    session.commit()
+    return row
 
 
 def make_session(db_url: str) -> sessionmaker[Session]:
