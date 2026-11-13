@@ -26,6 +26,7 @@ import { api } from '@/lib/taiga/client'
 import { onFail } from '@/lib/taiga/items'
 import type { ProjectSummary } from '@/lib/taiga/types'
 import { cn } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
 
 /** Your projects, in your own order (drag the handle to rearrange). */
 export function ProjectList({ projects }: { projects: ProjectSummary[] }) {
@@ -136,6 +137,14 @@ function Row({
         <span className='min-w-0 flex-1'>
           <span className='flex items-center gap-1.5 font-medium'>
             {project.name}
+            {project.is_private && (
+              <Badge
+                variant='outline'
+                className='px-1.5 py-0 text-[0.625rem] font-medium text-muted-foreground'
+              >
+                {t('projects.list.private')}
+              </Badge>
+            )}
           </span>
           {project.description && (
             <span className='mt-0.5 line-clamp-1 block text-sm text-muted-foreground'>

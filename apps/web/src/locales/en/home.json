@@ -18,7 +18,8 @@
     "emptyHint": "Create one, or ask a project admin to invite you.",
     "list": {
       "move": "Move {{name}}",
-      "updated": "Updated {{time}}"
+      "updated": "Updated {{time}}",
+      "private": "Private"
     },
     "new": {
       "templateLegend": "How the team works",
@@ -103,6 +104,7 @@
       "commented": "<user>{{user}}</user> <muted>commented on {{noun}}</muted> <target>{{target}}</target>",
       "changed": "<user>{{user}}</user> <muted>{{changes}} on {{noun}}</muted> <target>{{target}}</target>",
       "updated": "<user>{{user}}</user> <muted>updated {{noun}}</muted> <target>{{target}}</target>",
+      "private": "Private",
       "addedMember": "<user>{{user}}</user> <muted>added a member to the project</muted> <target>{{target}}</target>",
       "addedStoryToEpic": "<user>{{user}}</user> <muted>added a story to epic</muted> <target>{{target}}</target><muted> {{epic}}</muted>"
     }

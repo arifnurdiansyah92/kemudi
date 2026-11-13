@@ -18,7 +18,8 @@
     "emptyHint": "Buat proyek baru, atau minta admin proyek untuk mengundang Anda.",
     "list": {
       "move": "Pindahkan {{name}}",
-      "updated": "Diperbarui {{time}}"
+      "updated": "Diperbarui {{time}}",
+      "private": "Privat"
     },
     "new": {
       "templateLegend": "Cara kerja tim",
@@ -103,6 +104,7 @@
       "commented": "<user>{{user}}</user> <muted>mengomentari {{noun}}</muted> <target>{{target}}</target>",
       "changed": "<user>{{user}}</user> <muted>{{changes}} pada {{noun}}</muted> <target>{{target}}</target>",
       "updated": "<user>{{user}}</user> <muted>memperbarui {{noun}}</muted> <target>{{target}}</target>",
+      "private": "Privat",
       "addedMember": "<user>{{user}}</user> <muted>menambahkan anggota ke proyek</muted> <target>{{target}}</target>",
       "addedStoryToEpic": "<user>{{user}}</user> <muted>menambahkan story ke epic</muted> <target>{{target}}</target><muted> {{epic}}</muted>"
     }
