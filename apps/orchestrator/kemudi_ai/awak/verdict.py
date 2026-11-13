@@ -10,6 +10,7 @@ from pathlib import Path
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 MAX_SHOT_BYTES = 5 * 1024 * 1024
 _AC = re.compile(r"^\s*AC\s*(\d+)\b", re.I)
+_ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
 @dataclass
@@ -69,7 +70,7 @@ def evaluate(report: dict, criteria_texts: list[str]) -> Verdict:
         if pa != pb:
             return Verdict("infra", f"AC{i} gave different results on two runs (flaky)")
         c = Criterion(n=i, text=text, passed=pa,
-                      error=(a.get("error") or "")[:400],
+                      error=_ANSI.sub("", a.get("error") or "")[:400],
                       screenshots=list(a.get("screenshots") or []))
         if c.passed and not c.screenshots:
             c.passed, c.error = False, "lulus tanpa screenshot bukti"

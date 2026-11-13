@@ -33,14 +33,21 @@ GIT_SAFE = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false",
             "-c", "safe.directory=*"]
 
 
+ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+# The backend writes absolute media URLs for the host (http://localhost:9100).
+# Forward that address to the gateway so images load in QA like in a browser.
+HOST_PORT = int(os.environ.get("KEMUDI_HOST_PORT", "9100"))
+
+
 def tail(text: str, n: int = 6000) -> str:
-    return text[-n:]
+    return ANSI.sub("", text)[-n:]
 
 
 def run(cmd: list[str], cwd: Path, timeout: int, env: dict | None = None) -> tuple[int, str]:
     try:
         p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
-                           env={**os.environ, "CI": "1", **(env or {})})
+                           env={**os.environ, "CI": "1", "FORCE_COLOR": "0", "NO_COLOR": "1",
+                                **(env or {})})
         return p.returncode, tail(p.stdout + p.stderr)
     except subprocess.TimeoutExpired as e:
         out = (e.stdout or b"").decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
@@ -234,6 +241,47 @@ class Handler(BaseHTTPRequestHandler):
         print(f"runner: {self.command} {self.path} {fmt % args}", flush=True)
 
 
+def forward_host_port() -> None:
+    """127.0.0.1:HOST_PORT -> the gateway, as plain TCP."""
+    import socket
+    import threading
+    from urllib.parse import urlparse
+
+    target = urlparse(GATEWAY)
+    dest = (target.hostname or "kemudi-gateway", target.port or 80)
+
+    def pipe(a: socket.socket, b: socket.socket) -> None:
+        try:
+            while data := a.recv(65536):
+                b.sendall(data)
+        except OSError:
+            pass
+        finally:
+            for s in (a, b):
+                try:
+                    s.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+    def serve() -> None:
+        srv = socket.socket()
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv.bind(("127.0.0.1", HOST_PORT))
+        srv.listen(64)
+        while True:
+            client, _ = srv.accept()
+            try:
+                upstream = socket.create_connection(dest, timeout=10)
+            except OSError:
+                client.close()
+                continue
+            for a, b in ((client, upstream), (upstream, client)):
+                threading.Thread(target=pipe, args=(a, b), daemon=True).start()
+
+    threading.Thread(target=serve, name="host-port-forward", daemon=True).start()
+
+
 if __name__ == "__main__":
+    forward_host_port()
     # One job at a time: the orchestrator never calls in parallel.
     ThreadingHTTPServer(("0.0.0.0", 8800), Handler).serve_forever()
