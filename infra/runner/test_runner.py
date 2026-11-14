@@ -283,3 +283,119 @@ def test_clean_check_reports_head_and_every_stray_path(runner, tmp_path):
     assert got == {("!!", "secret.local"), ("??", "extra.ts"), (" M", "app.ts"),
                    ("??", "node_modules/")}
     assert res["head"] == head
+
+
+# --- uid split: the server is root, every child runs as CHILD_UID -------------
+
+
+class _Done:
+    def __init__(self, text):
+        self.returncode = 0
+        self.stdout = self.stderr = "" if text else b""
+
+
+def test_children_drop_to_the_child_uid_when_the_server_is_root(runner, monkeypatch, tmp_path):
+    import subprocess
+
+    monkeypatch.setattr(runner, "dropping", lambda: True)
+    monkeypatch.setattr(runner, "_child_home", lambda: "/opt/data")
+    calls = []
+
+    def fake_run(argv, **kw):
+        calls.append((argv, kw))
+        return _Done(kw.get("text"))
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    runner.run(["node", "x.js"], tmp_path, 60, {"A": "1"})
+    argv, kw = calls[-1]
+    assert kw["user"] == 10000 and kw["group"] == 10000 and kw["extra_groups"] == []
+    assert kw["env"]["HOME"] == "/opt/data" and kw["env"]["A"] == "1"
+    assert not any(k.upper().startswith("KEMUDI_") for k in kw["env"])
+
+    popens = []
+    monkeypatch.setattr(subprocess, "Popen", lambda argv, **kw: popens.append((argv, kw)))
+    runner._spawn(["pnpm", "dev"], tmp_path, runner.child_env(), tmp_path / "web.log")
+    argv, kw = popens[-1]
+    # the log is opened by the child's shell, not by the root server
+    assert argv[:2] == ["sh", "-c"] and argv[-2:] == ["pnpm", "dev"]
+    assert str(tmp_path / "web.log") in argv and kw["stdout"] == subprocess.DEVNULL
+    assert kw["user"] == 10000 and kw["extra_groups"] == []
+
+    # files the agent can write are read with the child's rights
+    runner.read_as_child(tmp_path / "report.json")
+    argv, kw = calls[-1]
+    assert argv[0] == "head" and kw["user"] == 10000
+
+    # git for the clean check runs as the child too
+    runner._git_out(["status"], {"PATH": "/usr/bin"})
+    argv, kw = calls[-1]
+    assert argv[0] == "git" and kw["user"] == 10000
+
+
+def test_qa_reset_and_logs_dir_are_made_by_the_child(runner, monkeypatch):
+    monkeypatch.setattr(runner, "dropping", lambda: True)
+    calls = []
+    monkeypatch.setattr(runner, "run", lambda cmd, cwd, timeout, env=None:
+                        calls.append(cmd) or (0, ""))
+    assert runner.op_qa_reset({"path": JOB}) == {"ok": True}
+    assert calls == [["rm", "-rf", "--", ".qa"], ["mkdir", "-p", "--", ".qa/spec"]]
+
+
+def test_without_root_children_keep_the_server_uid(runner):
+    assert runner.child_kw() == {} or runner.dropping()
+
+ROOT_ONLY = pytest.mark.skipif(
+    os.name != "posix" or not hasattr(os, "geteuid") or os.geteuid() != 0,
+    reason="needs root to drop to the child uid")
+
+
+@ROOT_ONLY
+def test_a_child_cannot_read_the_server_environment(runner):
+    for pid in (1, os.getpid()):
+        code, out = runner.run(["cat", f"/proc/{pid}/environ"], Path("/"), 30)
+        assert code != 0, out
+        assert runner.read_as_child(Path(f"/proc/{pid}/environ")) is None
+    code, out = runner.run(["id", "-u"], Path("/"), 30)
+    assert out.strip() == str(runner.CHILD_UID)
+
+
+@ROOT_ONLY
+def test_the_server_never_writes_through_a_workspace_symlink(runner, monkeypatch):
+    import tempfile
+
+    ws = runner.child_tmpdir("ws-")
+    # like a real checkout (0755): Python enters cwd before it switches uid
+    assert runner.run(["chmod", "755", str(ws)], Path("/"), 30)[0] == 0
+    victim = Path(tempfile.mkdtemp(prefix="victim-"))  # root's, 0700
+    try:
+        monkeypatch.setattr(runner, "WORKSPACE", ws)
+        job = "demo/us-9/web"
+        assert runner.run(["mkdir", "-p", f"{job}/svc"], ws, 30)[0] == 0
+        assert runner.op_qa_reset({"path": job}) == {"ok": True}
+        d = ws / "demo" / "us-9" / "web"
+        assert (d / ".qa" / "spec").stat().st_uid == runner.CHILD_UID
+        assert runner.run(["ln", "-s", str(victim), ".qa/logs"], d, 30)[0] == 0
+        assert runner.run(["touch", ".qa/spec/a.spec.ts"], d, 30)[0] == 0
+        res = runner.op_qa({"path": job, "services": [_service(ready_timeout=5)],
+                            "base_service": "web"})
+        assert "did not start" in res.get("infra_error", ""), res
+        assert not (victim / "web.log").exists()
+        # the clean check runs git as the child
+        res = runner.op_clean_check({"path": job})
+        assert res["entries"] == [{"status": "!?", "path": ".git"}]
+    finally:
+        runner.remove_child_tmpdir(ws)
+        import shutil
+        shutil.rmtree(victim, ignore_errors=True)
+    assert not ws.exists()
+
+
+@ROOT_ONLY
+def test_the_server_stops_a_child_process_group(runner):
+    proc = runner._spawn(["sh", "-c", "sleep 60 & sleep 60"], Path("/"), runner.child_env(),
+                         None)
+    runner._stop(proc)
+    assert proc.poll() is not None
+    code, out = runner.run(["sh", "-c", "pgrep -u %d -x sleep || true" % runner.CHILD_UID],
+                           Path("/"), 30)
+    assert out.strip() == ""

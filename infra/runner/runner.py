@@ -22,12 +22,21 @@ story, `<slug>/setup/<repo>` for setup runs.
 job workspace; argv[0] must be in ALLOWED_PROGRAMS. Without `commands`, the
 iteration 1 apps/web steps run.
 
-Children (branch code) are started with a clean environment from
-`child_env`: the runner's key and other KEMUDI_* variables are not passed
-to them. That is not a boundary yet: children run as the runner's own uid,
-so one can still read the key from the server's /proc/<pid>/environ.
-Running children as a separate uid (and the server keeping only
-SETUID/SETGID) is planned for stage 1b.
+The server runs as root with only the SETUID, SETGID and KILL capabilities
+(compose: `cap_drop: [ALL]`, `cap_add: [SETUID, SETGID, KILL]`); it reads its
+key from the environment at start. Every child (branch code: commands,
+process services, Playwright, git for the clean check, the deploy command)
+runs as CHILD_UID:CHILD_GID (10000, the owner of /workspace) with no
+supplementary groups and a clean environment from `child_env`: no runner key,
+no other KEMUDI_* variable. A child therefore cannot read the key from the
+server's (or tini's) /proc/<pid>/environ. KILL lets the server stop a
+child's process group.
+
+The workspace belongs to the children, so the server never writes or reads
+a file there itself (a symlink would make it do so as root): `.qa/` is made
+and emptied, service logs are written and reports and logs are read by a
+child (`read_as_child`). Without root (local tests) children keep the
+server's uid and the same code paths run unchanged.
 
 Every reply is JSON. `infra_error` is set when the step could not run at all
 (as opposed to the code failing a check).
@@ -69,9 +78,35 @@ def tail(text: str, n: int = 6000) -> str:
     return ANSI.sub("", text)[-n:]
 
 
+# The uid/gid children run as (the workspace owner; `hermes` in the image).
+CHILD_UID = int(os.environ.get("RUNNER_CHILD_UID", "10000"))
+CHILD_GID = int(os.environ.get("RUNNER_CHILD_GID", str(CHILD_UID)))
+
+
+def dropping() -> bool:
+    """Whether children switch to CHILD_UID (the server runs as root)."""
+    return os.name == "posix" and os.geteuid() == 0
+
+
+def child_kw() -> dict:
+    """subprocess arguments that start a child as CHILD_UID:CHILD_GID."""
+    if not dropping():
+        return {}
+    return {"user": CHILD_UID, "group": CHILD_GID, "extra_groups": []}
+
+
+def _child_home() -> str:
+    import pwd
+
+    try:
+        return pwd.getpwuid(CHILD_UID).pw_dir or "/tmp"
+    except KeyError:
+        return "/tmp"
+
+
 # What a child keeps from the runner's own environment: the toolchain's
 # locations and the locale, nothing else (no key, no gateway settings in its
-# environment; same uid as the server until stage 1b, see the module doc).
+# environment). As root, HOME is the child user's and USER/LOGNAME are dropped.
 KEEP_ENV = {"PATH", "HOME", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "TZ", "TERM", "USER",
             "LOGNAME", "SHELL", "TMPDIR", "PLAYWRIGHT_BROWSERS_PATH", "PNPM_HOME", "NODE_PATH",
             "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "COREPACK_HOME",
@@ -87,6 +122,11 @@ def child_env(extra: dict | None = None) -> dict[str, str]:
            and not k.upper().startswith("KEMUDI_")}
     env.update({"CI": "1", "FORCE_COLOR": "0", "NO_COLOR": "1",
                 "npm_config_store_dir": "/pnpm-store"})
+    if dropping():
+        # the server's are root's
+        env.pop("USER", None)
+        env.pop("LOGNAME", None)
+        env["HOME"] = _child_home()
     env.update(extra or {})
     return env
 
@@ -115,11 +155,53 @@ def request_env(raw) -> dict[str, str]:
 def run(cmd: list[str], cwd: Path, timeout: int, env: dict | None = None) -> tuple[int, str]:
     try:
         p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
-                           env=child_env(env))
+                           env=child_env(env), **child_kw())
         return p.returncode, tail(p.stdout + p.stderr)
     except subprocess.TimeoutExpired as e:
         out = (e.stdout or b"").decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
         return 124, tail(out + f"\n[timed out after {timeout}s]")
+
+
+def child_tmpdir(prefix: str) -> Path:
+    """A private temp dir the child owns (the server only removes it). The
+    child makes it: the server has no CHOWN capability."""
+    if not dropping():
+        return Path(tempfile.mkdtemp(prefix=prefix))
+    p = subprocess.run(["mktemp", "-d", "-p", tempfile.gettempdir(), f"{prefix}XXXXXXXX"],
+                       capture_output=True, text=True, timeout=30, cwd="/",
+                       env=child_env(), **child_kw())
+    if p.returncode != 0:
+        raise RuntimeError(f"cannot create a temp dir: {p.stderr.strip()[:200]}")
+    return Path(p.stdout.strip())
+
+
+def remove_child_tmpdir(tmp: Path) -> None:
+    """Remove a `child_tmpdir` (as the child: root lacks DAC_OVERRIDE here)."""
+    if not dropping():
+        shutil.rmtree(tmp, ignore_errors=True)
+        return
+    try:
+        subprocess.run(["rm", "-rf", "--", str(tmp)], capture_output=True, timeout=120,
+                       cwd="/", env=child_env(), **child_kw())
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def read_as_child(path: Path, limit: int = 8_000_000) -> str | None:
+    """A file in a child-writable place, read with the child's rights (as
+    root, a symlink there would read anything for it); None if unreadable."""
+    if not dropping():
+        try:
+            with open(path, "rb") as f:
+                return f.read(limit).decode(errors="replace")
+        except OSError:
+            return None
+    try:
+        p = subprocess.run(["head", "-c", str(limit), "--", str(path)], capture_output=True,
+                           timeout=60, env=child_env(), **child_kw())
+    except subprocess.TimeoutExpired:
+        return None
+    return p.stdout.decode(errors="replace") if p.returncode == 0 else None
 
 
 def job_dir(body: dict) -> Path:
@@ -238,6 +320,12 @@ def op_gates(body: dict) -> dict:
 
 def op_qa_reset(body: dict) -> dict:
     d = job_dir(body)
+    if dropping():
+        run(["rm", "-rf", "--", ".qa"], d, 120)
+        code, out = run(["mkdir", "-p", "--", ".qa/spec"], d, 60)
+        if code != 0:
+            return {"infra_error": "cannot create .qa/spec: " + out[-300:]}
+        return {"ok": True}
     qa = d / ".qa"
     shutil.rmtree(qa, ignore_errors=True)
     (qa / "spec").mkdir(parents=True)
@@ -263,9 +351,10 @@ def _wait_http(url: str, seconds: float, ok=lambda status: status < 500,
 
 def _parse_report(path: Path) -> tuple[list[dict], str]:
     """Tests from Playwright's JSON report, and any load/compile error."""
-    if not path.exists():
+    text = read_as_child(path)
+    if text is None:
         return [], "Playwright wrote no report"
-    data = json.loads(path.read_text())
+    data = json.loads(text)
     errors = [e.get("message", "") for e in data.get("errors") or []]
     tests: list[dict] = []
 
@@ -297,12 +386,25 @@ WARM_TIMEOUT = 180
 LOG_TAIL_LINES = 60
 
 
-def _spawn(argv: list[str], cwd: Path, env: dict, log) -> subprocess.Popen:
-    """A process in its own group (session), so stopping it stops its children."""
+def _spawn(argv: list[str], cwd: Path, env: dict, log: Path | None) -> subprocess.Popen:
+    """A child in its own group (session), so stopping it stops its children.
+    Output goes to `log` (None: discarded). As root, the child's own shell
+    opens the log (then execs argv, keeping the pid), so a symlink in the
+    workspace cannot make the server write somewhere as root."""
     kw = {"start_new_session": True} if os.name == "posix" else {
         "creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-    return subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=log,
-                            stderr=subprocess.STDOUT, **kw)
+    if log is not None and dropping():
+        argv = ["sh", "-c", 'f=$1; shift; exec "$@" >"$f" 2>&1', "sh", str(log), *argv]
+        return subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                **kw, **child_kw())
+    if log is None:
+        return subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+                                **kw, **child_kw())
+    with open(log, "wb") as f:
+        return subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=f,
+                                stderr=subprocess.STDOUT, **kw, **child_kw())
 
 
 def _stop(proc: subprocess.Popen) -> None:
@@ -345,10 +447,10 @@ def _free_port(start: int, taken: set[int]) -> int:
 
 
 def _log_tail(path: Path, n: int = LOG_TAIL_LINES) -> str:
-    try:
-        lines = path.read_text(errors="replace").splitlines()
-    except OSError:
+    text = read_as_child(path)
+    if text is None:
         return "(no log)"
+    lines = text.splitlines()
     return ANSI.sub("", "\n".join(lines[-n:]))
 
 
@@ -387,7 +489,7 @@ def _warm_paths(body: dict, d: Path) -> list[str]:
     paths = [str(p) for p in body.get("warm") or []]
     routes = d / ".qa" / "routes.txt"
     if routes.is_file() and not routes.is_symlink():
-        paths += routes.read_text(errors="replace").splitlines()[:50]
+        paths += (read_as_child(routes, 64_000) or "").splitlines()[:50]
     out: list[str] = []
     for p in (x.strip() for x in paths):
         if p.startswith("/") and not p.startswith("//") and not any(c.isspace() for c in p) \
@@ -401,7 +503,12 @@ def _start_services(services: list[dict], d: Path, deadline: float,
     """Start each service in order and wait for its health; returns name -> base
     URL, or an error text with the log tail."""
     logs = d / ".qa" / "logs"
-    logs.mkdir(parents=True, exist_ok=True)
+    if dropping():
+        code, out = run(["mkdir", "-p", "--", ".qa/logs"], d, 60)
+        if code != 0:
+            return "cannot create .qa/logs: " + out[-300:]
+    else:
+        logs.mkdir(parents=True, exist_ok=True)
     urls: dict[str, str] = {}
     taken: set[int] = set()
     for s in services:
@@ -417,8 +524,7 @@ def _start_services(services: list[dict], d: Path, deadline: float,
                     "NODE_OPTIONS": "--max-old-space-size=2048"})
         argv = [a.replace("{port}", str(port)) for a in s["argv"]]
         log_path = logs / f"{s['name']}.log"
-        with open(log_path, "wb") as log:
-            proc = _spawn(argv, s["cwd"], child_env(env), log)
+        proc = _spawn(argv, s["cwd"], child_env(env), log_path)
         procs.append(proc)
         base = f"http://localhost:{port}"
         wait = min(s["ready_timeout"], max(0.0, deadline - time.monotonic()))
@@ -478,8 +584,10 @@ def op_qa(body: dict) -> dict:
     web = work_dir(body) if "subdir" in body else d / "apps" / "web"
     vite = _spawn(["pnpm", "exec", "vite", "--port", str(QA_PORT), "--strictPort", "--host",
                    "127.0.0.1"], web, child_env({"KEMUDI_DEV_GATEWAY": GATEWAY}),
-                  subprocess.DEVNULL)
+                  None)
+    # The server's own dir: children may read the state, not replace it.
     tmp = Path(tempfile.mkdtemp(prefix="qa-"))
+    tmp.chmod(0o755)
     base = f"http://127.0.0.1:{QA_PORT}"
     try:
         if not _wait_http(base + "/", 120):
@@ -500,10 +608,10 @@ def op_qa(body: dict) -> dict:
 
 def _run_specs(d: Path, spec_dir: Path, base: str, state: Path | None, extra: dict,
                deadline: float) -> dict:
-    tmp = Path(tempfile.mkdtemp(prefix="qa-report-"))
+    tmp = child_tmpdir("qa-report-")  # Playwright writes the reports here
     try:
         npm_root = subprocess.run(["npm", "root", "-g"], capture_output=True, text=True,
-                                  env=child_env()).stdout.strip()
+                                  env=child_env(), **child_kw()).stdout.strip()
         runs = []
         for k in (1, 2):
             out_dir = d / ".qa" / "results" / f"run{k}"
@@ -529,7 +637,7 @@ def _run_specs(d: Path, spec_dir: Path, base: str, state: Path | None, extra: di
             runs.append({"exit": code, "tests": tests})
         return {"ok": True, "runs": runs}
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_child_tmpdir(tmp)
 
 
 MAX_CLEAN_ENTRIES = 200
@@ -538,7 +646,7 @@ MAX_CLEAN_ENTRIES = 200
 def _git_out(args: list[str], env: dict, timeout: int = 120) -> tuple[int, str]:
     try:
         p = subprocess.run(["git", *GIT_SAFE, *args], capture_output=True, timeout=timeout,
-                           env=env)
+                           env=env, **child_kw())
     except subprocess.TimeoutExpired:
         return 124, f"git {args[0] if args else ''} timed out"
     if p.returncode != 0:
@@ -559,30 +667,31 @@ def op_clean_check(body: dict) -> dict:
     if gd.is_symlink() or not gd.is_dir():
         return {"ok": True, "head": "", "entries": [{"status": "!?", "path": ".git"}],
                 "truncated": False}
-    tmp = Path(tempfile.mkdtemp(prefix="clean-"))
+    # git runs as the child in a dir it owns; nothing in .git is read as root.
+    tmp = child_tmpdir("clean-")
     try:
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(tmp),
                "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
                "GIT_NO_REPLACE_OBJECTS": "1", "GIT_OPTIONAL_LOCKS": "0",
-               "GIT_TERMINAL_PROMPT": "0"}
+               "GIT_TERMINAL_PROMPT": "0",
+               # borrow the workspace's objects (the server writes no file for it)
+               "GIT_ALTERNATE_OBJECT_DIRECTORIES": str((gd / "objects").resolve())}
         code, out = _git_out(["init", "-q", str(tmp / "w")], env)
         if code != 0:
             return {"infra_error": "git init failed: " + out}
         git_dir = tmp / "w" / ".git"
-        (git_dir / "objects" / "info" / "alternates").write_bytes(
-            ((gd / "objects").resolve().as_posix() + "\n").encode())
-        head_file = (gd / "HEAD").read_text().strip()
+        head_file = (read_as_child(gd / "HEAD", 4096) or "").strip()
         if head_file.startswith("ref: "):
             ref = head_file[5:]
             if not re.match(r"^refs/heads/[A-Za-z0-9._/-]+$", ref) or ".." in ref:
                 return {"infra_error": f"unexpected HEAD {head_file[:100]!r}"}
             ref_path = gd / ref
             if ref_path.is_file():
-                head = ref_path.read_text().strip()
+                head = (read_as_child(ref_path, 4096) or "").strip()
             else:
                 head = ""
                 packed = gd / "packed-refs"
-                for line in packed.read_text().splitlines() if packed.is_file() else []:
+                for line in (read_as_child(packed) or "").splitlines():
                     if line.endswith(" " + ref):
                         head = line.split(" ", 1)[0]
         else:
@@ -602,7 +711,7 @@ def op_clean_check(body: dict) -> dict:
         if code != 0:
             return {"infra_error": "git status failed: " + out}
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_child_tmpdir(tmp)
     entries = []
     parts = out.split("\0")
     i = 0
