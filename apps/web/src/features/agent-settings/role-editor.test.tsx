@@ -14,6 +14,29 @@ const calls = vi.hoisted(() => [] as LlmModelsIn[])
 
 vi.mock('@/lib/kemudi-ai/agent', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/kemudi-ai/agent')>()),
+  useSkillCatalog: () => ({
+    data: {
+      skills: [
+        {
+          slug: 'impeccable',
+          title: 'Impeccable',
+          description: 'Frontend design.',
+          source: 'builtin',
+          license: 'Apache-2.0',
+          enabled: true,
+          version: 1,
+          scan_level: '',
+        },
+      ],
+      template_defaults: {
+        frontend: ['impeccable'],
+        fullstack: ['impeccable'],
+      },
+    },
+    isPending: false,
+    isSuccess: true,
+    isError: false,
+  }),
   useLlmModels: (_slug: string, body: LlmModelsIn, enabled: boolean) => {
     if (enabled) calls.push(body)
     const own = Boolean(body.base_url)
@@ -45,6 +68,9 @@ const role: Role = {
   denied_paths: [],
   prompt_overlay: 'Use Tailwind.',
   enabled: true,
+  skills: [],
+  skill_details: [],
+  skill_defaults: ['impeccable'],
   version: 2,
   prompt_version: '3.v2.abcdef1234',
   updated_by: 'webdev',
@@ -169,6 +195,29 @@ describe('RoleEditor', () => {
       expect.objectContaining({ template: 'fullstack', area: 'both' }),
       null
     )
+  })
+
+  it('saves the chosen skills; a new role leaves them to the template', async () => {
+    const onSave = vi.fn()
+    const screen = await renderEditor(onSave)
+    await screen.getByRole('button', { name: 'Add skill' }).click()
+    await screen.getByRole('option', { name: /Impeccable/ }).click()
+    await screen.getByRole('button', { name: 'Save changes' }).click()
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ skills: ['impeccable'] }),
+      null
+    )
+  })
+
+  it('a new role omits skills so the server applies the defaults', async () => {
+    const onSave = vi.fn()
+    const screen = await renderEditor(onSave, { r: null })
+    await expect
+      .element(screen.getByText('Frontend defaults: Impeccable'))
+      .toBeVisible()
+    await screen.getByRole('textbox', { name: 'Name' }).fill('FE')
+    await screen.getByRole('button', { name: 'Add role' }).click()
+    expect(onSave.mock.calls[0][0]).not.toHaveProperty('skills')
   })
 
   it('blocks an overlay over the limit and shows the count', async () => {

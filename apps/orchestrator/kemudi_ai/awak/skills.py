@@ -368,6 +368,93 @@ def resolve(db: Session, slugs: Iterable[str] | None) -> Resolved:
     return Resolved(tuple(entries), tuple(dropped))
 
 
+# --- Role assignment ---------------------------------------------------------------
+
+# Skills a new role of a template gets (only those installed and enabled).
+TEMPLATE_DEFAULTS: dict[str, tuple[str, ...]] = {
+    "frontend": ("impeccable",),
+    "fullstack": ("impeccable",),
+}
+ROLE_TEMPLATES = ("frontend", "backend", "fullstack", "qa")
+MAX_ROLE_SKILLS = 20
+PICKER_DESCRIPTION_MAX = 200
+
+
+def _current(db: Session, sk: AwakSkill) -> AwakSkillVersion | None:
+    return (db.query(AwakSkillVersion)
+            .filter_by(slug=sk.slug, version=sk.current_version, status="active").one_or_none())
+
+
+def _usable(db: Session, sk: AwakSkill | None) -> bool:
+    return sk is not None and sk.enabled and _current(db, sk) is not None
+
+
+def template_defaults(db: Session, template: str) -> list[str]:
+    """The template's default skills that a role can get now."""
+    return [s for s in TEMPLATE_DEFAULTS.get(template, ()) if _usable(db, db.get(AwakSkill, s))]
+
+
+def check_assignable(db: Session, slugs: list[str], keep: Iterable[str] = ()) -> list[str]:
+    """`slugs` as a role's skills: unique, at most MAX_ROLE_SKILLS, each
+    installed and enabled. Slugs in `keep` (already on the role) may stay
+    even when disabled or missing since (the role shows a warning, runs drop
+    them). Raises SkillError naming the refused slugs."""
+    if len(set(slugs)) != len(slugs):
+        raise SkillError(["each skill can be assigned once"])
+    if len(slugs) > MAX_ROLE_SKILLS:
+        raise SkillError([f"at most {MAX_ROLE_SKILLS} skills per role"])
+    keep = set(keep)
+    bad = [s for s in slugs if s not in keep and not _usable(db, db.get(AwakSkill, s))]
+    if bad:
+        raise SkillError([f"skills not installed or not enabled: {', '.join(bad)}"])
+    return list(slugs)
+
+
+def _summary(db: Session, sk: AwakSkill) -> dict:
+    v = _current(db, sk)
+    return {"slug": sk.slug, "title": sk.title or sk.slug, "source": sk.source,
+            "license": sk.license, "enabled": sk.enabled,
+            "version": v.version if v is not None else None,
+            # "" (clean) | low | medium | high
+            "scan_level": (v.scan or {}).get("worst", "") if v is not None else ""}
+
+
+def describe(db: Session, slugs: Iterable[str] | None) -> list[dict]:
+    """A role's skills for display, in order; `status` ok | disabled |
+    missing | no_version (the last three are dropped at run time)."""
+    out = []
+    for slug in slugs or []:
+        sk = db.get(AwakSkill, slug)
+        if sk is None:
+            out.append({"slug": slug, "title": slug, "source": "", "license": "",
+                        "enabled": False, "version": None, "scan_level": "",
+                        "status": "missing"})
+            continue
+        d = _summary(db, sk)
+        d["status"] = ("disabled" if not sk.enabled
+                       else "no_version" if d["version"] is None else "ok")
+        out.append(d)
+    return out
+
+
+def _short(text: str, limit: int = PICKER_DESCRIPTION_MAX) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
+
+
+def picker(db: Session) -> list[dict]:
+    """Enabled skills with an active version, for the role editor's picker."""
+    rows = db.query(AwakSkill).filter_by(enabled=True).order_by(AwakSkill.slug).all()
+    out = []
+    for sk in rows:
+        d = _summary(db, sk)
+        if d["version"] is None:
+            continue
+        d["description"] = _short(sk.description)
+        out.append(d)
+    return out
+
+
 def agent_skill_md(raw: bytes) -> bytes:
     """SKILL.md as the agent sees it: the description cut to
     DESCRIPTION_AGENT_MAX characters (the rest of the file as stored)."""

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
@@ -14,6 +14,7 @@ import {
   type Role,
   type RoleIn,
 } from '@/lib/kemudi-ai/agent'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   Sheet,
@@ -93,6 +94,7 @@ export function Roles({
                       ? t('roles.repoCount', { count: r.repo_ids.length })
                       : t('roles.editor.reposAll')}
                   </span>
+                  <SkillsSummary role={r} />
                 </span>
               </button>
             </li>
@@ -122,6 +124,25 @@ export function Roles({
         </SheetContent>
       </Sheet>
     </div>
+  )
+}
+
+/** The role's skill count, with a warning when one is skipped at run time. */
+function SkillsSummary({ role }: { role: Role }) {
+  const { t } = useTranslation('agent')
+  const count = role.skills?.length ?? 0
+  if (count === 0) return null
+  const problem = role.skill_details?.some((d) => d.status !== 'ok')
+  const names = (role.skill_details ?? []).map((d) => d.title).join(', ')
+  return (
+    <span
+      className={cn('flex items-center gap-1', problem && 'text-destructive')}
+      title={problem ? t('roles.skillsWarning') : names || undefined}
+    >
+      {problem && <TriangleAlert className='size-3.5' aria-hidden />}
+      {t('roles.skillCount', { count })}
+      {problem && <span className='sr-only'>{t('roles.skillsWarning')}</span>}
+    </span>
   )
 }
 

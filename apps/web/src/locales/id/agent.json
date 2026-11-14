@@ -500,6 +500,8 @@
     "editTitle": "Peran {{name}}",
     "promptVersion": "Versi prompt {{version}}",
     "repoCount_other": "{{count}} repo",
+    "skillCount_other": "{{count}} skill",
+    "skillsWarning": "Ada skill yang tidak tersedia; Awak mengabaikannya",
     "templates": {
       "frontend": "Frontend",
       "backend": "Backend",
@@ -537,6 +539,41 @@
       "count": "{{used}} / {{max}} karakter",
       "tooLong": "Melebihi batas {{over}} karakter",
       "loadingPrompt": "Memuat prompt…"
+    },
+    "skills": {
+      "title": "Skill",
+      "description": "Bahan rujukan yang dapat dibuka Awak saat bekerja, misalnya panduan desain. Skill tidak pernah menggantikan aturan Kemudi atau instruksi Anda.",
+      "none": "Belum ada skill. Awak hanya bekerja dengan prompt peran.",
+      "noneInstalled": "Belum ada skill yang terpasang. Minta admin Kemudi Anda untuk memasang skill.",
+      "add": "Tambah skill",
+      "search": "Cari skill",
+      "noMatch": "Tidak ada skill yang cocok dengan “{{query}}”.",
+      "allAssigned": "Semua skill yang aktif sudah dipilih.",
+      "loading": "Memuat skill…",
+      "loadError": "Skill tidak dapat dimuat. Coba lagi nanti.",
+      "remove": "Hapus {{title}}",
+      "reset": "Kembalikan ke default",
+      "defaultsFor": "Default {{template}}: {{skills}}",
+      "noDefaults": "Template {{template}} tidak memiliki skill default.",
+      "limit": "Maksimal {{max}} skill per peran.",
+      "license": "Lisensi {{license}}",
+      "noLicense": "Lisensi tidak disebutkan",
+      "source": {
+        "builtin": "Bawaan",
+        "local": "Lokal",
+        "marketplace": "Marketplace"
+      },
+      "scan": {
+        "clean": "Pindaian bersih",
+        "low": "Pindaian: rendah",
+        "medium": "Pindaian: sedang",
+        "high": "Pindaian: tinggi"
+      },
+      "status": {
+        "disabled": "Dinonaktifkan oleh admin Kemudi. Awak mengabaikannya sampai diaktifkan kembali.",
+        "missing": "Sudah tidak terpasang. Awak mengabaikannya.",
+        "no_version": "Tidak memiliki versi aktif. Awak mengabaikannya."
+      }
     }
   },
   "jobs": {

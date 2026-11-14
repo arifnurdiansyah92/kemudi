@@ -128,6 +128,18 @@ def me(user: TaigaUser = Depends(current_user), settings: Settings = Depends(get
     return {"username": user.username, "kemudi_admin": is_kemudi_admin(user, settings)}
 
 
+@app.get("/skills")
+def list_enabled_skills(_: TaigaUser = Depends(current_user), db: Session = Depends(get_db)):
+    """Enabled skills for the role editor's picker (any signed-in user):
+    slug, title, short description, source, licence, scan level, version;
+    and each role template's default skills (those enabled now)."""
+    from .awak import skills
+
+    return {"skills": skills.picker(db),
+            "template_defaults": {t: skills.template_defaults(db, t)
+                                  for t in skills.ROLE_TEMPLATES}}
+
+
 @app.get("/projects/{slug}/contract")
 def get_contract(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(get_db)):
     c = db.query(Contract).filter_by(project_slug=slug).one_or_none()
