@@ -8,7 +8,11 @@
 # (branch code, process services, Playwright, git) runs as 10000:10000 with a
 # clean environment, so no child can read the key from /proc/<pid>/environ.
 # See runner.py's module doc.
-FROM kemudi/kemudi-hermes:dev
+#
+# HERMES_IMAGE: the dev stack builds on its local kemudi/kemudi-hermes:dev;
+# the release workflow passes the hermes image it just pushed to GHCR.
+ARG HERMES_IMAGE=kemudi/kemudi-hermes:dev
+FROM ${HERMES_IMAGE}
 
 USER root
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \

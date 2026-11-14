@@ -1,0 +1,59 @@
+# Builds the Kemudi images from this checkout instead of pulling them from
+# GHCR. Layer it over the production file:
+#
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.build.yml \
+#       --env-file infra/.env build
+#
+# Used by .github/workflows/smoke.yml (and for testing a release candidate
+# locally). The images get the production tags
+# (ghcr.io/arifnurdiansyah92/kemudi-*:${KEMUDI_VERSION}) on this machine only.
+# The Awak profile's images need the services/awak submodule
+# (git submodule update --init services/awak).
+
+services:
+  kemudi-back:
+    build:
+      context: ../services/kemudi-back
+      dockerfile: docker/Dockerfile
+    pull_policy: build
+
+  # Same image as kemudi-back, built above (two builds of one tag collide).
+  kemudi-async:
+    pull_policy: never
+
+  kemudi-events:
+    build:
+      context: ../services/kemudi-events
+      dockerfile: docker/Dockerfile
+    pull_policy: build
+
+  kemudi-web:
+    build:
+      context: ../apps/web
+    pull_policy: build
+
+  kemudi-orchestrator:
+    build:
+      context: ../apps/orchestrator
+    pull_policy: build
+
+  kemudi-hermes:
+    build:
+      context: ../services/awak
+    pull_policy: build
+
+  # Same image as kemudi-hermes.
+  kemudi-awak:
+    pull_policy: never
+
+  kemudi-runner:
+    build:
+      context: ./runner
+      args:
+        HERMES_IMAGE: ghcr.io/arifnurdiansyah92/kemudi-hermes:${KEMUDI_VERSION:-1.0.0}
+    pull_policy: build
+
+  kemudi-svc:
+    build:
+      context: ./svc
+    pull_policy: build
