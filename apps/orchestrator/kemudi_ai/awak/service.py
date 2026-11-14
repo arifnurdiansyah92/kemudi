@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from ..config import Settings
 from .agent import HermesAgent
 from .runner import HttpRunner
+from .svc import SvcClient
 from .taiga import Taiga
 from .worker import Worker
 
@@ -23,6 +24,7 @@ def build_worker(settings: Settings, sessions: sessionmaker[Session]) -> Worker:
         agent=HermesAgent(settings, sessions),
         runner=HttpRunner(settings.runner_url, settings.runner_key),
         repo=None,  # built per job from the repo row (worker.repo_for)
+        svc=SvcClient(settings.svc_url, settings.svc_key) if settings.svc_key else None,
     )
 
 

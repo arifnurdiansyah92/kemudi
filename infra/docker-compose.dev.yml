@@ -175,6 +175,7 @@ services:
       KEMUDI_AWAK_MODEL: "${KEMUDI_AWAK_MODEL:-deepseek-flash}"
       KEMUDI_QA_MODEL: "${KEMUDI_QA_MODEL:-deepseek-flash}"
       KEMUDI_RUNNER_KEY: "${KEMUDI_RUNNER_KEY:-}"
+      KEMUDI_SVC_KEY: "${KEMUDI_SVC_KEY:-}"
       # Fernet key that encrypts the SSH keys Kemudi generates (Project
       # settings -> Agent). Empty = key generation answers 503.
       KEMUDI_SECRET_KEY: "${KEMUDI_SECRET_KEY:-}"
@@ -192,7 +193,8 @@ services:
       - kemudi-awak-workspace:/workspace
       # Only the repo's git data: Awak's branches are pushed here as awak/us-<n>.
       - ../.git:/host-git
-    networks: [default, kemudi-sandbox]
+    # kemudi-svcnet: the only way to kemudi-svc (and so to the sandboxed Docker).
+    networks: [default, kemudi-sandbox, kemudi-svcnet]
     restart: unless-stopped
     depends_on:
       kemudi-back: { condition: service_started }
@@ -254,11 +256,70 @@ services:
     volumes:
       - kemudi-awak-workspace:/workspace
       - kemudi-pnpm-store:/pnpm-store
-    networks: [kemudi-sandbox, kemudi-egress]
+    # kemudi-dindnet: published ports of compose services (http://kemudi-dind:<port>).
+    networks: [kemudi-sandbox, kemudi-egress, kemudi-dindnet]
+    # The server runs as root only to drop each child to uid 10000
+    # (SETUID/SETGID) and to stop their process groups (KILL).
     cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, KILL]
     security_opt: ["no-new-privileges:true"]
     mem_limit: 4g
     pids_limit: 1024
+    restart: unless-stopped
+
+  # Sandboxed Docker for a project's compose services (QA, `run_in` gates).
+  # Listens only on a unix socket in kemudi-dind-sock, which only kemudi-svc
+  # mounts: branch code (kemudi-runner, kemudi-awak) never reaches the daemon.
+  # Not on kemudi-sandbox: kemudi-dindnet (internal, shared with the runner,
+  # which reaches published ports at http://kemudi-dind:<port>) plus
+  # kemudi-egress for image pulls and package installs during builds.
+  # docs/superpowers/specs/2026-11-14-awak-workspace-runbook-design.md
+  kemudi-dind:
+    image: docker:27-dind
+    profiles: [awak]
+    privileged: true
+    command: ["dockerd", "--host=unix:///run/dind/docker.sock", "--userns-remap=default",
+              "--default-address-pool", "base=10.201.0.0/16,size=24"]
+    environment:
+      # No TLS certs and no TCP listener: the socket is the only way in.
+      DOCKER_TLS_CERTDIR: ""
+    volumes:
+      - kemudi-dind-sock:/run/dind
+      - kemudi-dind-data:/var/lib/docker
+    networks: [kemudi-dindnet, kemudi-egress]
+    mem_limit: 5g
+    pids_limit: 2048
+    restart: unless-stopped
+
+  # The only client of kemudi-dind (infra/svc/svc.py): sanitizes a project's
+  # compose file and runs the normalized copy. Never runs branch code itself.
+  # Reachable only from the orchestrator (kemudi-svcnet), with its own key.
+  kemudi-svc:
+    build:
+      context: ./svc
+    image: kemudi/kemudi-svc:dev
+    profiles: [awak]
+    init: true
+    environment:
+      KEMUDI_SVC_KEY: "${KEMUDI_SVC_KEY:-}"
+      DOCKER_HOST: "unix:///run/dind/docker.sock"
+    volumes:
+      - kemudi-dind-sock:/run/dind
+      - kemudi-awak-workspace:/workspace:ro
+    # Vault env files and normalized compose files; never on disk.
+    tmpfs:
+      - /run/svc:mode=0700
+    networks: [kemudi-svcnet]
+    # Root with SETUID/SETGID (compose files are first read as uid 10000),
+    # KILL (stop that child on a deadline), DAC_READ_SEARCH (build contexts
+    # owned by 10000).
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, KILL, DAC_READ_SEARCH]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1g
+    pids_limit: 512
+    depends_on:
+      - kemudi-dind
     restart: unless-stopped
 
   # Legacy UI, for screens apps/web does not cover yet. Remove once it does.
@@ -298,9 +359,17 @@ volumes:
   kemudi-awak-data:
   kemudi-awak-workspace:
   kemudi-pnpm-store:
+  kemudi-dind-sock:
+  kemudi-dind-data:
 
 networks:
   default: {}
   kemudi-sandbox:
     internal: true
   kemudi-egress: {}
+  # kemudi-runner <-> kemudi-dind (published ports of compose services).
+  kemudi-dindnet:
+    internal: true
+  # kemudi-orchestrator <-> kemudi-svc.
+  kemudi-svcnet:
+    internal: true

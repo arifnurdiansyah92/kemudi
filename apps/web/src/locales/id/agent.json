@@ -308,7 +308,8 @@
       "checks": "Pemeriksaan",
       "build": "Build",
       "env": "Env",
-      "noCommands": "Tidak ada perintah."
+      "noCommands": "Tidak ada perintah.",
+      "generated": "Dihasilkan"
     },
     "services": {
       "title": "Layanan",
@@ -322,7 +323,10 @@
       "expose": "Expose",
       "health": "Health",
       "healthWithin": "{{path}} dalam {{seconds}} dtk",
+      "init": "Init",
       "seed": "Seed",
+      "login": "Login QA",
+      "loginTo": "{{path}} → {{to}}",
       "qaEnv": "Env QA"
     },
     "env": {
@@ -339,6 +343,52 @@
       "rejected_one": "Tidak disimpan: {{count}} masalah",
       "rejected_other": "Tidak disimpan: {{count}} masalah",
       "save": "Simpan dan setujui"
+    }
+  },
+  "env": {
+    "title": "Env & rahasia",
+    "description": "Nilai yang dibaca berdasarkan nama oleh layanan, perintah persiapan, dan QA di runbook. Disimpan terenkripsi dan disembunyikan dari setiap komentar, log, dan diff.",
+    "unavailable": "Nilai env tidak dapat dijangkau. Pastikan orchestrator Kemudi AI berjalan.",
+    "testOnly": "Hanya untuk nilai pengujian dan pengembangan. Jangan pernah memasukkan kredensial produksi: container proyek dan QA dapat membaca nilai ini.",
+    "empty": "Belum ada nilai.",
+    "add": "Tambah nilai",
+    "secret": "rahasia",
+    "required": "wajib",
+    "fromRunbook": "di runbook",
+    "hidden": "Tersembunyi",
+    "notSet": "Belum diisi",
+    "missingRequired": "Wajib, belum diisi",
+    "emptyValue": "(kosong)",
+    "edit": "Ubah {{name}}",
+    "setValue": "Isi {{name}}",
+    "setShort": "Isi nilai",
+    "updated": "{{who}}, {{when}}",
+    "missing_one": "{{count}} nilai wajib belum diisi.",
+    "missing_other": "{{count}} nilai wajib belum diisi.",
+    "dialog": {
+      "newTitle": "Nilai baru",
+      "editTitle": "Ubah {{name}}",
+      "description": "Gunakan hanya nilai pengujian atau pengembangan.",
+      "name": "Nama",
+      "nameHint": "Huruf kapital, angka, dan _, diawali huruf atau _. Nama yang dipakai Kemudi sendiri (PATH, HOME, KEMUDI_…, GIT_…) tidak dapat digunakan.",
+      "nameInvalid": "Gunakan huruf kapital, angka, dan _, diawali huruf atau _ (maksimal 64).",
+      "value": "Nilai",
+      "valueStored": "Nilai sudah tersimpan. Biarkan kosong untuk mempertahankannya.",
+      "valueHidden": "Setelah disimpan, nilai rahasia dapat diganti tetapi tidak dapat ditampilkan lagi.",
+      "valuePlain": "Anggota proyek dapat melihat nilai ini.",
+      "valueRequired": "Masukkan nilai.",
+      "valueRetype": "Masukkan nilainya lagi: nilai ini akan ditampilkan setelah tidak lagi rahasia.",
+      "secret": "Rahasia",
+      "secretHint": "Hanya-tulis: tidak pernah ditampilkan lagi, bahkan kepada admin.",
+      "save": "Simpan",
+      "delete": "Hapus"
+    },
+    "saved": "{{name}} disimpan",
+    "deleted": "{{name}} dihapus",
+    "confirmDelete": {
+      "title": "Hapus {{name}}?",
+      "desc": "Layanan, perintah persiapan, dan QA yang membaca {{name}} tidak akan mendapat nilai lagi.",
+      "confirm": "Hapus"
     }
   },
   "roles": {

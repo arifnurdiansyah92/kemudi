@@ -7,12 +7,13 @@ job row only remembers attempts, feedback and cost between ticks.
 import fnmatch
 import logging
 import os
+import re
 import shutil
 import socket
 import threading
 import time
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -24,7 +25,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import Settings
 from ..store import AwakJob, AwakKey, AwakProject, AwakWorkerLease, record_event
-from . import checks, config_store, llm_conn, runbook, secrets, ssh
+from . import checks, config_store, llm_conn, runbook, secrets, ssh, vault
 from .config_store import QA_MODES, ProjectConfig, RepoConfig, RoleConfig
 from .crypto import SecretKeyMissing
 from .agent import Agent, AgentError
@@ -34,6 +35,7 @@ from .merge import DONE_TAG, HUMAN_TAG, Merger, effective_mode, save_spec
 from .runbook import Runbook
 from .prompts import RoleScope, out_of_scope, prompt_version, render, render_role
 from .runner import Runner, RunnerError, RunnerRejected
+from .svc import Svc, SvcError, SvcRejected
 from .stories import code_task, criteria, qa_task
 from .taiga import Project, Taiga, TaigaError, tag_names
 from .verdict import Verdict, evaluate, safe_screenshot
@@ -79,6 +81,8 @@ def now() -> datetime:
 # Only one worker may run (the API's thread, `awak-tick --forever`, several
 # uvicorn workers...). A crashed holder's lease lapses after this long.
 LEASE_TTL_S = 120
+SWEEP_EVERY_S = 600  # compose sweep when idle, at most this often
+_SHA_RE = re.compile(r"[0-9a-f]{7,64}")
 
 
 def _naive_now() -> datetime:
@@ -98,6 +102,7 @@ class Worker:
         secret_values: list[str] | None = None,
         sleep: Callable[[float], None] = time.sleep,
         command_runner: ssh.CommandRunner = ssh.subprocess_runner,
+        svc: Svc | None = None,
     ):
         self.s = settings
         self.sessions = sessions
@@ -109,8 +114,12 @@ class Worker:
         self._secret_values = secrets.known_values() if secret_values is None else secret_values
         self.sleep = sleep
         self.command_runner = command_runner  # deploy over SSH
+        self.svc = svc  # kemudi-svc: compose services (None: not configured)
         self._seeded = False
         self._swept = False
+        self._services_swept = False
+        self.clock: Callable[[], float] = time.monotonic
+        self._last_compose_sweep: float | None = None
         self.holder = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 
     @property
@@ -128,6 +137,36 @@ class Worker:
         with self.sessions() as db:
             return [*self.secret_values, *runbook.all_env_values(db)]
 
+    def redact_values_for(self, slug: str) -> list[str]:
+        """`redact_values` plus the project's vault values in every encoding
+        (comments, events, feedback to the agent and logs of its work)."""
+        with self.sessions() as db:
+            own = vault.redaction_values(db, self.s, slug)
+        return [*own, *self.redact_values]
+
+    def scan_values_for(self, slug: str) -> list[str]:
+        """What a diff of the project must not add: `secret_values` plus its
+        vault values of 8+ characters."""
+        with self.sessions() as db:
+            own = vault.scan_values(db, self.s, slug)
+        return [*own, *self.secret_values]
+
+    def _redact_detail(self, slug: str, detail):
+        values = self.redact_values_for(slug)
+
+        def walk(x):
+            if isinstance(x, str):
+                # a commit sha is read back (e.g. `prepared.base`); a short
+                # value that happens to be hex inside it is no leak
+                return x if _SHA_RE.fullmatch(x) else secrets.redact(x, values)
+            if isinstance(x, dict):
+                return {k: walk(v) for k, v in x.items()}
+            if isinstance(x, list):
+                return [walk(v) for v in x]
+            return x
+
+        return walk(detail)
+
     # ------------------------------------------------------------------ loop
     def _seed(self) -> None:
         if not self._seeded:
@@ -139,8 +178,12 @@ class Worker:
         """A job left running by a crash becomes queued again (infra error)."""
         self._seed()
         with self.sessions() as db:
-            if not self._swept and not db.query(AwakJob).filter_by(state="running").count():
+            running = db.query(AwakJob).filter(
+                or_(AwakJob.state == "running", AwakJob.merge_state == "merging")).all()
+            if not self._swept and not any(j.state == "running" for j in running):
                 self._sweep_old_workspaces()
+            if not self._services_swept:
+                self._sweep_services(db, running)
             for job in db.query(AwakJob).filter_by(state="running"):
                 job.state = "queued"
                 job.infra_errors += 1
@@ -168,6 +211,56 @@ class Worker:
                     shutil.rmtree(d, onerror=_force_remove)
             except OSError as e:
                 log.warning("awak: could not delete old workspace %s: %s", d, e)
+
+    def _compose_keep(self, db: Session) -> set[str]:
+        """Compose projects a sweep leaves up: those of running jobs and merges
+        in progress (the one place to add others, e.g. setup runs)."""
+        keep: set[str] = set()
+        busy = db.query(AwakJob).filter(
+            or_(AwakJob.state == "running", AwakJob.merge_state == "merging")).all()
+        for j in busy:
+            rb = runbook.load(db, j.project_slug)
+            keep |= set(checks.compose_projects(rb, j.project_slug,
+                                                f"us{j.story_ref}").values())
+        return keep
+
+    def _sweep_compose(self, db: Session) -> None:
+        """Every compose project kemudi-svc has, except `_compose_keep`, comes
+        down with its images. Failures are logged, never fatal."""
+        self._last_compose_sweep = self.clock()
+        if self.svc is None:
+            return
+        try:
+            res = self.svc.call("svc_sweep", keep=sorted(self._compose_keep(db)))
+            if res.get("removed"):
+                log.warning("awak: swept compose projects %s", res["removed"])
+            if res.get("infra_error"):
+                log.warning("awak: compose sweep failed: %s", res["infra_error"])
+        except SvcError as e:
+            log.warning("awak: compose sweep failed: %s", e)
+
+    def idle_sweep(self) -> None:
+        """When the worker has nothing to do: a compose sweep at most every
+        SWEEP_EVERY_S, so nothing a story left behind (a crash between svc_up
+        and svc_down, a timed-out call) stays in kemudi-dind for long."""
+        if self.svc is None or self._last_compose_sweep is None:
+            return  # the start sweep (recover) comes first
+        if self.clock() - self._last_compose_sweep < SWEEP_EVERY_S:
+            return
+        with self.heartbeat(), self.sessions() as db:
+            self._sweep_compose(db)
+
+    def _sweep_services(self, db: Session, running: list[AwakJob]) -> None:
+        """Once per worker: compose projects of jobs that are not running come
+        down (kemudi-svc), and with no job running, the runner stops every
+        process service left behind. Failures are logged, never fatal."""
+        self._services_swept = True
+        self._sweep_compose(db)
+        if not running:
+            try:
+                self.runner.call("reap")
+            except RunnerError as e:
+                log.warning("awak: runner reap failed: %s", e)
 
     def tick(self) -> bool:
         """Process at most one story. Returns True if it did any work.
@@ -221,7 +314,8 @@ class Worker:
     def _project_failed(self, slug: str, error: Exception) -> None:
         log.warning("awak: project %s failed: %s", slug, error,
                     exc_info=not isinstance(error, TaigaError))
-        text = secrets.redact(str(error) or type(error).__name__, self.redact_values)[:1000]
+        text = secrets.redact(str(error) or type(error).__name__,
+                              self.redact_values_for(slug))[:1000]
         with self.sessions() as db:
             p = db.get(AwakProject, slug)
             if p is not None:
@@ -256,6 +350,11 @@ class Worker:
                     log.exception("awak tick failed")
                     worked = False
                 if not worked:
+                    if held:
+                        try:
+                            self.idle_sweep()
+                        except Exception:  # noqa: BLE001
+                            log.exception("awak idle sweep failed")
                     self.sleep(self.s.poll_interval_s)
         finally:
             if held:
@@ -394,6 +493,38 @@ class Worker:
             except (NeedsHuman, checks.Unsupported) as e:
                 self._block(project, story, job_id, f"Berhenti: {e}")
                 return
+            except checks.ServiceFailed as e:
+                # A compose service, init/seed or the QA login: the redacted
+                # logs go to the event and the card.
+                self._event(job_id, "service_failed", {"error": str(e)[:1000],
+                                                       "logs": e.logs[-4000:],
+                                                       "infra": e.infra})
+                logs = f"\n\n```\n{e.logs.strip()[-1500:]}\n```" if e.logs.strip() else ""
+                if e.rework:
+                    feedback = secrets.redact(
+                        f"{e}\n\nOutput:\n{e.logs.strip()[-3000:]}\n\nThe runbook's command "
+                        "runs in an image built from your branch, on a fresh database, and "
+                        "works on the default branch: fix your change so it does.",
+                        self.redact_values_for(project.slug))
+                    job = self._set(job_id, attempts=job.attempts + 1, feedback=feedback,
+                                    phase="")
+                    self._move(story["id"], project.status("in-progress"))
+                    self._say(story["id"], job_id, f"Gagal: {e}{logs}\n\nKembali ke In "
+                              "progress; Awak akan memperbaiki.")
+                    continue
+                if not e.infra:
+                    self._block(project, story, job_id, f"Berhenti: {e}{logs}")
+                    return
+                job = self._set(job_id, infra_errors=job.infra_errors + 1)
+                if job.infra_errors >= self.s.max_infra_errors:
+                    self._block(project, story, job_id,
+                                f"Gangguan lingkungan berulang ({job.infra_errors}x): {e}{logs}")
+                    return
+                self._say(story["id"], job_id,
+                          f"Gangguan lingkungan, bukan kesalahan story ({e}). Dicoba lagi "
+                          f"otomatis; tidak dihitung sebagai percobaan.{logs}")
+                self.sleep(30 * job.infra_errors)
+                continue
             except Stop as e:
                 self._set(job_id, state="stopped")
                 self._say(story["id"], job_id, f"Berhenti: {e}")
@@ -412,8 +543,8 @@ class Worker:
                 continue
             if result is None:  # passed
                 return
-            job = self._set(job_id, attempts=job.attempts + 1, feedback=result.feedback,
-                            phase="")
+            feedback = secrets.redact(result.feedback, self.redact_values_for(project.slug))
+            job = self._set(job_id, attempts=job.attempts + 1, feedback=feedback, phase="")
             self._move(story["id"], project.status("in-progress"))
             self._say(story["id"], job_id, result.comment)
 
@@ -494,7 +625,7 @@ class Worker:
                         f"Awak mengubah berkas di luar cakupan peran {role.name}: "
                         + ", ".join(f"`{f}`" for f in outside))
         leaked = secrets.files_with_secrets(repo.diff_from_main(job.branch),
-                                            self.secret_values)
+                                            self.scan_values_for(job.project_slug))
         if leaked:
             return Fail("Your change contains a secret or key-like value in: "
                         + ", ".join(leaked) + ". Remove it.",
@@ -508,8 +639,11 @@ class Worker:
         gates: list[dict] = []
         if qa_mode != "off":
             self._set(job.id, phase="gates")
-            gates = checks.run_gates(self._runner, self._path(workdir),
-                                     checks.gate_payloads(rc, route.runbook, files, workdir))
+            payloads = checks.gate_payloads(rc, route.runbook, files, workdir)
+            gates = checks.run_gates(
+                self._runner, self._path(workdir), payloads,
+                self.compose_for(job, route.runbook, workdir)
+                if checks.needs_compose(payloads) else None)
         failed = [g for g in gates if not g.get("ok")]
         table = "\n".join(f"- {'✅' if g.get('ok') else '❌'} {g['name']}" for g in gates)
         if failed:
@@ -639,14 +773,16 @@ class Worker:
                                self.s.qa_project, spec_feedback, app_dir=route.rc.subdir)
             else:
                 task = qa_task(str(workdir), job.story_ref, story["subject"], texts, "",
-                               spec_feedback, app_dirs=plan["app_dirs"])
+                               spec_feedback, app_dirs=plan["app_dirs"],
+                               env_names=plan["qa_env"],
+                               login_path=(plan["login"] or {}).get("path"),
+                               backing=plan["compose"])
             _, cost = self.agent.run("awak.qa", model, system, task, slug=route.config.slug,
                                      role_id=qa_role.id if qa_role else None)
             self._add_cost(job.id, cost)
             if plan is not None:
                 self.qa_siblings(route.config, route.rc, route.runbook, job.branch)
-            report = self._runner("qa", path=self._path(workdir),
-                                  **self.qa_payload(plan, token, route.rc))
+            report = self.run_qa(job, workdir, route.runbook, route.rc, plan, token)
             verdict = evaluate(report, texts)
             self._event(job.id, "qa", {"outcome": verdict.outcome, "reason": verdict.reason})
             if verdict.outcome != "spec":
@@ -656,13 +792,86 @@ class Worker:
             raise Infra(f"QA tidak dapat berjalan: {verdict.reason}")
         return verdict
 
-    def qa_payload(self, plan: dict | None, token: str, rc: RepoConfig) -> dict:
-        """The runner's `qa` body: the runbook's services, or Kemudi's vite path."""
+    def qa_payload(self, plan: dict | None, token: str, rc: RepoConfig,
+                   external: dict[str, str] | None = None, login: dict | None = None,
+                   spec_env: dict[str, str] | None = None) -> dict:
+        """The runner's `qa` body: the runbook's services (plus the compose
+        services' URLs, the resolved login and the spec's vault values), or
+        Kemudi's vite path."""
         if plan is None:
             return {"token": token, "user": self.qa_taiga.me, "project": self.s.qa_project,
                     "subdir": rc.subdir}
-        return {"services": plan["services"], "base_service": plan["base_service"],
+        body = {"services": plan["services"], "base_service": plan["base_service"],
                 "warm": plan["warm"]}
+        if external:
+            body["external"] = external
+        if login:
+            body["login"] = login
+        if spec_env:
+            body["spec_env"] = spec_env
+        return body
+
+    def run_qa(self, job: AwakJob, workdir: Path, rb: Runbook | None, rc: RepoConfig,
+               plan: dict | None, token: str) -> dict:
+        """One runner QA run (worker and merge re-run). With a runbook: its
+        compose services up (kemudi-svc), init, seed and health first, the login
+        and the spec's vault values resolved, and the services down afterwards,
+        whatever happens."""
+        if plan is None or rb is None:
+            return self._runner("qa", path=self._path(workdir),
+                                **self.qa_payload(plan, token, rc))
+        values = self._vault(job.project_slug) if (
+            plan["compose"] or plan["login"] or plan["qa_env"]) else {}
+        login = checks.login_payload(rb, values)
+        spec_env = checks.vault_env(rb, plan["qa_env"], values, "qa.env")
+        compose = self.compose_for(job, rb, workdir, values) if plan["compose"] else None
+        with compose.for_qa(plan) if compose else nullcontext({}) as urls:
+            report = self._runner("qa", path=self._path(workdir),
+                                  **self.qa_payload(plan, token, rc, urls, login, spec_env))
+        if report.get("login_error"):
+            raise checks.ServiceFailed(
+                "login QA (qa.login) gagal; periksa selector dan nilai vault di runbook, atau "
+                "kembalikan story ke In progress jika story ini mengubah halaman login.",
+                logs=str(report["login_error"]), infra=False)
+        return report
+
+    def _vault(self, slug: str) -> dict[str, str]:
+        try:
+            with self.sessions() as db:
+                return vault.values(db, self.s, slug)
+        except SecretKeyMissing as e:
+            raise checks.Unsupported(f"vault proyek tidak bisa dibaca: {e}") from e
+
+    def compose_for(self, job: AwakJob, rb: Runbook | None, workdir: Path,
+                    values: dict[str, str] | None = None) -> checks.Compose:
+        """The job's compose services (projects `<slug>-us<ref>`), reached
+        through kemudi-svc from the story folder's checkouts."""
+        if rb is None:
+            raise checks.Unsupported("tidak ada runbook untuk service compose.")
+        slug = job.project_slug
+        return checks.Compose(
+            rb, self._svc, self._runner,
+            checks.compose_projects(rb, slug, f"us{job.story_ref}"),
+            lambda repo: self._path(workdir.parent / repo),
+            self._vault(slug) if values is None else values,
+            self.redact_values_for(slug),
+            lambda kind, detail: self._event(job.id, kind, detail))
+
+    def _svc(self, op: str, **payload) -> dict:
+        if self.svc is None:
+            raise checks.ServiceFailed("kemudi-svc belum dikonfigurasi (KEMUDI_SVC_KEY), jadi "
+                                       "service compose tidak bisa berjalan.", infra=False)
+        try:
+            res = self.svc.call(op, **payload)
+        except SvcRejected as e:
+            raise checks.Unsupported(
+                f"kemudi-svc menolak langkah {op}: {e}. Periksa service compose di runbook "
+                "(file, compose_services, expose, env) dan compose file repo.") from e
+        except SvcError as e:
+            raise checks.ServiceFailed(f"kemudi-svc tidak bisa dihubungi ({op}): {e}") from e
+        if res.get("infra_error"):
+            raise checks.ServiceFailed(f"kemudi-svc {op}: {res['infra_error']}")
+        return res
 
     # ------------------------------------------------------------- helpers
     def _route(self, job: AwakJob, story: dict, slug: str) -> Route:
@@ -894,6 +1103,11 @@ class Worker:
             return row.detail if row else None
 
     def _event(self, job_id: int, kind: str, detail: dict) -> None:
+        """Every string in the detail is redacted (errors, QA reasons, logs)."""
+        with self.sessions() as db:
+            job = db.get(AwakJob, job_id)
+            slug = job.project_slug if job is not None else ""
+        detail = self._redact_detail(slug, detail)
         with self.sessions() as db:
             record_event(db, job_id, kind, detail)
 
@@ -904,7 +1118,7 @@ class Worker:
         head = f"**Awak** · percobaan {max(n, 1)}/{self.s.max_attempts} · {mins} mnt"
         if job.cost_idr:
             head += f" · biaya model Rp{job.cost_idr:,.0f}".replace(",", ".")
-        body = secrets.redact(f"{head}\n\n{text}", self.redact_values)
+        body = secrets.redact(f"{head}\n\n{text}", self.redact_values_for(job.project_slug))
         self.taiga.comment(story_id, body)
         self._event(job_id, "comment", {"text": body[:500]})
 
@@ -964,9 +1178,8 @@ def qa_mode_for(cfg: ProjectConfig, rc: RepoConfig, rb: Runbook | None,
     if mode != "browser" or (rb is not None and rb.browser_qa_ready()):
         return mode, ""
     if rb is not None and rb.qa_service() is not None:
-        return "gates", ("Mode QA proyek Browser, tetapi service QA di runbook (atau service yang "
-                         "dibutuhkannya) bertipe compose "
-                         "(baru tersedia di tahap 1b); diperlakukan sebagai Gates only.")
+        return "gates", ("Mode QA proyek Browser, tetapi service QA di runbook bukan service "
+                         "process (dev server app); diperlakukan sebagai Gates only.")
     if rc.url == host_git:
         return mode, ""
     return "gates", ("Mode QA proyek Browser, tetapi QA browser belum bisa berjalan "
@@ -989,7 +1202,7 @@ def runner_path(workspace_dir: str, workdir: Path) -> str:
 
 # What the install, the gates and QA themselves leave in a workspace. Only
 # untracked or ignored paths qualify; a changed tracked file never does.
-QA_DIR = ".qa"                                   # repo root only
+QA_DIR = ".qa"                                   # repo root only, any status
 ANYWHERE_DIRS = {"node_modules", "__pycache__"}  # at any depth
 BUILD_DIRS = {"dist", ".vite", ".turbo", "coverage", ".pytest_cache", ".ruff_cache",
               ".mypy_cache", ".venv", "target", ".next"}  # at the repo root or an app dir
@@ -1008,6 +1221,10 @@ def build_output(status: str, path: str, subdir: str | list[str] = "",
     parts = path.strip("/").split("/")
     if not parts or any(p in ("", ".", "..") for p in parts):
         return False
+    if parts[0] == QA_DIR:
+        # Kemudi's own folder (specs, results, process service logs), however
+        # git lists it: as the folder or file by file.
+        return True
     dirs = [subdir] if isinstance(subdir, str) else subdir
     app_dirs = {"", *(d.strip("/") for d in dirs)}
     if status == "!!" and not path.endswith("/"):

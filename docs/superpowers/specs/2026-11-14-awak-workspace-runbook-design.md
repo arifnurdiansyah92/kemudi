@@ -375,6 +375,18 @@ Further decisions:
   symlinks) inside the checkout. Built services get `image:
   kemudi-<project>-<svc>` so one project cannot shadow another's tags;
   `--pull always` for the rest.
+- Images of all projects share one dind image store. `svc_down` removes the
+  project's built images (label `kemudi.project`), so with one job at a time
+  no other project's image is there to use; BuildKit's cache stays. As a
+  second line, after interpolation the same checks run again (an
+  `image: "${UNSET:-kemudi-...}"` or a folder named `${X:-..}` shows what it
+  is only then): non-built images starting with `kemudi-` or `sha256:` (or a
+  bare image id) are refused, and each Dockerfile is scanned for `FROM`,
+  `--from=`, `from=` and `# syntax=` naming such an image, also through an
+  `ARG` default or build arg. The Dockerfile scan is simple, not a parser.
+- Known limit: `spec_env` (and `qa.login`) values reach branch code: the QA
+  specs and the app under test read them. QA values must be test-only
+  accounts and keys; the UI's Env card already says "test/dev values only".
 - Runbook env names may not start with `KEMUDI_`, `DOCKER_`, `COMPOSE_`,
   `GIT_`, nor be `PATH`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `NODE_OPTIONS`,
   `PYTHONPATH`, `HOME`. `dir`/`file`/`repo` are relative and inside the
@@ -404,7 +416,11 @@ Further decisions:
 - Runner gets `npm_config_store_dir=/pnpm-store`,
   `NEXT_TELEMETRY_DISABLED=1`, `NODE_OPTIONS=--max-old-space-size=2048`
   for process services, and `mem_limit` 4g. Each op has a deadline below
-  the client's 1800 s; `svc_up` is split into build (cold 15 min) and start.
-  Processes die by process group; the worker's start sweep kills leftovers.
+  the client's wait; `svc_up` has one 1400 s budget its build (cold 15 min,
+  one retry), start and port steps share (the client waits 1500 s), and
+  svc_down/svc_exec wait (bounded) for an in-flight `svc_up` of the same
+  project. Processes die by process group; the worker's start sweep kills
+  leftovers, and when idle the worker sweeps compose projects at most every
+  10 minutes (keeping running jobs and merges).
 - Resources: sample every 2 s during the proof (dind `docker stats`, runner
   cgroup `memory.peak`), report peak MB and CPU-seconds, cold or warm.

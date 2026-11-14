@@ -109,6 +109,12 @@ class Merger:
             story = self._card(project, story["id"])
             cfg, rc, repo = self._repo(job)
             target, checks, workdir = self._merge(job, story, rc, repo, require_qa_rerun)
+        except gate_checks.ServiceFailed as e:
+            # compose services, init/seed or the QA login: logs to the event
+            w._event(job.id, "service_failed", {"error": str(e)[:1000], "logs": e.logs[-4000:],
+                                                "infra": e.infra, "merge": True})
+            tail = e.logs.strip()[-300:]
+            return self.fail(job.id, story["id"], f"{e}" + (f" Log: {tail}" if tail else ""))
         except (MergeFailed, Stop, Infra, GitError, RunnerError, AgentError, TaigaError,
                 SecretKeyMissing, gate_checks.Unsupported) as e:
             return self.fail(job.id, story["id"], str(e))
@@ -130,7 +136,7 @@ class Merger:
 
     def fail(self, job_id: int, story_id: int, reason: str) -> MergeResult:
         w = self.w
-        reason = secrets.redact(reason, w.redact_values)[:500]
+        reason = secrets.redact(reason, w.redact_values_for(w._job(job_id).project_slug))[:500]
         w._set(job_id, merge_state="failed", merge_error=reason)
         w._event(job_id, "merge_failed", {"error": reason})
         try:
@@ -202,9 +208,12 @@ class Merger:
                 rb = self._runbook
                 gate_checks.run_install(w._runner, w._path(workdir),
                                         gate_checks.install_payloads(rc, rb), workdir, rc.name)
+                payloads = gate_checks.gate_payloads(rc, rb, repo.changed_files(job.branch),
+                                                     workdir)
                 gates = gate_checks.run_gates(
-                    w._runner, w._path(workdir),
-                    gate_checks.gate_payloads(rc, rb, repo.changed_files(job.branch), workdir))
+                    w._runner, w._path(workdir), payloads,
+                    w.compose_for(job, rb, workdir)
+                    if gate_checks.needs_compose(payloads) else None)
                 failed = [g["name"] for g in gates if not g.get("ok")]
                 if failed:
                     raise MergeFailed("pemeriksaan otomatis gagal pada hasil merge "
@@ -246,7 +255,7 @@ class Merger:
             # this one gets them fresh at the default branch now.
             w.qa_siblings(self._cfg, rc, self._runbook, job.branch)
         token = w.qa_taiga.login() if plan is None else ""
-        report = w._runner("qa", path=w._path(workdir), **w.qa_payload(plan, token, rc))
+        report = w.run_qa(job, workdir, self._runbook, rc, plan, token)
         verdict = evaluate(report, texts)
         w._event(job.id, "qa_rerun", {"outcome": verdict.outcome, "reason": verdict.reason})
         return verdict
@@ -271,7 +280,8 @@ class Merger:
                     ok, out = bool(res.get("ok")), str(res.get("output") or "")
         except (GitError, RunnerError, SecretKeyMissing, OSError) as e:
             ok, out = False, f"{type(e).__name__}: {e}"
-        tail = (secrets.redact(out, [*w.redact_values, *deploy_secrets(command)])[-1500:]
+        tail = (secrets.redact(out, [*w.redact_values_for(job.project_slug),
+                                     *deploy_secrets(command)])[-1500:]
                 .strip() or "(tanpa output)")
         w._event(job.id, "deploy", {"ok": ok})
         if ok:

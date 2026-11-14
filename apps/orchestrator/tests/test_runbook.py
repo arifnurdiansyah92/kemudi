@@ -108,7 +108,8 @@ def test_compose_service_is_accepted_by_the_schema():
                          "expose": "backend:5000", "health": "/api/health",
                          "env": ["JWT_SECRET_KEY"]}
     parsed, errs = runbook.validate(rb, REPOS)
-    assert errs == [] and not parsed.browser_qa_ready()
+    assert errs == [] and parsed.browser_qa_ready()  # compose services count (stage 1b)
+    assert [s.name for s in parsed.qa_compose()] == ["api"]
 
 
 def test_allowlist_and_blocked_env_match_the_runner():
@@ -210,15 +211,22 @@ def test_run_gates_prefixes_names_and_stops_at_the_first_failing_app():
     assert any(g["name"].endswith("(no changed files)") and g["ok"] for g in gates)
 
 
-def test_run_in_is_stage_1b():
+def test_run_in_app_gate_payload_and_no_install():
     rb = copy.deepcopy(PLAYFAST)
-    rb["services"].insert(0, {"name": "db", "kind": "compose", "repo": "pf-web",
-                              "file": "docker-compose.yml"})
-    rb["apps"][1]["run_in"] = "db:backend"
+    rb["services"][0] = {"name": "api", "kind": "compose", "repo": "pf-web",
+                         "file": "docker-compose.yml", "expose": "backend:5000",
+                         "compose_services": ["postgres", "backend"]}
+    rb["apps"][1]["run_in"] = "api:backend"
     parsed, errs = runbook.validate(rb, REPOS)
     assert errs == []
-    with pytest.raises(checks.Unsupported, match="1b"):
-        checks.gate_payloads(RC, parsed, [])
+    web, api = checks.gate_payloads(RC, parsed, [])
+    assert "run_in" not in web
+    assert api["run_in"] == {"service": "api", "compose_service": "backend"}
+    assert api["commands"][0]["argv"] == ["python", "-m", "pytest", "-q", "tests"]
+    assert [p["app"] for p in checks.install_payloads(RC, parsed)] == ["web"]
+    assert checks.needs_compose([web, api]) and not checks.needs_compose([web])
+    with pytest.raises(checks.Unsupported, match="kemudi-svc"):
+        checks.run_gates(lambda op, **b: {"gates": []}, "pf/us-1/pf-web", [api])
 
 
 def test_qa_plan_orders_needed_process_services():
@@ -273,11 +281,14 @@ def test_browser_qa_allowed_with_a_runbook_qa_process_service(agent_client):
     assert r.status_code == 422 and "runbook" in r.text
     compose = copy.deepcopy(PLAYFAST)
     compose["services"][1] = {"name": "web", "kind": "compose", "repo": "pf-web",
-                              "file": "docker-compose.yml", "health": "/"}
-    assert agent_client.put("/projects/demo/agent/runbook", headers=ADMIN,
-                            json={"runbook": compose}).status_code == 200
+                              "file": "docker-compose.yml", "compose_services": ["frontend"],
+                              "health": "/"}
+    r = agent_client.put("/projects/demo/agent/runbook", headers=ADMIN,
+                         json={"runbook": compose})
+    assert r.status_code == 422 and "must be a process service" in r.text
+    _store_compose_qa(agent_client)  # saved before stage 1b
     r = agent_client.put(settings, headers=ADMIN, json={**SETTINGS, "qa_mode": "browser"})
-    assert r.status_code == 422 and "1b" in r.text
+    assert r.status_code == 422 and "process service" in r.text
     agent_client.put("/projects/demo/agent/runbook", headers=ADMIN, json={"runbook": PLAYFAST})
     r = agent_client.put(settings, headers=ADMIN, json={**SETTINGS, "merge_mode": "auto",
                                                         "qa_mode": "browser"})
@@ -292,10 +303,7 @@ def test_settings_save_when_browser_qa_became_invalid(agent_client):
     agent_client.put("/projects/demo/agent/runbook", headers=ADMIN, json={"runbook": PLAYFAST})
     on = {**SETTINGS, "enabled": True, "merge_mode": "auto", "qa_mode": "browser"}
     assert agent_client.put(settings, headers=ADMIN, json=on).status_code == 200
-    compose = copy.deepcopy(PLAYFAST)
-    compose["services"][1] = {"name": "web", "kind": "compose", "repo": "pf-web",
-                              "file": "docker-compose.yml"}
-    agent_client.put("/projects/demo/agent/runbook", headers=ADMIN, json={"runbook": compose})
+    _store_compose_qa(agent_client)
     r = agent_client.put(settings, headers=ADMIN, json={**on, "deploy_command": "make deploy"})
     assert r.status_code == 200
     r = agent_client.put(settings, headers=ADMIN, json={**on, "enabled": False})
@@ -304,10 +312,25 @@ def test_settings_save_when_browser_qa_became_invalid(agent_client):
     assert agent_client.put(settings, headers=ADMIN, json=on).status_code == 422
     r = agent_client.put(settings, headers=ADMIN, json={**on, "enabled": False,
                                                         "merge_mode": "approve"})
-    assert r.status_code == 422 and "1b" in r.text
+    assert r.status_code == 422 and "process service" in r.text
     r = agent_client.put(settings, headers=ADMIN, json={**on, "merge_mode": "approve",
                                                         "qa_mode": "gates"})
     assert r.status_code == 200
+
+
+def _store_compose_qa(agent_client, slug="demo"):
+    """A runbook whose QA service is a compose service, stored as an older
+    version allowed it (validation refuses it now)."""
+    spec = copy.deepcopy(PLAYFAST)
+    spec["services"][1] = {"name": "web", "kind": "compose", "repo": "pf-web",
+                           "file": "docker-compose.yml", "compose_services": ["frontend"]}
+    with agent_client.S() as db:
+        row = db.get(AwakRunbook, slug)
+        if row is None:
+            row = AwakRunbook(project_slug=slug, version=1)
+            db.add(row)
+        row.spec = spec
+        db.commit()
 
 
 def test_runbook_env_values_are_admin_only(agent_client):
@@ -404,16 +427,18 @@ def test_worker_browser_qa_from_the_runbook(tmp_path, repo):
 def test_worker_browser_with_compose_qa_falls_back_to_gates(tmp_path, repo):
     spec = copy.deepcopy(KEMUDI_RB)
     spec["services"] = [{"name": "web", "kind": "compose", "repo": "kemudi",
-                         "file": "compose.yml", "health": "/"}]
+                         "file": "compose.yml", "compose_services": ["web"], "health": "/"}]
     spec["apps"][0]["env"] = {}
     runner = FakeRunner(tmp_path / "ws")
     w, taiga, sessions = make_worker(tmp_path, repo, FakeAgent(), runner)
     w._seed()
-    _save_rb(sessions, spec)
+    with sessions() as db:  # stored before stage 1b refused a compose QA service
+        db.add(AwakRunbook(project_slug="kemudi", spec=spec, version=1))
+        db.commit()
     taiga.add(1, 12, "Badge jumlah", DESC)
     w.tick()
     assert taiga.status_of(1) == "done" and "qa" not in runner.calls
-    assert "tahap 1b" in taiga.texts(1)[-1]
+    assert "bukan service process" in taiga.texts(1)[-1]
 
 
 def test_merge_recheck_uses_the_runbook_gates(tmp_path, remote):
@@ -470,3 +495,19 @@ def test_unparseable_runbook_command_stops_the_story(tmp_path, repo):
     w.tick()
     assert job_of(sessions).state == "failed"
     assert any("tidak valid" in t for t in taiga.texts(1))
+
+
+def test_compose_environment_overrides():
+    rb = copy.deepcopy(PLAYFAST)
+    rb["services"][0] = {"name": "api", "kind": "compose", "repo": "pf-web",
+                         "file": "docker-compose.yml", "compose_services": ["postgres", "backend"],
+                         "expose": "backend:5000",
+                         "environment": {"backend": {"FLASK_ENV": "development"}}}
+    parsed, errs = runbook.validate(rb, REPOS)
+    assert errs == []
+    rb["services"][0]["environment"] = {"redis": {"A": "b"}, "backend": {"PATH": "/x",
+                                                                         "B": "two\nlines"}}
+    _, errs = runbook.validate(rb, REPOS)
+    assert any("'redis' is not in compose_services" in e for e in errs)
+    assert any("reserved" in e for e in errs)
+    assert any("one line" in e for e in errs)

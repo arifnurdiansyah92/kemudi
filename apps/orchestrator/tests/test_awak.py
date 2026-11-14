@@ -411,7 +411,8 @@ def test_disabling_mid_job_stops(tmp_path, repo):
 def test_build_output_allowlist():
     from kemudi_ai.awak.worker import build_output
 
-    ok = [("??", ".qa/"), ("!!", "node_modules/"), ("!!", "apps/web/node_modules/"),
+    ok = [("??", ".qa/"), ("!!", ".qa/logs/web.log"), ("??", ".qa/spec/story.spec.ts"),
+          ("!!", "node_modules/"), ("!!", "apps/web/node_modules/"),
           ("!!", "apps/web/dist/"), ("??", "dist/"), ("!!", "tsconfig.app.tsbuildinfo"),
           ("!!", "svc/pkg/__pycache__/"), ("!!", "apps/web/.vite/")]
     bad = [(" M", "dist/"), ("??", "src/dist/"), ("!!", ".env.local"), ("??", "apps/.qa/"),

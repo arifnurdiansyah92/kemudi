@@ -33,6 +33,7 @@ __all__ = [
     "AwakRepo",
     "AwakRole",
     "AwakRunbook",
+    "AwakEnvVar",
     "AwakWorkerLease",
     "AwakLlmAlias",
     "record_event",
@@ -263,6 +264,22 @@ class AwakRunbook(Base):
     version: Mapped[int] = mapped_column(default=0)
     approved_by: Mapped[str] = mapped_column(String(200), default="")
     approved_at: Mapped[datetime | None] = mapped_column(default=None)
+    updated_by: Mapped[str] = mapped_column(String(200), default="")
+    updated_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class AwakEnvVar(Base):
+    """A project's env value (kemudi_ai/awak/vault.py). The value is a Fernet
+    token under a key derived for the vault, secret or not; a secret's value
+    is never returned by the API."""
+
+    __tablename__ = "awak_env_vars"
+    __table_args__ = (UniqueConstraint("project_slug", "name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_slug: Mapped[str] = mapped_column(String(200))
+    name: Mapped[str] = mapped_column(String(64))
+    value_enc: Mapped[str] = mapped_column(Text)
+    secret: Mapped[bool] = mapped_column(default=True)
     updated_by: Mapped[str] = mapped_column(String(200), default="")
     updated_at: Mapped[datetime] = mapped_column(default=now)
 

@@ -523,6 +523,8 @@ export type RunbookApp = {
   build?: string[]
   env?: Record<string, string>
   run_in?: string
+  /** Ignored files install or build writes (globs relative to `dir`). */
+  generated?: string[]
   [key: string]: unknown
 }
 
@@ -551,12 +553,35 @@ export type RunbookEnv = {
   [key: string]: unknown
 }
 
+/** `init` / `seed`: a command run once in a compose service's image.
+ * `service` is "<compose service>" or "<compose service>:<service in its file>". */
+export type RunbookOneShot = {
+  service: string
+  command: string
+  env?: string[]
+  timeout?: number
+}
+
+export type RunbookLogin = {
+  path: string
+  /** CSS selector → value; `{env.NAME}` names a vault value. */
+  fields: Record<string, string>
+  submit: string
+  success_url?: string
+}
+
 export type Runbook = {
   apps?: RunbookApp[]
   services?: RunbookService[]
   env?: RunbookEnv[]
-  seed?: { service: string; command: string } | null
-  qa?: { service: string; env?: string[] } | null
+  init?: RunbookOneShot[]
+  seed?: RunbookOneShot | null
+  qa?: {
+    service: string
+    env?: string[]
+    routes?: string[]
+    login?: RunbookLogin | null
+  } | null
   [key: string]: unknown
 }
 
@@ -616,8 +641,74 @@ export function useSaveRunbook(slug: string) {
       ).data,
     onSuccess: (data) => {
       qc.setQueryData(agentKey(slug, 'runbook'), data)
+      // the env list shows the runbook's names that have no value yet
+      void qc.invalidateQueries({ queryKey: agentKey(slug, 'env') })
       return qc.invalidateQueries({ queryKey: agentKey(slug, 'settings') })
     },
+  })
+}
+
+/* ---------- env & secrets (vault) ---------- */
+
+/**
+ * A project env value, or a runbook env name not set yet (`set: false`).
+ * A secret's value never leaves the server: `value` is null and `set` says
+ * whether one is stored.
+ */
+export type EnvVar = {
+  name: string
+  secret: boolean
+  set: boolean
+  value: string | null
+  required: boolean
+  description: string
+  in_runbook: boolean
+  updated_by: string
+  updated_at: string | null
+}
+
+/** `value: null` keeps the stored value (a secret edited without retyping). */
+export type EnvVarIn = { name: string; value: string | null; secret: boolean }
+
+/** Same shape the server checks: `[A-Z_][A-Z0-9_]*`, at most 64 characters. */
+export const ENV_NAME_RE = /^[A-Z_][A-Z0-9_]{0,63}$/
+
+export function useEnvVars(slug: string) {
+  return useQuery({
+    queryKey: agentKey(slug, 'env'),
+    queryFn: async () =>
+      (await api.get<{ vars: EnvVar[] }>(`/projects/${slug}/agent/env`, base))
+        .data.vars,
+  })
+}
+
+/** Errors are shown in the dialog, so no toast here. */
+export function useSaveEnvVar(slug: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ name, value, secret }: EnvVarIn) =>
+      (
+        await api.put<{ vars: EnvVar[] }>(
+          `/projects/${slug}/agent/env/${encodeURIComponent(name)}`,
+          { value, secret },
+          base
+        )
+      ).data.vars,
+    onSuccess: (vars) => qc.setQueryData(agentKey(slug, 'env'), vars),
+  })
+}
+
+export function useDeleteEnvVar(slug: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (name: string) => {
+      await api.delete(
+        `/projects/${slug}/agent/env/${encodeURIComponent(name)}`,
+        base
+      )
+    },
+    onError: onFail,
+    onSettled: () => qc.invalidateQueries({ queryKey: agentKey(slug, 'env') }),
   })
 }
 

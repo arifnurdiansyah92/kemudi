@@ -1,9 +1,19 @@
 """A project's runbook: how to install, check, run and QA its apps.
 
 One JSON document per project (`awak_runbooks`), saved by an admin and used
-only from the DB copy. Stage 1a runs `process` services; `compose` services,
-`run_in` and `seed` are accepted by the schema and refused at run time
-("stage 1b").
+only from the DB copy.
+
+- `process` services run in kemudi-runner (an app's dev server); `compose`
+  services are started by kemudi-svc in the sandboxed Docker daemon from the
+  repo's compose file (only the listed services and their dependencies).
+- `run_in: "<compose service>:<service in its file>"` runs an app's checks
+  in that service's image (built from the story checkout).
+- `init` (one-shot commands after the compose services are up) and `seed`
+  run the same way before QA.
+- `{services.<name>.url}` in an app's or process service's env is the base
+  URL of that service; `{env.NAME}` (a vault value) is only allowed in
+  `qa.login.fields`. Compose services, init/seed and `qa.env` name vault
+  values; their values never appear in the runbook.
 """
 
 import re
@@ -29,6 +39,12 @@ BLOCKED_ENV_NAMES = frozenset({"PATH", "LD_PRELOAD", "LD_LIBRARY_PATH", "NODE_OP
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]{0,99}$")
 SERVICE_URL_RE = re.compile(r"\{services\.([^.{}]*)\.url\}")
+ENV_REF_RE = re.compile(r"\{env\.([^{}]*)\}")
+COMPOSE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+EXPOSE_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]{0,99}):(\d{1,5})$")
+# Env names the runner sets for the Playwright run itself (qa.env may not).
+QA_RESERVED_ENV = frozenset({"QA_SPEC_DIR", "QA_OUTPUT_DIR", "QA_REPORT", "QA_BASE_URL",
+                             "QA_STATE", "QA_LOGIN", "QA_STATE_OUT", "NODE_PATH"})
 # `{changed:.ts,.tsx}`: the story's changed files in the app dir, as a whole
 # argv element; an empty extension list means every changed file.
 CHANGED_RE = re.compile(r"^\{changed:((?:\.[A-Za-z0-9]{1,10}(?:,\.[A-Za-z0-9]{1,10})*)?)\}$")
@@ -98,7 +114,8 @@ class App(_Strict):
     checks: list[str] = Field(default_factory=list, max_length=MAX_COMMANDS)
     build: list[str] = Field(default_factory=list, max_length=MAX_COMMANDS)
     env: dict[str, str] = Field(default_factory=dict)
-    # "<service>:<compose service>": run the commands in that image (stage 1b).
+    # "<service>:<compose service>": checks and build run in that compose
+    # service's image (built from the story checkout), in its working_dir.
     run_in: str = ""
     # Ignored files the install or build writes (globs, relative to `dir`),
     # e.g. a generated CSS bundle; the clean check accepts them.
@@ -116,15 +133,23 @@ class Service(_Strict):
     # process: a long-running command of an app, `{port}` allocated by the runner
     app: str = ""
     command: str = ""
-    # compose (stage 1b)
+    # compose: the repo's compose file, the services wanted (their depends_on
+    # come along) and the one port the runner reaches ("<service>:<port>")
     repo: str = ""
     file: str = ""
-    compose_services: list[str] = Field(default_factory=list)
+    compose_services: list[str] = Field(default_factory=list, max_length=20)
     expose: str = ""
     health: str = "/"
     ready_timeout: int = Field(120, ge=1, le=600)
     # vault names (compose), or name -> value for a process service
     env: list[str] | dict[str, str] = Field(default_factory=dict)
+    # compose: literal values that replace a compose service's environment
+    # entries (a production compose run for QA: DATABASE_URL, FLASK_ENV...).
+    # Not for secrets: those are vault names in `env`, interpolated by compose.
+    environment: dict[str, dict[str, str]] = Field(default_factory=dict)
+
+    def expose_service(self) -> str:
+        return self.expose.split(":", 1)[0] if self.expose else ""
 
 
 class EnvVar(_Strict):
@@ -134,23 +159,46 @@ class EnvVar(_Strict):
     description: str = Field("", max_length=500)
 
 
-class Seed(_Strict):
+class OneShot(_Strict):
+    """A command run once in a compose service's image (`init`, `seed`).
+    `service`: "<compose service of the runbook>" (its exposed service) or
+    "<compose service of the runbook>:<service in its file>"."""
+
     service: str
     command: str
+    env: list[str] = Field(default_factory=list, max_length=20)  # vault names
+    timeout: int = Field(600, ge=1, le=1500)
+
+
+Seed = OneShot  # older name
+
+
+class Login(_Strict):
+    """A form login the runner performs once before the spec runs (the specs
+    start logged in). Field values may use `{env.NAME}` (vault values)."""
+
+    path: str
+    fields: dict[str, str] = Field(min_length=1, max_length=10)  # CSS selector -> value
+    submit: str
+    # Path prefix the browser reaches after a good login; default: any page
+    # other than the login path.
+    success_url: str = ""
 
 
 class Qa(_Strict):
     service: str
-    env: list[str] = Field(default_factory=list)
+    env: list[str] = Field(default_factory=list, max_length=20)  # vault names for the spec
     # paths to load once before the spec runs (dev servers compile on first hit)
     routes: list[str] = Field(default_factory=list, max_length=10)
+    login: Login | None = None
 
 
 class Runbook(_Strict):
     apps: list[App] = Field(default_factory=list, max_length=20)
     services: list[Service] = Field(default_factory=list, max_length=20)
     env: list[EnvVar] = Field(default_factory=list, max_length=100)
-    seed: Seed | None = None
+    init: list[OneShot] = Field(default_factory=list, max_length=10)
+    seed: OneShot | None = None
     qa: Qa | None = None
 
     def app(self, name: str) -> App | None:
@@ -186,11 +234,43 @@ class Runbook(_Strict):
             need(self.qa.service)
         return [s for s in self.services if s.name in needed]
 
+    def target(self, ref: str) -> tuple["Service", str] | None:
+        """`"<service>"` or `"<service>:<compose service>"` (init, seed, run_in)
+        -> the runbook's compose service and the service in its file; None
+        when it names no compose service (or one without a default)."""
+        name, _, inner = ref.partition(":")
+        s = self.service(name)
+        if s is None or s.kind != "compose":
+            return None
+        inner = inner or s.expose_service()
+        return (s, inner) if inner else None
+
+    def one_shots(self) -> list[tuple[str, OneShot]]:
+        """`init` then `seed`, labelled."""
+        return [*(("init", i) for i in self.init), *([("seed", self.seed)] if self.seed else [])]
+
+    def qa_compose(self) -> list["Service"]:
+        """The compose services QA brings up, in runbook order: those the QA
+        service needs, and those `init`/`seed` run in."""
+        names = {s.name for s in self.qa_needs() if s.kind == "compose"}
+        for _, o in self.one_shots():
+            t = self.target(o.service)
+            if t is not None:
+                names.add(t[0].name)
+        return [s for s in self.services if s.name in names]
+
     def browser_qa_ready(self) -> bool:
-        """Whether stage 1a can run browser QA from this runbook: the QA service
-        and what it needs are all process services."""
-        needs = self.qa_needs()
-        return bool(needs) and all(s.kind == "process" for s in needs)
+        """Whether browser QA can run from this runbook: its QA service is a
+        process service (the base URL is the runner's localhost); what it needs
+        may be process or compose services."""
+        qa = self.qa_service()
+        return qa is not None and qa.kind == "process"
+
+
+def _path_problem(value: str) -> bool:
+    """Not a URL path: must start with one '/', no spaces or control characters."""
+    return (not value.startswith("/") or value.startswith("//")
+            or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in value))
 
 
 def _problems(rb: Runbook, repo_names: set[str]) -> list[str]:
@@ -207,16 +287,57 @@ def _problems(rb: Runbook, repo_names: set[str]) -> list[str]:
     unique("app", [a.name for a in rb.apps])
     unique("service", [s.name for s in rb.services])
     services = [s.name for s in rb.services]
+    declared = {e.name for e in rb.env}
+
+    def no_env_refs(where: str, text: str) -> None:
+        if ENV_REF_RE.search(text):
+            out.append(f"{where}: {{env.NAME}} is only allowed in qa.login.fields; "
+                       "compose services, init, seed and qa list vault names in `env`")
+
+    def vault_names(where: str, names: list[str]) -> None:
+        for n in names:
+            p = env_name_problem(n)
+            if p:
+                out.append(f"{where}: {p}")
+            elif n not in declared:
+                out.append(f"{where}: {n} is not declared in the runbook's env list")
+        dup = sorted({n for n in names if names.count(n) > 1})
+        if dup:
+            out.append(f"{where}: duplicate names: {', '.join(dup)}")
 
     def refs(where: str, values: dict[str, str], allowed: list[str]) -> None:
         for k, v in values.items():
             p = env_name_problem(k)
             if p:
                 out.append(f"{where}: {p}")
+            no_env_refs(f"{where}.{k}", v)
             for ref in SERVICE_URL_RE.findall(v):
                 if ref not in allowed:
                     out.append(f"{where}: {k} refers to {{services.{ref}.url}}, which is not "
                                + ("an earlier service" if ref in services else "a service"))
+                    continue
+                s = rb.service(ref)
+                if s is not None and s.kind == "compose" and not s.expose:
+                    out.append(f"{where}: {k} refers to {{services.{ref}.url}}, but compose "
+                               f"service {ref} has no expose (so no URL)")
+
+    def target(where: str, ref: str) -> "tuple[Service, str] | None":
+        name = ref.partition(":")[0]
+        s = rb.service(name)
+        if s is None or s.kind != "compose":
+            out.append(f"{where}: {name!r} is not a compose service of the runbook "
+                       "(use '<compose service>:<service in its file>')")
+            return None
+        t = rb.target(ref)
+        if t is None:
+            out.append(f"{where}: name the service in {name}'s file "
+                       f"('{name}:<service>'); {name} has no expose to default to")
+            return None
+        if t[1] not in s.compose_services:
+            out.append(f"{where}: {t[1]!r} is not one of {name}'s compose_services "
+                       f"({', '.join(s.compose_services) or 'none'})")
+            return None
+        return t
 
     for a in rb.apps:
         w = f"apps.{a.name}"
@@ -233,32 +354,48 @@ def _problems(rb: Runbook, repo_names: set[str]) -> list[str]:
                 out.append(f"{w}.generated: {g!r} must be a relative path or glob inside the "
                            "app dir, naming at least one fixed part per segment")
         native = not a.run_in  # run_in commands run in the project's own image
-        if a.run_in and (":" not in a.run_in or a.run_in.split(":", 1)[0] not in services):
-            out.append(f"{w}: run_in must be '<compose service>:<service in its file>'")
+        if a.run_in:
+            if ":" not in a.run_in:
+                out.append(f"{w}: run_in must be '<compose service>:<service in its file>'")
+            else:
+                t = target(f"{w}.run_in", a.run_in)
+                if t is not None and t[0].repo != a.repo:
+                    out.append(f"{w}: run_in service {t[0].name} builds from repo "
+                               f"{t[0].repo}, not the app's repo {a.repo}")
+            if a.install:
+                out.append(f"{w}: an app with run_in has no install (the image build "
+                           "installs its dependencies)")
         for field, lines in (("install", a.install), ("checks", a.checks), ("build", a.build)):
             for line in lines:
                 p = command_problem(line, allow_changed=field != "install", check_program=native)
                 if p:
                     out.append(f"{w}.{field}: {p}")
+                no_env_refs(f"{w}.{field}", line)
         refs(w + ".env", a.env, services)
 
     for i, s in enumerate(rb.services):
         w = f"services.{s.name}"
         earlier = services[:i]
-        if (not s.health.startswith("/") or s.health.startswith("//")
-                or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in s.health)):
+        if _path_problem(s.health):
             out.append(f"{w}: health must be a path starting with '/' (no spaces or "
                        "control characters)")
         if s.kind == "process":
             app = rb.app(s.app)
             if app is None:
                 out.append(f"{w}: app {s.app!r} is not an app of the runbook")
+            elif app.run_in:
+                out.append(f"{w}: app {app.name} runs in a compose image (run_in); a process "
+                           "service needs an app the runner can start")
             if not s.command:
                 out.append(f"{w}: a process service needs a command")
             else:
                 p = command_problem(s.command, allow_port=True)
                 if p:
                     out.append(f"{w}.command: {p}")
+                no_env_refs(f"{w}.command", s.command)
+            for field in ("repo", "file", "compose_services", "expose", "environment"):
+                if getattr(s, field):
+                    out.append(f"{w}: {field} is only for a compose service")
             if isinstance(s.env, list) and s.env:
                 out.append(f"{w}.env: a process service takes env as name -> value")
             elif isinstance(s.env, dict):
@@ -278,11 +415,38 @@ def _problems(rb: Runbook, repo_names: set[str]) -> list[str]:
             p = rel_path_problem(s.file, "file")
             if p:
                 out.append(f"{w}: {p}")
-            for name in s.env if isinstance(s.env, list) else []:
-                p = env_name_problem(name)
-                if p:
-                    out.append(f"{w}.env: {p}")
-            if isinstance(s.env, dict) and s.env:
+            for field in ("app", "command"):
+                if getattr(s, field):
+                    out.append(f"{w}: {field} is only for a process service")
+            if not s.compose_services:
+                out.append(f"{w}: list the services to start in compose_services")
+            for c in s.compose_services:
+                if not COMPOSE_NAME_RE.fullmatch(c):
+                    out.append(f"{w}.compose_services: {c!r} is not a compose service name")
+            dup = sorted({c for c in s.compose_services if s.compose_services.count(c) > 1})
+            if dup:
+                out.append(f"{w}.compose_services: duplicate names: {', '.join(dup)}")
+            if s.expose:
+                m = EXPOSE_RE.fullmatch(s.expose)
+                if not m or not 0 < int(m.group(2)) < 65536:
+                    out.append(f"{w}: expose must be '<service>:<port>', e.g. 'backend:5000'")
+                elif m.group(1) not in s.compose_services:
+                    out.append(f"{w}: expose names {m.group(1)!r}, which is not in "
+                               "compose_services")
+            for c, over in s.environment.items():
+                if c not in s.compose_services:
+                    out.append(f"{w}.environment: {c!r} is not in compose_services")
+                if len(over) > 50:
+                    out.append(f"{w}.environment.{c}: at most 50 entries")
+                for k, v in over.items():
+                    p = env_name_problem(k)
+                    if p:
+                        out.append(f"{w}.environment.{c}: {p}")
+                    if len(v) > 2000 or any(chr(o) in v for o in (0, 10, 13)):
+                        out.append(f"{w}.environment.{c}.{k}: one line, at most 2000 characters")
+            if isinstance(s.env, list):
+                vault_names(f"{w}.env", s.env)
+            elif s.env:
                 out.append(f"{w}.env: a compose service lists env names (values live in "
                            "the vault)")
 
@@ -295,20 +459,42 @@ def _problems(rb: Runbook, repo_names: set[str]) -> list[str]:
     if dup:
         out.append(f"env: duplicate names: {', '.join(dup)}")
 
-    if rb.seed is not None:
-        s = rb.service(rb.seed.service)
-        if s is None or s.kind != "compose":
-            out.append(f"seed: service {rb.seed.service!r} must be a compose service")
+    for k, (label, o) in enumerate(rb.one_shots()):
+        w = "seed" if label == "seed" else f"init[{k}]"
+        target(f"{w}: service", o.service)
+        p = command_problem(o.command, check_program=False)
+        if p:
+            out.append(f"{w}.command: {p}")
+        no_env_refs(f"{w}.command", o.command)
+        vault_names(f"{w}.env", o.env)
+
     if rb.qa is not None:
-        if rb.service(rb.qa.service) is None:
+        qs = rb.service(rb.qa.service)
+        if qs is None:
             out.append(f"qa: service {rb.qa.service!r} is not a service of the runbook")
+        elif qs.kind != "process":
+            out.append(f"qa: service {rb.qa.service!r} must be a process service (the app's "
+                       "dev server; QA's base URL is the runner's localhost)")
+        vault_names("qa.env", rb.qa.env)
         for n in rb.qa.env:
-            p = env_name_problem(n)
-            if p:
-                out.append(f"qa.env: {p}")
+            if n in QA_RESERVED_ENV:
+                out.append(f"qa.env: {n} is set by the runner itself")
         for r in rb.qa.routes:
             if not r.startswith("/") or any(c.isspace() for c in r):
                 out.append(f"qa.routes: {r!r} must be a path starting with '/'")
+        lg = rb.qa.login
+        if lg is not None:
+            if _path_problem(lg.path):
+                out.append("qa.login.path must be a path starting with '/'")
+            if lg.success_url and _path_problem(lg.success_url):
+                out.append("qa.login.success_url must be a path starting with '/'")
+            for sel in [*lg.fields, lg.submit]:
+                if not sel.strip() or len(sel) > 300 or any(ord(c) < 32 for c in sel):
+                    out.append(f"qa.login: {sel!r} must be a CSS selector (1-300 characters)")
+            for sel, value in lg.fields.items():
+                if len(value) > 500:
+                    out.append(f"qa.login.fields[{sel!r}]: the value is too long")
+                vault_names(f"qa.login.fields[{sel!r}]", ENV_REF_RE.findall(value))
     return out
 
 
@@ -348,6 +534,13 @@ def masked(spec: dict | None) -> dict | None:
     out["services"] = [{**s, "env": {k: MASK for k in s["env"]}}
                        if isinstance(s, dict) and isinstance(s.get("env"), dict) else s
                        for s in spec.get("services") or []]
+    qa = spec.get("qa")
+    login = qa.get("login") if isinstance(qa, dict) else None
+    if isinstance(login, dict) and isinstance(login.get("fields"), dict):
+        # `{env.NAME}` names a vault value; anything else is literal text
+        fields = {k: v if isinstance(v, str) and ENV_REF_RE.fullmatch(v) else MASK
+                  for k, v in login["fields"].items()}
+        out["qa"] = {**qa, "login": {**login, "fields": fields}}
     return out
 
 
@@ -356,12 +549,15 @@ MIN_SECRET_LEN = 6
 
 
 def env_values(rb: Runbook | None) -> list[str]:
-    """Env values of the runbook's apps and process services, to keep out of
-    comments; values that only refer to a service URL are left out."""
+    """Env values of the runbook's apps and process services (and literal
+    qa.login field text), to keep out of comments; values that only refer to
+    a service URL are left out."""
     if rb is None:
         return []
     values = [v for a in rb.apps for v in a.env.values()]
     values += [v for s in rb.services if isinstance(s.env, dict) for v in s.env.values()]
+    if rb.qa is not None and rb.qa.login is not None:
+        values += [ENV_REF_RE.sub("", v) for v in rb.qa.login.fields.values()]
     return sorted({v for v in values
                    if len(v) >= MIN_SECRET_LEN and not SERVICE_URL_RE.fullmatch(v)},
                   key=len, reverse=True)
