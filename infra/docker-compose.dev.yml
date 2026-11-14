@@ -187,12 +187,18 @@ services:
       KEMUDI_AI_API_KEY: "${KEMUDI_AI_API_KEY}"
       # Shared token kemudi-awak sends to /llm/v1 (infra/awak/config.yaml).
       KEMUDI_LLM_PROXY_TOKEN: "${KEMUDI_LLM_PROXY_TOKEN:-}"
+      # Kemudi instance admins (Taiga usernames, comma-separated): the skill library.
+      KEMUDI_ADMIN_USERNAMES: "${KEMUDI_ADMIN_USERNAMES:-}"
     volumes:
       # Contracts are confidential: a named volume, never the repo.
       - kemudi-ai-data:/var/lib/kemudi-ai
       - kemudi-awak-workspace:/workspace
       # Only the repo's git data: Awak's branches are pushed here as awak/us-<n>.
       - ../.git:/host-git
+      # Awak skill sets and their Hermes profiles: written here, served by
+      # kemudi-awak (docs/superpowers/specs/2026-11-14-awak-skills-design.md).
+      - kemudi-awak-skills:/opt/skills
+      - kemudi-awak-profiles:/opt/awak-profiles
     # kemudi-svcnet: the only way to kemudi-svc (and so to the sandboxed Docker).
     networks: [default, kemudi-sandbox, kemudi-svcnet]
     restart: unless-stopped
@@ -221,11 +227,19 @@ services:
       # The image limits Hermes' file tools to /opt/data; Awak's checkouts live
       # in /workspace. Without this, models that respect the tool limit (e.g.
       # Claude) cannot edit any file and every attempt ends without a commit.
-      HERMES_WRITE_SAFE_ROOT: "/workspace:/opt/data"
+      # Only /workspace: the file tools never need Hermes' own home.
+      HERMES_WRITE_SAFE_ROOT: "/workspace"
+      # Every run goes through /p/sk-<setid>/: a profile per skill set, written
+      # by the orchestrator (kemudi_ai/awak/skills.py). Read at boot; a new
+      # profile is served at Hermes' next watcher pass (30 s), no restart.
+      GATEWAY_MULTIPLEX_PROFILES: "true"
     volumes:
       - ./awak/config.yaml:/etc/hermes/config.yaml:ro
       - kemudi-awak-data:/opt/data
       - kemudi-awak-workspace:/workspace
+      # Skill files (read-only here) and the per-set profiles.
+      - kemudi-awak-skills:/opt/skills:ro
+      - kemudi-awak-profiles:/opt/data/profiles
     networks: [kemudi-sandbox]
     cap_drop: [ALL]
     cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER, KILL]
@@ -358,6 +372,8 @@ volumes:
   kemudi-ai-data:
   kemudi-awak-data:
   kemudi-awak-workspace:
+  kemudi-awak-skills:
+  kemudi-awak-profiles:
   kemudi-pnpm-store:
   kemudi-dind-sock:
   kemudi-dind-data:

@@ -23,7 +23,19 @@ from ..deps import access, actor, admin, get_db, get_llm, get_sessions, member
 from ..llm import LLM
 from ..store import (AwakJob, AwakKey, AwakProject, AwakRepo, AwakRole, AwakSetupRun,
                      record_decision)
-from . import config_store, crypto, detect, gitops, llm_conn, prompts, runbook, secrets, ssh, vault
+from . import (
+    config_store,
+    crypto,
+    detect,
+    gitops,
+    llm_conn,
+    prompts,
+    runbook,
+    secrets,
+    skills,
+    ssh,
+    vault,
+)
 from . import setup as setup_runs
 from .bot_access import BotAccess, BotAccessError
 from .crypto import SecretKeyMissing
@@ -1004,11 +1016,13 @@ class RoleIn(BaseModel):
 def _role_out(db: Session, r: AwakRole, settings: Settings) -> dict:
     cfg = config_store.load(db, r.project_slug)
     role = cfg.role(r.id)
+    kit = skills.resolve(db, role.skills)
     return {
         **{f: getattr(r, f) for f in RoleIn.model_fields},
         "id": r.id,
         "version": r.version,
-        "prompt_version": prompts.prompt_version(role, cfg.repos),
+        "prompt_version": prompts.prompt_version(role, cfg.repos,
+                                                 kit.setid if kit.entries else ""),
         # The resolved model connection (agent > project > server), no key.
         **llm_conn.describe(db, settings, r.project_slug, r.id).public(),
         "updated_by": r.updated_by,
@@ -1087,14 +1101,15 @@ def get_role_prompt(slug: str, role_id: int, _: TaigaUser = Depends(member),
     cfg = config_store.load(db, slug)
     role = cfg.role(role_id)
     scope = prompts.scope_for(role, cfg.repos)
+    kit = skills.resolve(db, role.skills)
     return {
         "fixed": prompts.KEMUDI_RULES,
         "role": prompts.ROLE_TEMPLATES[role.template],
         "scope": scope.__dict__,
         "overlay": role.prompt_overlay,
         "reminder": prompts.REMINDER,
-        "rendered": prompts.render_role(role, cfg.repos),
-        "version": prompts.prompt_version(role, cfg.repos),
+        "rendered": prompts.render_role(role, cfg.repos, bool(kit.entries)),
+        "version": prompts.prompt_version(role, cfg.repos, kit.setid if kit.entries else ""),
     }
 
 
