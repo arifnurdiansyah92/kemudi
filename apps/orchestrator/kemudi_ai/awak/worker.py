@@ -1155,7 +1155,7 @@ def runner_path(workspace_dir: str, workdir: Path) -> str:
 
 # What the install, the gates and QA themselves leave in a workspace. Only
 # untracked or ignored paths qualify; a changed tracked file never does.
-QA_DIR = ".qa"                                   # repo root only
+QA_DIR = ".qa"                                   # repo root only, any status
 ANYWHERE_DIRS = {"node_modules", "__pycache__"}  # at any depth
 BUILD_DIRS = {"dist", ".vite", ".turbo", "coverage", ".pytest_cache", ".ruff_cache",
               ".mypy_cache", ".venv", "target", ".next"}  # at the repo root or an app dir
@@ -1174,6 +1174,10 @@ def build_output(status: str, path: str, subdir: str | list[str] = "",
     parts = path.strip("/").split("/")
     if not parts or any(p in ("", ".", "..") for p in parts):
         return False
+    if parts[0] == QA_DIR:
+        # Kemudi's own folder (specs, results, process service logs), however
+        # git lists it: as the folder or file by file.
+        return True
     dirs = [subdir] if isinstance(subdir, str) else subdir
     app_dirs = {"", *(d.strip("/") for d in dirs)}
     if status == "!!" and not path.endswith("/"):
