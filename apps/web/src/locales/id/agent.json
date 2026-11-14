@@ -610,6 +610,65 @@
       "failed": "Gagal"
     }
   },
+  "usage": {
+    "title": "Penggunaan dan anggaran",
+    "description": "Token dan biaya model untuk pekerjaan Awak di proyek ini, serta batas yang menghentikannya sebelum tagihan membengkak.",
+    "unavailable": "Data penggunaan tidak dapat dimuat.",
+    "saved": "Anggaran disimpan",
+    "tokensMonth": "Token bulan ini",
+    "tokensOf": "{{used}} jt dari {{budget}} jt",
+    "tokensM": "{{tokens}} jt",
+    "progress": "Bagian anggaran token bulanan yang terpakai",
+    "costMonth": "Biaya bulan ini",
+    "unknownCalls_other": "Ditambah {{count}} panggilan yang harganya tidak diketahui",
+    "unreportedCalls_other": "{{count}} panggilan tidak melaporkan penggunaan token",
+    "setupMonth": "Setup Assistant bulan ini",
+    "setupValue": "{{tokens}} jt token · {{cost}}",
+    "recommend": "Belum ada anggaran bulanan, jadi penggunaan Awak tidak dibatasi. Kami sarankan mulai dari {{tokens}} jt token per bulan: satu story memakai sekitar 2 sampai 3 jt token.",
+    "exceeded": {
+      "title": "Anggaran token bulanan sudah habis",
+      "body": "Awak berhenti memanggil model untuk proyek ini. Story yang sedang dikerjakan diblokir dengan needs-human, dan story baru menunggu. Naikkan anggaran di bawah, lalu buka blokir story tersebut."
+    },
+    "warning": {
+      "title": "{{pct}}% anggaran token bulan ini sudah terpakai",
+      "body": "Awak berhenti saat anggaran habis. Naikkan anggaran di bawah bila bulan ini perlu lebih banyak."
+    },
+    "price": {
+      "known": "Harga untuk {{model}}: {{input}} input dan {{output}} output per 1 jt token.",
+      "unknown": "Belum ada harga untuk {{model}}, jadi biayanya tampil sebagai tidak diketahui. Atur harga proyek ini di bawah.",
+      "usd": "US${{amount}}",
+      "fromProject": "Harga khusus proyek ini.",
+      "fromTable": "Dari tabel harga Kemudi.",
+      "fromFlat": "Dari harga token tetap di server."
+    },
+    "stories": {
+      "caption": "Penggunaan per story terbaru",
+      "empty": "Belum ada story. Penggunaan per story tampil di sini setelah Awak mengerjakannya.",
+      "tokens": "Token",
+      "cost": "Biaya",
+      "calls": "Panggilan model",
+      "unknown": "Tidak diketahui",
+      "atLeast": "Minimal {{cost}}"
+    },
+    "form": {
+      "monthly": "Anggaran token bulanan (juta token)",
+      "monthlyHint": "Menghitung semua panggilan model proyek ini dalam satu bulan kalender (UTC). Kosong berarti tidak dibatasi.",
+      "cap": "Batas token per story (juta token)",
+      "capHint": "Menghentikan pengerjaan satu story pada jumlah token ini dan menyerahkannya ke manusia. Kosong berarti tanpa batas.",
+      "unlimited": "Tidak dibatasi",
+      "override": "Atur harga model untuk proyek ini",
+      "input": "Input per 1 jt",
+      "cached": "Input dari cache per 1 jt",
+      "cachedPlaceholder": "Sama dengan input",
+      "output": "Output per 1 jt",
+      "currency": "Mata uang",
+      "overrideHint": "Gunakan harga penyedia Anda per 1 jt token. Harga ini menggantikan tabel harga Kemudi untuk panggilan model proyek ini.",
+      "badNumber": "Isi anggaran dan batas sebagai angka dalam juta token, atau biarkan kosong.",
+      "badPrice": "Isi harga input dan output sebagai angka.",
+      "save": "Simpan anggaran",
+      "adminsOnly": "Hanya admin proyek yang dapat mengubah anggaran."
+    }
+  },
   "intake": {
     "title": "Intake",
     "intro": "Tempel brief, catatan rapat, atau email klien, atau tambahkan dokumen. Kemudi menyusun draf user story untuk Anda periksa dan sunting, lalu membuatnya di backlog.",

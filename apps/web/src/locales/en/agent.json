@@ -614,6 +614,67 @@
       "failed": "Failed"
     }
   },
+  "usage": {
+    "title": "Usage and budget",
+    "description": "Model tokens and cost of Awak's work on this project, and the limits that stop it before it runs up a bill.",
+    "unavailable": "Usage couldn't be loaded.",
+    "saved": "Budget saved",
+    "tokensMonth": "Tokens this month",
+    "tokensOf": "{{used}} M of {{budget}} M",
+    "tokensM": "{{tokens}} M",
+    "progress": "Share of the monthly token budget used",
+    "costMonth": "Cost this month",
+    "unknownCalls_one": "Plus {{count}} call with an unknown price",
+    "unknownCalls_other": "Plus {{count}} calls with an unknown price",
+    "unreportedCalls_one": "{{count}} call reported no token usage",
+    "unreportedCalls_other": "{{count}} calls reported no token usage",
+    "setupMonth": "Setup Assistant this month",
+    "setupValue": "{{tokens}} M tokens · {{cost}}",
+    "recommend": "No monthly budget is set, so Awak's usage is unlimited. We recommend starting at {{tokens}} M tokens a month: one story takes about 2 to 3 M tokens.",
+    "exceeded": {
+      "title": "Monthly token budget used up",
+      "body": "Awak has stopped calling the model for this project. Stories it was working on are blocked with needs-human, and new ones wait. Raise the budget below, then unblock the stories."
+    },
+    "warning": {
+      "title": "{{pct}}% of this month's token budget used",
+      "body": "Awak stops when the budget runs out. Raise it below if this month needs more."
+    },
+    "price": {
+      "known": "Priced at {{input}} input and {{output}} output per 1M tokens for {{model}}.",
+      "unknown": "There's no price for {{model}}, so its cost shows as unknown. Set this project's price below.",
+      "usd": "${{amount}}",
+      "fromProject": "This project's price.",
+      "fromTable": "From the Kemudi price table.",
+      "fromFlat": "From the server's flat token price."
+    },
+    "stories": {
+      "caption": "Usage per recent story",
+      "empty": "No stories yet. Usage per story shows here once Awak works on one.",
+      "tokens": "Tokens",
+      "cost": "Cost",
+      "calls": "Model calls",
+      "unknown": "Unknown",
+      "atLeast": "At least {{cost}}"
+    },
+    "form": {
+      "monthly": "Monthly token budget (million tokens)",
+      "monthlyHint": "Counts every model call of this project in the calendar month (UTC). Empty means unlimited.",
+      "cap": "Token cap per story (million tokens)",
+      "capHint": "Stops one story's run at this many tokens and hands it to a human. Empty means no cap.",
+      "unlimited": "Unlimited",
+      "override": "Set this project's model price",
+      "input": "Input per 1M",
+      "cached": "Cached input per 1M",
+      "cachedPlaceholder": "Same as input",
+      "output": "Output per 1M",
+      "currency": "Currency",
+      "overrideHint": "Use your provider's price per 1M tokens. It replaces the Kemudi price table for this project's model calls.",
+      "badNumber": "Enter the budget and cap as a number of million tokens, or leave them empty.",
+      "badPrice": "Enter the input and output prices as numbers.",
+      "save": "Save budget",
+      "adminsOnly": "Only project admins can change the budget."
+    }
+  },
   "intake": {
     "title": "Intake",
     "intro": "Paste a brief, meeting notes or a client email, or add a document. Kemudi drafts user stories for you to check and edit, then creates them in the backlog.",
