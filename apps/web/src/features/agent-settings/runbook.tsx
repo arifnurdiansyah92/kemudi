@@ -1,21 +1,20 @@
 import { useState } from 'react'
 import { useFormat } from '@/i18n/format'
-import { CircleAlert, FileCode2, Loader2 } from 'lucide-react'
+import { CircleAlert, FileCode2, Loader2, ScanSearch } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
+  isSetupLive,
   runbookErrors,
   useRunbook,
   useSaveRunbook,
+  useSetupLatest,
+  useStartSetup,
+  type QaMode,
   type Runbook,
-  type RunbookApp,
-  type RunbookLogin,
-  type RunbookOneShot,
-  type RunbookService,
   type RunbookState,
 } from '@/lib/kemudi-ai/agent'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -27,20 +26,28 @@ import {
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
+import { RunbookSummary } from './runbook-summary'
+import { SetupAssistant } from './setup-assistant'
 
 /** What a new runbook starts from in the editor. */
 const EMPTY_RUNBOOK: Runbook = { apps: [], services: [], env: [] }
 
-/** Project settings → Agent → Runbook: read for members, Edit JSON for admins. */
+/** Project settings → Agent → Runbook: read for members; admins configure it
+ * automatically (the Setup Assistant) or edit the JSON by hand. */
 export function RunbookCard({
   slug,
   canEdit,
+  qaMode,
 }: {
   slug: string
   canEdit: boolean
+  /** The project's current QA mode, to offer switching to Browser on approve. */
+  qaMode?: QaMode
 }) {
   const { t } = useTranslation('agent')
   const query = useRunbook(slug)
+  const setup = useSetupLatest(slug)
+  const start = useStartSetup(slug)
   const [editing, setEditing] = useState(false)
 
   if (query.isPending) return <Skeleton className='h-24 w-full' />
@@ -51,12 +58,35 @@ export function RunbookCard({
       </p>
     )
 
+  const run = setup.data ?? null
+  const live = isSetupLive(run)
+  const configure = canEdit ? (
+    <ConfigureButton
+      busy={start.isPending}
+      blocked={live}
+      onClick={() => start.mutate()}
+    />
+  ) : null
+
   return (
     <>
       <RunbookView
         state={query.data}
         canEdit={canEdit}
         onEdit={() => setEditing(true)}
+        configure={configure}
+        assistant={
+          run ? (
+            <SetupAssistant
+              slug={slug}
+              run={run}
+              canEdit={canEdit}
+              qaMode={qaMode}
+              onRetry={() => start.mutate()}
+              retrying={start.isPending}
+            />
+          ) : null
+        }
       />
       {canEdit && (
         <RunbookEditor
@@ -70,20 +100,60 @@ export function RunbookCard({
   )
 }
 
+/** Starts the Setup Assistant; held back while a run is still going. */
+function ConfigureButton({
+  busy,
+  blocked,
+  onClick,
+}: {
+  busy: boolean
+  blocked: boolean
+  onClick: () => void
+}) {
+  const { t } = useTranslation('agent')
+  return (
+    <span className='flex flex-wrap items-center gap-x-3 gap-y-1'>
+      <Button
+        size='sm'
+        disabled={busy || blocked}
+        aria-describedby={blocked ? 'runbook-configure-hint' : undefined}
+        onClick={onClick}
+      >
+        {busy ? <Loader2 className='animate-spin' /> : <ScanSearch />}
+        {t('setup.configure')}
+      </Button>
+      {blocked && (
+        <span
+          id='runbook-configure-hint'
+          className='text-xs text-muted-foreground'
+        >
+          {t('setup.configureBusy')}
+        </span>
+      )}
+    </span>
+  )
+}
+
 export function RunbookView({
   state,
   canEdit,
   onEdit,
+  configure = null,
+  assistant = null,
 }: {
   state: RunbookState
   canEdit: boolean
   onEdit: () => void
+  /** The admin's Configure automatically button. */
+  configure?: React.ReactNode
+  /** The Setup Assistant panel, when a run exists. */
+  assistant?: React.ReactNode
 }) {
   const { t } = useTranslation('agent')
   const f = useFormat()
   const rb = state.runbook
 
-  if (!rb)
+  if (!rb && !assistant)
     return (
       <div className='grid justify-items-start gap-2 rounded-lg border border-dashed px-4 py-5'>
         <p className='text-sm font-medium'>{t('runbook.empty.title')}</p>
@@ -94,283 +164,46 @@ export function RunbookView({
           {canEdit ? t('runbook.empty.admin') : t('runbook.empty.member')}
         </p>
         {canEdit && (
-          <Button size='sm' variant='outline' className='mt-1' onClick={onEdit}>
-            <FileCode2 />
-            {t('runbook.paste')}
-          </Button>
+          <div className='mt-1 flex flex-wrap items-center gap-2'>
+            {configure}
+            <Button size='sm' variant='outline' onClick={onEdit}>
+              <FileCode2 />
+              {t('runbook.paste')}
+            </Button>
+          </div>
         )}
       </div>
     )
-
-  const apps = Array.isArray(rb.apps) ? rb.apps : []
-  const services = Array.isArray(rb.services) ? rb.services : []
-  const env = Array.isArray(rb.env) ? rb.env : []
-  const init = Array.isArray(rb.init) ? rb.init : []
-  // "<service>" or "<service>:<service in its compose file>" → the commands
-  // run in that runbook service, labelled with the inner service if named.
-  const oneShots = (
-    name: string,
-    items: (RunbookOneShot | null | undefined)[]
-  ) =>
-    items
-      .filter(
-        (o): o is RunbookOneShot => !!o && o.service.split(':')[0] === name
-      )
-      .map((o) => {
-        const inner = o.service.split(':')[1]
-        return inner ? `${inner}: ${o.command}` : o.command
-      })
 
   return (
     <div className='grid gap-5'>
       <div className='flex flex-wrap items-center justify-between gap-x-6 gap-y-2'>
         <p className='text-xs text-muted-foreground'>
-          {state.approved_by && state.approved_at
-            ? t('runbook.approved', {
-                version: state.version,
-                who: state.approved_by,
-                when: f.date(state.approved_at, 'dateTime'),
-              })
-            : t('runbook.version', { version: state.version })}
+          {!rb
+            ? t('runbook.empty.title')
+            : state.approved_by && state.approved_at
+              ? t('runbook.approved', {
+                  version: state.version,
+                  who: state.approved_by,
+                  when: f.date(state.approved_at, 'dateTime'),
+                })
+              : t('runbook.version', { version: state.version })}
         </p>
         {canEdit && (
-          <Button size='sm' variant='outline' onClick={onEdit}>
-            <FileCode2 />
-            {t('runbook.editJson')}
-          </Button>
+          <div className='flex flex-wrap items-center gap-2'>
+            {configure}
+            <Button size='sm' variant='outline' onClick={onEdit}>
+              <FileCode2 />
+              {rb ? t('runbook.editJson') : t('runbook.paste')}
+            </Button>
+          </div>
         )}
       </div>
 
-      <Group title={t('runbook.apps.title')} count={apps.length}>
-        {apps.map((app, i) => (
-          <AppRow key={`${app.name}-${i}`} app={app} />
-        ))}
-      </Group>
+      {assistant}
 
-      <Group title={t('runbook.services.title')} count={services.length}>
-        {services.map((s, i) => (
-          <ServiceRow
-            key={`${s.name}-${i}`}
-            service={s}
-            isQa={rb.qa?.service === s.name}
-            qaEnv={rb.qa?.service === s.name ? (rb.qa.env ?? []) : []}
-            login={rb.qa?.service === s.name ? (rb.qa.login ?? null) : null}
-            init={oneShots(s.name, init)}
-            seed={oneShots(s.name, [rb.seed])}
-          />
-        ))}
-      </Group>
-
-      <Group title={t('runbook.env.title')} count={env.length}>
-        {env.map((e, i) => (
-          <li
-            key={`${e.name}-${i}`}
-            className='grid gap-0.5 px-3 py-2 sm:grid-cols-[minmax(10rem,auto)_minmax(0,1fr)] sm:gap-4'
-          >
-            <span className='flex flex-wrap items-center gap-2'>
-              <code className='font-mono text-xs font-medium'>{e.name}</code>
-              {e.secret && (
-                <span className='text-xs text-muted-foreground'>
-                  {t('runbook.env.secret')}
-                </span>
-              )}
-              {e.required && (
-                <span className='text-xs text-muted-foreground'>
-                  {t('runbook.env.required')}
-                </span>
-              )}
-            </span>
-            {e.description && (
-              <span className='text-xs text-muted-foreground'>
-                {e.description}
-              </span>
-            )}
-          </li>
-        ))}
-      </Group>
+      {rb && <RunbookSummary runbook={rb} />}
     </div>
-  )
-}
-
-function Group({
-  title,
-  count,
-  children,
-}: {
-  title: string
-  count: number
-  children: React.ReactNode
-}) {
-  const { t } = useTranslation('agent')
-  return (
-    <section className='grid gap-2'>
-      <h3 className='text-sm font-semibold'>
-        {title}{' '}
-        <span className='font-normal text-muted-foreground tabular-nums'>
-          {count}
-        </span>
-      </h3>
-      {count === 0 ? (
-        <p className='text-sm text-muted-foreground'>{t('runbook.none')}</p>
-      ) : (
-        <ul className='divide-y rounded-lg border text-sm'>{children}</ul>
-      )}
-    </section>
-  )
-}
-
-/** One label and its command lines, e.g. "Checks" → tsc, lint. */
-function Commands({
-  rows,
-}: {
-  rows: [label: string, lines: string[] | undefined][]
-}) {
-  const shown = rows.filter(([, lines]) => lines && lines.length > 0)
-  if (!shown.length) return null
-  return (
-    <dl className='grid gap-x-4 gap-y-1 text-xs sm:grid-cols-[6rem_minmax(0,1fr)]'>
-      {shown.map(([label, lines]) => (
-        <div key={label} className='contents'>
-          <dt className='text-muted-foreground'>{label}</dt>
-          <dd className='grid min-w-0 gap-0.5'>
-            {lines!.map((line, i) => (
-              <code key={i} className='font-mono break-all'>
-                {line}
-              </code>
-            ))}
-          </dd>
-        </div>
-      ))}
-    </dl>
-  )
-}
-
-function AppRow({ app }: { app: RunbookApp }) {
-  const { t } = useTranslation('agent')
-  const envNames = Object.keys(app.env ?? {})
-  const hasCommands = [app.install, app.checks, app.build, app.generated].some(
-    (c) => Array.isArray(c) && c.length > 0
-  )
-  return (
-    <li className='grid gap-2 px-3 py-2.5'>
-      <div className='flex flex-wrap items-baseline gap-x-3 gap-y-1'>
-        <span className='font-medium'>{app.name}</span>
-        <span className='font-mono text-xs text-muted-foreground'>
-          {app.repo}
-          {' / '}
-          {app.dir || t('runbook.apps.root')}
-        </span>
-        {app.run_in && (
-          <Badge variant='outline' className='font-normal'>
-            {t('runbook.apps.runIn', { target: app.run_in })}
-          </Badge>
-        )}
-      </div>
-      {hasCommands ? (
-        <Commands
-          rows={[
-            [t('runbook.apps.install'), app.install],
-            [t('runbook.apps.checks'), app.checks],
-            [t('runbook.apps.build'), app.build],
-            [t('runbook.apps.env'), envNames],
-            [
-              t('runbook.apps.generated'),
-              Array.isArray(app.generated) ? app.generated : [],
-            ],
-          ]}
-        />
-      ) : (
-        <p className='text-xs text-muted-foreground'>
-          {t('runbook.apps.noCommands')}
-        </p>
-      )}
-    </li>
-  )
-}
-
-function ServiceRow({
-  service: s,
-  isQa,
-  qaEnv,
-  login,
-  init,
-  seed,
-}: {
-  service: RunbookService
-  isQa: boolean
-  qaEnv: string[]
-  login: RunbookLogin | null
-  init: string[]
-  seed: string[]
-}) {
-  const { t } = useTranslation('agent')
-  const envNames = Array.isArray(s.env) ? s.env : Object.keys(s.env ?? {})
-  const source =
-    s.kind === 'compose'
-      ? [
-          [s.repo, s.file].filter(Boolean).join(' / '),
-          s.compose_services?.join(', '),
-        ]
-          .filter(Boolean)
-          .join(' · ')
-      : s.app
-        ? t('runbook.services.ofApp', { app: s.app })
-        : ''
-  return (
-    <li className='grid gap-2 px-3 py-2.5'>
-      <div className='flex flex-wrap items-baseline gap-x-3 gap-y-1'>
-        <span className='font-medium'>{s.name}</span>
-        <Badge variant='secondary' className='font-normal'>
-          {s.kind === 'process'
-            ? t('runbook.services.kinds.process')
-            : s.kind === 'compose'
-              ? t('runbook.services.kinds.compose')
-              : s.kind}
-        </Badge>
-        {isQa && (
-          <Badge variant='outline' className='font-normal'>
-            {t('runbook.services.qaTarget')}
-          </Badge>
-        )}
-        {source && (
-          <span className='font-mono text-xs text-muted-foreground'>
-            {source}
-          </span>
-        )}
-      </div>
-      <Commands
-        rows={[
-          [t('runbook.services.command'), s.command ? [s.command] : []],
-          [t('runbook.services.expose'), s.expose ? [s.expose] : []],
-          [
-            t('runbook.services.health'),
-            [
-              t('runbook.services.healthWithin', {
-                path: s.health ?? '/',
-                seconds: s.ready_timeout ?? 120,
-              }),
-            ],
-          ],
-          [t('runbook.services.init'), init],
-          [t('runbook.services.seed'), seed],
-          [t('runbook.apps.env'), envNames],
-          [
-            t('runbook.services.login'),
-            login
-              ? [
-                  login.success_url
-                    ? t('runbook.services.loginTo', {
-                        path: login.path,
-                        to: login.success_url,
-                      })
-                    : login.path,
-                ]
-              : [],
-          ],
-          [t('runbook.services.qaEnv'), qaEnv],
-        ]}
-      />
-    </li>
   )
 }
 

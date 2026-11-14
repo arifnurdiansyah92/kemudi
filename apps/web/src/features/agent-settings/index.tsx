@@ -82,7 +82,11 @@ export function AgentSettingsPage() {
         title={t('runbook.title')}
         description={t('runbook.description')}
       >
-        <RunbookCard slug={slug} canEdit={canEdit} />
+        <RunbookCard
+          slug={slug}
+          canEdit={canEdit}
+          qaMode={settings.data.qa_mode}
+        />
       </SettingsSection>
       <SettingsSection
         title={t('env.title')}

@@ -291,8 +291,8 @@
     "empty": {
       "title": "Belum ada runbook",
       "body": "Tanpa runbook, Awak menjalankan perintah milik setiap repositori, dan QA Browser hanya tersedia untuk repositori Kemudi sendiri.",
-      "admin": "Konfigurasi otomatis hadir di pembaruan berikutnya. Sementara itu, Anda dapat menempelkan runbook dalam format JSON.",
-      "member": "Konfigurasi otomatis hadir di pembaruan berikutnya. Sementara itu, admin proyek dapat menempelkan runbook."
+      "admin": "Konfigurasi otomatis membuat Awak membaca repositori, mengusulkan runbook, dan membuktikan bahwa runbook itu berjalan. Anda juga dapat menempelkan runbook dalam format JSON.",
+      "member": "Admin proyek dapat mengonfigurasinya secara otomatis atau menempelkan runbook dalam format JSON."
     },
     "paste": "Tempel JSON runbook",
     "editJson": "Ubah JSON",
@@ -343,6 +343,89 @@
       "rejected_one": "Tidak disimpan: {{count}} masalah",
       "rejected_other": "Tidak disimpan: {{count}} masalah",
       "save": "Simpan dan setujui"
+    }
+  },
+  "setup": {
+    "title": "Setup Assistant",
+    "configure": "Konfigurasi otomatis",
+    "configureBusy": "Proses setup sedang berjalan.",
+    "startedBy": "Dimulai oleh {{who}}, {{when}}",
+    "cost": "Biaya {{cost}}",
+    "round": "Putaran {{round}} dari {{max}}",
+    "cancel": "Batalkan proses",
+    "retry": "Coba lagi",
+    "approved": "Runbook disetujui dari Konfigurasi otomatis.",
+    "cancelled": "Setup dibatalkan. Runbook tidak diubah.",
+    "approvedToast": "Runbook disetujui sebagai versi {{version}}",
+    "proposed": "Usulan runbook",
+    "report": "Catatan Awak",
+    "feedback": "Yang sedang diperbaiki Awak",
+    "status": {
+      "queued": "Menunggu worker mengambil proses ini.",
+      "reading": "Awak sedang membaca repositori dan menyusun runbook.",
+      "fixing": "Pembuktian terakhir gagal. Awak sedang memperbaiki runbook dan akan membuktikannya lagi.",
+      "needs_input": "Awak memerlukan beberapa nilai sebelum dapat membuktikan runbook.",
+      "proving": "Menginstal, menjalankan pemeriksaan, dan menyalakan layanan. Proses ini bisa memakan waktu beberapa menit.",
+      "ready": "Runbook berhasil. Tinjau dulu, lalu setujui agar menjadi runbook proyek ini.",
+      "failed": "Setup berhenti sebelum runbook berhasil.",
+      "approved": "Disetujui.",
+      "cancelled": "Dibatalkan."
+    },
+    "phases": {
+      "reading": "Membaca repo",
+      "proposing": "Menyusun usulan",
+      "env": "Menunggu env",
+      "proving": "Membuktikan",
+      "ready": "Siap"
+    },
+    "phaseStatus": {
+      "done": "selesai",
+      "current": "sedang berjalan",
+      "upcoming": "belum dimulai",
+      "failed": "gagal di sini",
+      "cancelled": "dibatalkan di sini"
+    },
+    "steps": {
+      "title": "Pembuktian",
+      "ok": "Lolos",
+      "red": "Pemeriksaan merah",
+      "failed": "Gagal",
+      "gates_one": "{{passed}} dari {{count}} pemeriksaan lolos",
+      "gates_other": "{{passed}} dari {{count}} pemeriksaan lolos"
+    },
+    "screenshot": {
+      "title": "Yang dilihat QA",
+      "alt": "Tangkapan layar halaman pertama aplikasi, diambil saat pembuktian",
+      "unavailable": "Tangkapan layar tidak tersedia."
+    },
+    "resources": {
+      "title": "Memori puncak",
+      "total": "total {{mem}}",
+      "mb": "{{mb}} MB",
+      "memCpu": "{{mem}} · CPU {{cpu}}%",
+      "runner": "Runner (puncak)"
+    },
+    "env": {
+      "intro": "Nilai-nilai ini disimpan ke Env & rahasia proyek ini. Isi yang Anda punya; proses berlanjut setelah tidak ada yang kurang.",
+      "secret": "Rahasia",
+      "secretFor": "Simpan {{name}} sebagai rahasia",
+      "submit": "Simpan dan lanjutkan",
+      "writeOnly": "Nilai di sini hanya bisa ditulis; rahasia tidak akan ditampilkan lagi.",
+      "noneFilled": "Isi setidaknya satu nilai.",
+      "saved": "Tersimpan. Awak melanjutkan pembuktian runbook.",
+      "savedMore_one": "Tersimpan. Masih kurang {{count}} nilai.",
+      "savedMore_other": "Tersimpan. Masih kurang {{count}} nilai.",
+      "memberWait": "Menunggu admin proyek mengisi nilai-nilai berikut:"
+    },
+    "failed": {
+      "title": "Setup gagal",
+      "noReason": "Tidak ada alasan yang diberikan."
+    },
+    "approve": {
+      "browser": "Ubah QA ke Browser",
+      "browserHint": "Awak akan menjalankan aplikasi dan memeriksa setiap kriteria penerimaan di browser sebelum story masuk Done.",
+      "submit": "Setujui runbook",
+      "rejected": "Tidak disetujui"
     }
   },
   "env": {
