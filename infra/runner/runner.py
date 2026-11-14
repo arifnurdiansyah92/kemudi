@@ -14,6 +14,11 @@ POST /qa         {path, token, user, project, subdir?}  run .qa/spec twice again
                                              services (see op_qa)
 POST /health     {url, path?, timeout?}      wait until a compose service published on
                                              kemudi-dind answers 2xx/3xx at path
+POST /screenshot {path, services, base_service, out, external?, login?}
+                                             start the runbook's process services as
+                                             `qa` does, save a PNG of base_service `/`
+                                             to .qa/<out>, report RSS and log tails,
+                                             stop them (the Setup Assistant's proof)
 POST /reap       {}                          stop every process service left running and
                                              kill every process of the child uid
 POST /clean_check {path}                     HEAD sha and `git status --ignored` entries
@@ -739,6 +744,116 @@ def op_qa(body: dict) -> dict:
         _stop(vite)
 
 
+SHOT_SCRIPT = os.environ.get("RUNNER_SHOT_SCRIPT", "/opt/runner/screenshot.cjs")
+# `out`: a PNG path inside .qa/ (lowercase names, at most four folders deep).
+SHOT_RE = re.compile(r"(?:[a-z0-9][a-z0-9-]{0,39}/){0,4}[a-z0-9][a-z0-9-]{0,39}\.png")
+SHOT_TIMEOUT = 300
+CGROUP_PEAK = Path("/sys/fs/cgroup/memory.peak")
+
+
+def _group_rss_mb(pgid: int) -> float | None:
+    """Resident memory of every process in the group (a service and its
+    children), from /proc; None where there is no /proc."""
+    root = Path("/proc")
+    if not root.is_dir():
+        return None
+    total, found = 0, False
+    for p in root.iterdir():
+        if not p.name.isdigit():
+            continue
+        try:
+            fields = (p / "stat").read_text().rsplit(")", 1)[1].split()
+            if int(fields[2]) != pgid:  # state, ppid, pgrp
+                continue
+            for line in (p / "status").read_text().splitlines():
+                if line.startswith("VmRSS:"):
+                    total += int(line.split()[1])
+                    found = True
+        except (OSError, ValueError, IndexError):
+            continue
+    return round(total / 1024, 1) if found else None
+
+
+def _peak_mb() -> float | None:
+    """The runner container's peak memory (cgroup v2), if readable."""
+    try:
+        return round(int(CGROUP_PEAK.read_text().strip()) / 1024 / 1024, 1)
+    except (OSError, ValueError):
+        return None
+
+
+def _process_report(services: list[dict], procs: list[subprocess.Popen], d: Path) -> list[dict]:
+    """Per started service: RSS (while it runs) and its log tail."""
+    out = []
+    for s, proc in zip(services, procs):
+        out.append({"name": s["name"],
+                    "rss_mb": _group_rss_mb(proc.pid) if proc.poll() is None else None,
+                    "log": _log_tail(d / ".qa" / "logs" / f"{s['name']}.log")})
+    return out
+
+
+def op_screenshot(body: dict) -> dict:
+    """The Setup Assistant's proof of a runbook: start its process services
+    the way `qa` does (`external`: compose services already up; `login`: sign
+    in once), open `/` of `base_service` and save a PNG to `.qa/<out>`, then
+    stop the services. Returns the PNG's path relative to the checkout, each
+    service's RSS and log tail, and the runner's peak memory; or `infra_error`
+    (a service did not start), `login_error`, `shot_error`."""
+    d = job_dir(body)
+    out = str(body.get("out") or "")
+    if not SHOT_RE.fullmatch(out):
+        raise ValueError(f"bad screenshot path {out!r}; expected e.g. setup/home.png")
+    deadline = time.monotonic() + QA_DEADLINE
+    services = _services(body, d)
+    base_name = str(body.get("base_service") or "")
+    if base_name not in {s["name"] for s in services}:
+        raise ValueError(f"base_service {base_name!r} is not one of the services")
+    external = _external(body, {s["name"] for s in services})
+    login = _login_body(body.get("login"))
+    procs: list[subprocess.Popen] = []
+    login_tmp: Path | None = None
+    try:
+        urls = _start_services(services, d, deadline, procs, external)
+        if isinstance(urls, str):
+            return {"infra_error": urls, "processes": _process_report(services, procs, d),
+                    "peak_mb": _peak_mb()}
+        base = urls[base_name]
+        state = None
+        if login is not None:
+            login_tmp = child_tmpdir("setup-login-")
+            err = _login(d, base, login, deadline, login_tmp)
+            if err:
+                return {"login_error": err, "processes": _process_report(services, procs, d),
+                        "peak_mb": _peak_mb()}
+            state = login_tmp / "state.json"
+        rel = f".qa/{out}"
+        folder = str(Path(rel).parent.as_posix())
+        if dropping():
+            code, text = run(["mkdir", "-p", "--", folder], d, 60)
+            if code != 0:
+                return {"infra_error": f"cannot create {folder}: " + text[-300:]}
+        else:
+            (d / folder).mkdir(parents=True, exist_ok=True)
+        env = {"QA_BASE_URL": base, "QA_SHOT_OUT": str(d / rel), "NODE_PATH": _npm_root()}
+        if state is not None:
+            env["QA_STATE"] = str(state)
+        left = int(deadline - time.monotonic())
+        code, text = run(["node", SHOT_SCRIPT], d / ".qa", max(30, min(SHOT_TIMEOUT, left)), env)
+        report = _process_report(services, procs, d)
+        if code != 0:
+            return {"shot_error": tail(text, 1500).strip() or f"screenshot exited with {code}",
+                    "processes": report, "peak_mb": _peak_mb()}
+        return {"ok": True, "screenshot": rel, "processes": report, "peak_mb": _peak_mb()}
+    finally:
+        for proc in reversed(procs):
+            try:
+                _stop(proc)
+            except Exception:  # noqa: BLE001 - stop the others too
+                pass
+        if login_tmp is not None:
+            remove_child_tmpdir(login_tmp)
+
+
 def _run_specs(d: Path, spec_dir: Path, base: str, state: Path | None, extra: dict,
                deadline: float) -> dict:
     tmp = child_tmpdir("qa-report-")  # Playwright writes the reports here
@@ -917,7 +1032,7 @@ def op_deploy(body: dict) -> dict:
 
 OPS = {"install": op_install, "commit": op_commit, "gates": op_gates, "deploy": op_deploy,
        "qa_reset": op_qa_reset, "qa": op_qa, "clean_check": op_clean_check,
-       "health": op_health, "reap": op_reap}
+       "health": op_health, "reap": op_reap, "screenshot": op_screenshot}
 
 
 class Handler(BaseHTTPRequestHandler):

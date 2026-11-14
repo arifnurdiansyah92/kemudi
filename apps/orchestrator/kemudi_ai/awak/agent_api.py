@@ -21,8 +21,10 @@ from ..auth import ProjectAccess, TaigaUser
 from ..config import Settings, get_settings
 from ..deps import access, actor, admin, get_db, get_llm, get_sessions, member
 from ..llm import LLM
-from ..store import AwakJob, AwakKey, AwakProject, AwakRepo, AwakRole, record_decision
+from ..store import (AwakJob, AwakKey, AwakProject, AwakRepo, AwakRole, AwakSetupRun,
+                     record_decision)
 from . import config_store, crypto, detect, gitops, llm_conn, prompts, runbook, secrets, ssh, vault
+from . import setup as setup_runs
 from .bot_access import BotAccess, BotAccessError
 from .crypto import SecretKeyMissing
 from .detect import FIELDS as COMMAND_FIELDS
@@ -204,14 +206,15 @@ def put_agent_settings(
 
 
 def _qa_mode_blocker(db: Session, settings: Settings, slug: str, merge_mode: str,
-                     qa_mode: str) -> str | None:
-    """Why this merge/QA mode pair cannot be saved."""
+                     qa_mode: str, proposed: runbook.Runbook | None = None) -> str | None:
+    """Why this merge/QA mode pair cannot be saved (with the stored runbook, or
+    `proposed`, one about to be approved)."""
     if merge_mode == "auto" and qa_mode != "browser":
         # Auto-merging code that nothing exercised is the one case refused.
         return "auto merge needs QA mode browser"
     if qa_mode != "browser":
         return None
-    rb = runbook.load(db, slug)
+    rb = proposed if proposed is not None else runbook.load(db, slug)
     if rb is not None and rb.browser_qa_ready():
         if rb.qa_compose() and not settings.svc_key:
             return ("QA mode browser: the runbook's QA needs compose services, but kemudi-svc "
@@ -307,6 +310,170 @@ def delete_env(slug: str, name: str, user: TaigaUser = Depends(admin),
         raise HTTPException(404, f"{name} is not set")
     record_decision(db, actor(user), "awak_env", slug, {"op": "delete", "name": name})
     return Response(status_code=204)
+
+
+# --- setup assistant (Configure automatically) ---------------------------------------
+
+
+def get_svc(settings: Settings = Depends(get_settings)):
+    """kemudi-svc, for bringing a cancelled run's services down (None when not
+    configured). Overridden in tests."""
+    from .svc import SvcClient
+
+    return SvcClient(settings.svc_url, settings.svc_key) if settings.svc_key else None
+
+
+def _setup_run(db: Session, slug: str, run_id: int) -> AwakSetupRun:
+    run = db.get(AwakSetupRun, run_id)
+    if run is None or run.project_slug != slug:
+        raise HTTPException(404, "no such setup run")
+    return run
+
+
+@router.post("/setup", status_code=202)
+def start_setup(slug: str, user: TaigaUser = Depends(admin), db: Session = Depends(get_db),
+                start_worker: Callable[[], None] = Depends(get_worker_starter)):
+    """Start Configure automatically: one active run per project."""
+    if not db.query(AwakRepo).filter_by(project_slug=slug).count():
+        raise HTTPException(422, "add a repository first")
+    running = setup_runs.active(db, slug)
+    if running is not None:
+        raise HTTPException(409, f"setup run {running.id} is still {running.state}")
+    run = setup_runs.start(db, slug, actor(user))
+    record_decision(db, actor(user), "awak_setup", slug, {"op": "start", "run_id": run.id})
+    start_worker()
+    return {"run": setup_runs.out(run, True)}
+
+
+@router.get("/setup/latest")
+def get_latest_setup(slug: str, acc: ProjectAccess = Depends(access),
+                     db: Session = Depends(get_db)):
+    run = setup_runs.latest(db, slug)
+    return {"run": setup_runs.out(run, acc.is_admin) if run else None}
+
+
+class SetupEnvValue(BaseModel):
+    value: str
+    secret: bool = True
+
+
+class SetupEnvIn(BaseModel):
+    values: dict[str, SetupEnvValue] = Field(min_length=1, max_length=100)
+
+
+@router.post("/setup/{run_id}/env")
+def fill_setup_env(slug: str, run_id: int, body: SetupEnvIn, user: TaigaUser = Depends(admin),
+                   db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
+    """Values the run asked for go to the vault; with none missing any more the
+    run goes on proving."""
+    run = _setup_run(db, slug, run_id)
+    if run.state != "needs_input":
+        raise HTTPException(409, f"the run is {run.state}, not waiting for env values")
+    for name, v in body.values.items():
+        _env_name(name)
+        if problem := vault.value_problem(v.value):
+            raise HTTPException(422, f"{name}: {problem}")
+    try:
+        for name, v in body.values.items():
+            vault.put(db, settings, slug, name, v.value, v.secret, actor(user))
+    except SecretKeyMissing as e:
+        raise _no_secret_key(e) from e
+    record_decision(db, actor(user), "awak_setup", slug,
+                    {"op": "env", "run_id": run.id, "names": sorted(body.values),
+                     "secret": sorted(n for n, v in body.values.items() if v.secret)})
+    rb = setup_runs.proposed(run)
+    missing = (setup_runs.missing_env(rb, setup_runs.vault_names(db, slug),
+                                      (run.proposal or {}).get("env_help") or {})
+               if rb is not None else [])
+    if missing:
+        setup_runs.transition(db, run.id, "needs_input", missing_env=missing)
+    else:
+        setup_runs.transition(db, run.id, "needs_input", state="proving", missing_env=[])
+    db.refresh(run)
+    return {"run": setup_runs.out(run, True)}
+
+
+class SetupApproveIn(BaseModel):
+    # Also switch the project's QA mode (e.g. to browser) with this runbook.
+    qa_mode: Literal["off", "gates", "browser"] | None = None
+
+
+@router.post("/setup/{run_id}/approve")
+def approve_setup(slug: str, run_id: int, body: SetupApproveIn | None = None,
+                  user: TaigaUser = Depends(admin), db: Session = Depends(get_db),
+                  settings: Settings = Depends(get_settings)):
+    """Save the proven runbook as the project's (version +1, approver, time)."""
+    run = _setup_run(db, slug, run_id)
+    if run.state != "ready":
+        raise HTTPException(409, f"only a ready run can be approved (this one is {run.state})")
+    names = {r.name for r in db.query(AwakRepo).filter_by(project_slug=slug)}
+    rb, problems = runbook.validate((run.proposal or {}).get("runbook") or {}, names)
+    if rb is None:
+        raise HTTPException(422, problems)
+    qa_mode = body.qa_mode if body else None
+    p = db.get(AwakProject, slug)
+    if qa_mode is not None:
+        merge_mode = p.merge_mode if p else config_store.DEFAULTS["merge_mode"]
+        why = _qa_mode_blocker(db, settings, slug, merge_mode, qa_mode, rb)
+        if why:
+            raise HTTPException(422, why)
+    if not setup_runs.transition(db, run.id, "ready", state="approved"):
+        raise HTTPException(409, "the run changed meanwhile; reload it")
+    row = runbook.save(db, slug, rb, actor(user))
+    record_decision(db, actor(user), "awak_runbook", slug,
+                    {"version": row.version, "setup_run": run.id})
+    if qa_mode is not None:
+        p = db.get(AwakProject, slug)
+        if p is None:
+            p = AwakProject(slug=slug, **config_store.DEFAULTS)
+            db.add(p)
+        if p.qa_mode != qa_mode:
+            p.qa_mode = qa_mode
+            p.updated_by, p.updated_at = actor(user), config_store.now()
+            db.commit()
+            record_decision(db, actor(user), "awak_settings", slug,
+                            {"changed": {"qa_mode": qa_mode}, "setup_run": run.id})
+        else:
+            db.commit()
+    record_decision(db, actor(user), "awak_setup", slug,
+                    {"op": "approve", "run_id": run.id, "version": row.version,
+                     "qa_mode": qa_mode})
+    db.refresh(run)
+    p = db.get(AwakProject, slug)
+    return {"run": setup_runs.out(run, True), "runbook": runbook.state(db, slug),
+            "qa_mode": p.qa_mode if p else config_store.DEFAULTS["qa_mode"]}
+
+
+@router.post("/setup/{run_id}/cancel")
+def cancel_setup(slug: str, run_id: int, user: TaigaUser = Depends(admin),
+                 db: Session = Depends(get_db), svc=Depends(get_svc)):
+    """Services down first, then the run is cancelled; the checkouts stay."""
+    run = _setup_run(db, slug, run_id)
+    if run.state not in (*setup_runs.ACTIVE, "ready"):
+        raise HTTPException(409, f"the run is already {run.state}")
+    setup_runs.services_down(run, svc)
+    if not setup_runs.transition(db, run.id, (*setup_runs.ACTIVE, "ready"), state="cancelled"):
+        raise HTTPException(409, "the run changed meanwhile; reload it")
+    record_decision(db, actor(user), "awak_setup", slug, {"op": "cancel", "run_id": run.id})
+    db.refresh(run)
+    return {"run": setup_runs.out(run, True)}
+
+
+@router.get("/setup/{run_id}/screenshot")
+def get_setup_screenshot(slug: str, run_id: int, _: TaigaUser = Depends(member),
+                         db: Session = Depends(get_db),
+                         settings: Settings = Depends(get_settings)):
+    """The proof's screenshot: a PNG inside the project's setup folder only."""
+    from .verdict import safe_screenshot
+
+    run = _setup_run(db, slug, run_id)
+    root = setup_runs.contained(settings, slug)
+    path = (safe_screenshot(str(root / run.screenshot), root)
+            if run.screenshot and root is not None else None)
+    if path is None:
+        raise HTTPException(404, "no screenshot")
+    return Response(path.read_bytes(), media_type="image/png",
+                    headers={"Cache-Control": "private, no-store"})
 
 
 def _hosts_in_use(db: Session, slug: str, skip_repo: int | None = None,

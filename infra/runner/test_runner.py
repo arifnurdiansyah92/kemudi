@@ -538,3 +538,110 @@ def test_reap_stops_left_over_process_services(runner, tmp_path):
     assert res["ok"] and res["stopped"] == 1 and proc.poll() is not None
     assert not runner.LIVE
     assert runner.OPS["reap"] is runner.op_reap and runner.OPS["health"] is runner.op_health
+
+
+# --- screenshot (Setup Assistant proof) ---------------------------------------------
+
+SETUP = "demo/setup/web"
+
+
+def _setup_dir(tmp_path):
+    d = tmp_path / "demo" / "setup" / "web"
+    (d / "svc").mkdir(parents=True)
+    (d / "svc" / "index.html").write_text("hello")
+    return d
+
+
+def test_screenshot_starts_services_saves_a_png_and_stops_them(runner, tmp_path, monkeypatch):
+    d = _setup_dir(tmp_path)
+    shots = []
+    monkeypatch.setattr(runner, "_npm_root", lambda: "/npm")
+
+    def fake_run(argv, cwd, timeout, env=None):
+        import urllib.request
+
+        shots.append((argv, cwd, env))
+        with urllib.request.urlopen(env["QA_BASE_URL"] + "/index.html", timeout=5) as r:
+            assert r.read() == b"hello"
+        Path(env["QA_SHOT_OUT"]).write_bytes(b"\x89PNG\r\n\x1a\n")
+        return 0, ""
+
+    monkeypatch.setattr(runner, "run", fake_run)
+    procs = []
+    real_spawn = runner._spawn
+    monkeypatch.setattr(runner, "_spawn", lambda *a: procs.append(real_spawn(*a)) or procs[-1])
+    res = runner.op_screenshot({"path": SETUP, "services": [_service()], "base_service": "web",
+                                "out": "setup/home.png"})
+    assert res["ok"] and res["screenshot"] == ".qa/setup/home.png", res
+    assert (d / ".qa" / "setup" / "home.png").read_bytes().startswith(b"\x89PNG")
+    [(argv, cwd, env)] = shots
+    assert argv == ["node", runner.SHOT_SCRIPT] and cwd == d / ".qa"
+    assert "QA_STATE" not in env and env["NODE_PATH"] == "/npm"
+    [p] = res["processes"]
+    assert p["name"] == "web" and isinstance(p["log"], str)
+    assert len(procs) == 1 and procs[0].poll() is not None
+    assert not runner.LIVE
+
+
+def test_screenshot_logs_in_first_and_passes_the_state(runner, tmp_path, monkeypatch):
+    _setup_dir(tmp_path)
+    envs, calls = [], []
+    _mock_services(runner, monkeypatch, envs)
+
+    def fake_run(argv, cwd, timeout, env=None):
+        calls.append((argv, env))
+        if argv[1] == runner.LOGIN_SCRIPT:
+            Path(env["QA_STATE_OUT"]).write_text("{}")
+        else:
+            assert Path(env["QA_STATE"]).is_file()
+        return 0, ""
+
+    monkeypatch.setattr(runner, "run", fake_run)
+    login = {"path": "/login", "submit": "#go", "fields": [{"selector": "#u", "value": "x"}]}
+    res = runner.op_screenshot({"path": SETUP, "services": [_service()], "base_service": "web",
+                                "out": "setup/home.png", "login": login,
+                                "external": {"api": "http://kemudi-dind:32768"}})
+    assert res["ok"], res
+    assert [c[0][1] for c in calls] == [runner.LOGIN_SCRIPT, runner.SHOT_SCRIPT]
+
+
+def test_screenshot_reports_a_service_that_dies_with_its_log(runner, tmp_path):
+    _setup_dir(tmp_path)
+    svc = _service(argv=["python", "-c", "import sys; print('boom: no config'); sys.exit(3)"])
+    res = runner.op_screenshot({"path": SETUP, "services": [svc], "base_service": "web",
+                                "out": "setup/home.png"})
+    assert "did not start" in res["infra_error"] and "boom: no config" in res["infra_error"]
+    assert res["processes"][0]["name"] == "web"
+
+
+def test_screenshot_login_and_page_failures(runner, tmp_path, monkeypatch):
+    _setup_dir(tmp_path)
+    envs, stopped = [], []
+    _mock_services(runner, monkeypatch, envs)
+    monkeypatch.setattr(runner, "_stop", lambda p: stopped.append(p))
+    monkeypatch.setattr(runner, "run", lambda *a, **k: (1, "login failed: still at /login"))
+    login = {"path": "/login", "submit": "#go", "fields": [{"selector": "#u", "value": "x"}]}
+    body = {"path": SETUP, "services": [_service()], "base_service": "web",
+            "out": "setup/home.png"}
+    res = runner.op_screenshot({**body, "login": login})
+    assert "still at /login" in res["login_error"] and len(stopped) == 1
+    monkeypatch.setattr(runner, "run", lambda *a, **k: (1, "screenshot failed: / answered 500"))
+    res = runner.op_screenshot(body)
+    assert "answered 500" in res["shot_error"] and len(stopped) == 2
+
+
+@pytest.mark.parametrize("change", [
+    {"out": "../x.png"}, {"out": "/abs.png"}, {"out": "setup/home.jpg"}, {"out": "Setup.png"},
+    {"out": ""}, {"base_service": "other"}, {"services": []},
+    {"services": [_service(argv=["bash", "-c", "x"])]},
+    {"external": {"api": "http://evil:1"}},
+    {"login": {"path": "login", "submit": "#go", "fields": [{"selector": "#u", "value": "x"}]}},
+    {"path": "demo/setup/../us-1/web"},
+])
+def test_screenshot_request_is_validated(runner, tmp_path, change):
+    _setup_dir(tmp_path)
+    body = {"path": SETUP, "services": [_service()], "base_service": "web",
+            "out": "setup/home.png", **change}
+    with pytest.raises(ValueError):
+        runner.op_screenshot(body)
+    assert runner.OPS["screenshot"] is runner.op_screenshot

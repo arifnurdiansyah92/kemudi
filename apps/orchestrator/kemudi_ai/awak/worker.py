@@ -33,6 +33,7 @@ from .gitops import GitError, Repo, _force_remove, branch_for
 from .intake import TAG, story_areas
 from .merge import DONE_TAG, HUMAN_TAG, Merger, effective_mode, save_spec
 from .runbook import Runbook
+from .setup import SetupRunner
 from .prompts import RoleScope, out_of_scope, prompt_version, render, render_role
 from .runner import Runner, RunnerError, RunnerRejected
 from .svc import Svc, SvcError, SvcRejected
@@ -192,6 +193,8 @@ class Worker:
                 job.merge_state = "requested"
                 db.commit()
                 record_event(db, job.id, "recovered", {"merge": True})
+        # A setup proof cut off by the crash starts over.
+        SetupRunner(self).recover()
 
     def _sweep_old_workspaces(self) -> None:
         """Delete the pre-stage-1 `<workspace>/awak-us-<n>` folders, once: they
@@ -220,6 +223,8 @@ class Worker:
                 rb = runbook.load(db, j.project_slug)
                 keep |= set(checks.compose_projects(rb, j.project_slug,
                                                     f"us{j.story_ref}").values())
+            # an active setup run's project (`<slug>-setup`) is reused by its proof
+            keep |= SetupRunner(self).keep_projects(db)
             try:
                 res = self.svc.call("svc_sweep", keep=sorted(keep))
                 if res.get("removed"):
@@ -233,7 +238,8 @@ class Worker:
                 log.warning("awak: runner reap failed: %s", e)
 
     def tick(self) -> bool:
-        """Process at most one story. Returns True if it did any work.
+        """Process at most one story (or a requested merge, or one step of a
+        setup run). Returns True if it did any work.
 
         A failure in one project (the bot cannot open it, Taiga refuses...) is
         logged and recorded on that project, and the next project is served.
@@ -253,6 +259,10 @@ class Worker:
             except Exception as e:  # noqa: BLE001 - other projects must still be served
                 self._project_failed(slug, e)
                 continue
+            return True
+        # Then one step of a setup run (Configure automatically): an admin is
+        # watching it, and each step is short compared to a story.
+        if SetupRunner(self).step_next():
             return True
         for slug in slugs:
             try:

@@ -28,7 +28,7 @@ RUN /opt/hermes/.venv/bin/python3 /tmp/install-browsers.py /ms-playwright \
  && chown -R 10000:10000 /ms-playwright /pnpm-store /workspace
 
 COPY --chmod=0755 runner.py /opt/runner/runner.py
-COPY --chmod=0644 playwright.config.cjs login.cjs /opt/runner/
+COPY --chmod=0644 playwright.config.cjs login.cjs screenshot.cjs /opt/runner/
 
 # root, for the uid switch; the workspace and caches stay owned by 10000.
 USER 0:0
