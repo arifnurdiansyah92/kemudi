@@ -9,6 +9,8 @@ import {
   useSaveRunbook,
   type Runbook,
   type RunbookApp,
+  type RunbookLogin,
+  type RunbookOneShot,
   type RunbookService,
   type RunbookState,
 } from '@/lib/kemudi-ai/agent'
@@ -103,6 +105,21 @@ export function RunbookView({
   const apps = Array.isArray(rb.apps) ? rb.apps : []
   const services = Array.isArray(rb.services) ? rb.services : []
   const env = Array.isArray(rb.env) ? rb.env : []
+  const init = Array.isArray(rb.init) ? rb.init : []
+  // "<service>" or "<service>:<service in its compose file>" → the commands
+  // run in that runbook service, labelled with the inner service if named.
+  const oneShots = (
+    name: string,
+    items: (RunbookOneShot | null | undefined)[]
+  ) =>
+    items
+      .filter(
+        (o): o is RunbookOneShot => !!o && o.service.split(':')[0] === name
+      )
+      .map((o) => {
+        const inner = o.service.split(':')[1]
+        return inner ? `${inner}: ${o.command}` : o.command
+      })
 
   return (
     <div className='grid gap-5'>
@@ -137,7 +154,9 @@ export function RunbookView({
             service={s}
             isQa={rb.qa?.service === s.name}
             qaEnv={rb.qa?.service === s.name ? (rb.qa.env ?? []) : []}
-            seed={rb.seed?.service === s.name ? rb.seed.command : null}
+            login={rb.qa?.service === s.name ? (rb.qa.login ?? null) : null}
+            init={oneShots(s.name, init)}
+            seed={oneShots(s.name, [rb.seed])}
           />
         ))}
       </Group>
@@ -273,12 +292,16 @@ function ServiceRow({
   service: s,
   isQa,
   qaEnv,
+  login,
+  init,
   seed,
 }: {
   service: RunbookService
   isQa: boolean
   qaEnv: string[]
-  seed: string | null
+  login: RunbookLogin | null
+  init: string[]
+  seed: string[]
 }) {
   const { t } = useTranslation('agent')
   const envNames = Array.isArray(s.env) ? s.env : Object.keys(s.env ?? {})
@@ -328,8 +351,22 @@ function ServiceRow({
               }),
             ],
           ],
-          [t('runbook.services.seed'), seed ? [seed] : []],
+          [t('runbook.services.init'), init],
+          [t('runbook.services.seed'), seed],
           [t('runbook.apps.env'), envNames],
+          [
+            t('runbook.services.login'),
+            login
+              ? [
+                  login.success_url
+                    ? t('runbook.services.loginTo', {
+                        path: login.path,
+                        to: login.success_url,
+                      })
+                    : login.path,
+                ]
+              : [],
+          ],
           [t('runbook.services.qaEnv'), qaEnv],
         ]}
       />

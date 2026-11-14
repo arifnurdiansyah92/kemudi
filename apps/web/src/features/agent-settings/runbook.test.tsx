@@ -146,6 +146,70 @@ describe('RunbookCard', () => {
     await expect.element(screen.getByText('/ within 120 s')).toBeVisible()
   })
 
+  it('shows compose services with init, seed, run_in and the QA login', async () => {
+    state.runbook = {
+      ...playfast,
+      runbook: {
+        ...playfast.runbook!,
+        apps: [
+          ...playfast.runbook!.apps!,
+          {
+            name: 'api',
+            repo: 'pf-web',
+            dir: 'backend',
+            run_in: 'api:backend',
+            checks: ['python -m pytest -q tests'],
+          },
+        ],
+        services: [
+          {
+            name: 'api',
+            kind: 'compose',
+            repo: 'pf-web',
+            file: 'docker-compose.yml',
+            compose_services: ['postgres', 'redis', 'backend'],
+            expose: 'backend:5000',
+            health: '/api/health',
+            env: ['JWT_SECRET_KEY'],
+          },
+          ...playfast.runbook!.services!,
+        ],
+        init: [
+          { service: 'api:backend', command: 'python scripts/init_qa.py' },
+        ],
+        seed: { service: 'api', command: 'python scripts/seed_campaigns.py' },
+        qa: {
+          service: 'web',
+          env: ['QA_ADMIN_EMAIL'],
+          login: {
+            path: '/login',
+            fields: { 'input[type=email]': '{env.QA_ADMIN_EMAIL}' },
+            submit: 'button[type=submit]',
+            success_url: '/store',
+          },
+        },
+      },
+    }
+    const screen = await render(wrap(<RunbookCard slug='pf' canEdit />))
+    await expect
+      .element(
+        screen.getByText(
+          'pf-web / docker-compose.yml · postgres, redis, backend'
+        )
+      )
+      .toBeVisible()
+    await expect.element(screen.getByText('backend:5000')).toBeVisible()
+    await expect
+      .element(screen.getByText('backend: python scripts/init_qa.py'))
+      .toBeVisible()
+    await expect
+      .element(screen.getByText('python scripts/seed_campaigns.py'))
+      .toBeVisible()
+    await expect.element(screen.getByText('runs in api:backend')).toBeVisible()
+    await expect.element(screen.getByText('QA login')).toBeVisible()
+    await expect.element(screen.getByText('/login → /store')).toBeVisible()
+  })
+
   it('keeps unknown fields when editing', async () => {
     state.runbook = playfast
     const screen = await render(wrap(<RunbookCard slug='pf' canEdit />))

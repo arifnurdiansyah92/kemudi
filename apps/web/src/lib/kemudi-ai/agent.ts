@@ -553,12 +553,35 @@ export type RunbookEnv = {
   [key: string]: unknown
 }
 
+/** `init` / `seed`: a command run once in a compose service's image.
+ * `service` is "<compose service>" or "<compose service>:<service in its file>". */
+export type RunbookOneShot = {
+  service: string
+  command: string
+  env?: string[]
+  timeout?: number
+}
+
+export type RunbookLogin = {
+  path: string
+  /** CSS selector → value; `{env.NAME}` names a vault value. */
+  fields: Record<string, string>
+  submit: string
+  success_url?: string
+}
+
 export type Runbook = {
   apps?: RunbookApp[]
   services?: RunbookService[]
   env?: RunbookEnv[]
-  seed?: { service: string; command: string } | null
-  qa?: { service: string; env?: string[] } | null
+  init?: RunbookOneShot[]
+  seed?: RunbookOneShot | null
+  qa?: {
+    service: string
+    env?: string[]
+    routes?: string[]
+    login?: RunbookLogin | null
+  } | null
   [key: string]: unknown
 }
 

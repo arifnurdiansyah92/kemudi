@@ -325,7 +325,10 @@
       "expose": "Expose",
       "health": "Health",
       "healthWithin": "{{path}} within {{seconds}} s",
+      "init": "Init",
       "seed": "Seed",
+      "login": "QA login",
+      "loginTo": "{{path}} → {{to}}",
       "qaEnv": "QA env"
     },
     "env": {
