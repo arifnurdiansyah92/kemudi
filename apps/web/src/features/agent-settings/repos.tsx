@@ -11,6 +11,8 @@ import {
   useDeleteRepo,
   useGenerateRepoKey,
   useSaveRepo,
+  commandFields,
+  type DetectedApp,
   type Repo,
   type RepoCheck,
 } from '@/lib/kemudi-ai/agent'
@@ -361,6 +363,7 @@ function CheckResult({
           {t('repos.checkAccess.detected', { fields: detected.join(', ') })}
         </p>
       )}
+      {!!result.apps?.length && <DetectedApps apps={result.apps} />}
       {result.checked_at && (
         <p className='text-xs text-muted-foreground'>
           {t('machine.check.checkedAt', {
@@ -369,5 +372,61 @@ function CheckResult({
         </p>
       )}
     </div>
+  )
+}
+
+/** The apps Check access found in the repo and its subfolders. */
+function DetectedApps({ apps }: { apps: DetectedApp[] }) {
+  const { t } = useTranslation('agent')
+  return (
+    <section className='grid gap-2'>
+      <h4 className='text-sm font-medium'>
+        {t('repos.checkAccess.apps.title', { count: apps.length })}
+      </h4>
+      <ul className='divide-y rounded-lg border text-sm'>
+        {apps.map((app) => {
+          const commands = commandFields.filter((k) => app.commands?.[k])
+          return (
+            <li key={app.dir} className='grid gap-2 px-3 py-2.5'>
+              <div className='flex flex-wrap items-baseline gap-x-3 gap-y-1'>
+                <code className='font-mono text-xs font-medium'>
+                  {app.dir || t('repos.checkAccess.apps.root')}
+                </code>
+                {app.kind && (
+                  <Badge variant='secondary' className='font-normal'>
+                    {app.kind}
+                  </Badge>
+                )}
+              </div>
+              {commands.length > 0 ? (
+                <dl className='grid gap-x-4 gap-y-1 text-xs sm:grid-cols-[6rem_minmax(0,1fr)]'>
+                  {commands.map((k) => (
+                    <div key={k} className='contents'>
+                      <dt className='text-muted-foreground'>
+                        {t(`repos.checkAccess.apps.${k}`)}
+                      </dt>
+                      <dd className='grid min-w-0 gap-0.5'>
+                        {app.commands[k]!.split('\n').map((line, i) => (
+                          <code key={i} className='font-mono break-all'>
+                            {line}
+                          </code>
+                        ))}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : (
+                <p className='text-xs text-muted-foreground'>
+                  {t('repos.checkAccess.apps.noCommands')}
+                </p>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+      <p className='text-xs text-muted-foreground'>
+        {t('repos.checkAccess.apps.hint')}
+      </p>
+    </section>
   )
 }

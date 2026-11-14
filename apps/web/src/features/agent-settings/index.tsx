@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
+  agentError,
   settingsBody,
   useAgentJobs,
   useAgentSettings,
@@ -24,9 +25,10 @@ import { BotAccessNotice, LastError } from './bot-access'
 import { Jobs } from './jobs'
 import { ProjectLlmSection } from './llm-connection'
 import { Machine } from './machine'
-import { DeployCommand, MergePolicy } from './merge-policy'
+import { DeployCommand, MergePolicy, QaModeControl } from './merge-policy'
 import { Repos } from './repos'
 import { Roles } from './roles'
+import { RunbookCard } from './runbook'
 
 /** Project settings → Agent: how Awak works on this project. */
 export function AgentSettingsPage() {
@@ -74,6 +76,12 @@ export function AgentSettingsPage() {
         ) : (
           <Repos slug={slug} repos={repos.data ?? []} canEdit={canEdit} />
         )}
+      </SettingsSection>
+      <SettingsSection
+        title={t('runbook.title')}
+        description={t('runbook.description')}
+      >
+        <RunbookCard slug={slug} canEdit={canEdit} />
       </SettingsSection>
       <SettingsSection
         title={t('roles.title')}
@@ -178,8 +186,23 @@ function SettingsBlocks({
         description={t('merge.description', { branch })}
       >
         <div className='grid gap-6'>
+          <QaModeControl
+            value={settings.qa_mode}
+            mergeMode={settings.merge_mode}
+            canEdit={canEdit}
+            pending={
+              save.isPending && save.variables?.qa_mode !== settings.qa_mode
+            }
+            error={
+              save.isError && save.variables?.qa_mode !== settings.qa_mode
+                ? agentError(save.error)
+                : null
+            }
+            onChange={(qa_mode) => put({ qa_mode }, t('merge.qa.saved'))}
+          />
           <MergePolicy
             value={settings.merge_mode}
+            qaMode={settings.qa_mode}
             branch={branch}
             canEdit={canEdit}
             pending={

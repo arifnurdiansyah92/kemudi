@@ -23,7 +23,8 @@
   },
   "merge": {
     "title": "Kebijakan merge",
-    "description": "Apa yang terjadi setelah story lolos QA di branch-nya. Jika ada yang gagal, {{branch}} tidak disentuh dan story diberi tag needs-human.",
+    "description": "Apa yang terjadi setelah Awak menyelesaikan story di branch-nya. Jika ada yang gagal, {{branch}} tidak disentuh dan story diberi tag needs-human.",
+    "label": "Merge ke {{branch}}",
     "anyBranch": "branch bawaan",
     "default": "Bawaan",
     "saved": "Kebijakan merge disimpan",
@@ -38,7 +39,8 @@
       },
       "auto": {
         "label": "Otomatis",
-        "risk": "Melakukan merge ke {{branch}} dan menjalankan perintah deploy tanpa pemeriksaan manusia, segera setelah pemeriksaan dan QA lolos pada commit yang sama. Untuk proyek kecil atau proyek uji coba."
+        "risk": "Melakukan merge ke {{branch}} dan menjalankan perintah deploy tanpa pemeriksaan manusia, segera setelah pemeriksaan dan QA lolos pada commit yang sama. Untuk proyek kecil atau proyek uji coba.",
+        "needsBrowser": "Memerlukan QA Browser. Kemudi hanya melakukan merge otomatis untuk kode yang sudah dijalankan dan diperiksa di browser."
       }
     },
     "confirm": {
@@ -53,6 +55,25 @@
       "saved": "Perintah deploy disimpan",
       "set": "Perintah deploy sudah diatur. Hanya admin proyek yang dapat melihatnya.",
       "notSet": "Belum ada perintah deploy; merge tidak menjalankan deploy."
+    },
+    "qa": {
+      "label": "QA sebelum story Done",
+      "saved": "Mode QA disimpan",
+      "lockedByAuto": "Merge otomatis memerlukan Browser. Pilih Persetujuan atau Manual di bawah untuk menurunkan QA.",
+      "modes": {
+        "off": {
+          "label": "Mati",
+          "help": "Tanpa pemeriksaan. Commit di-push dan story masuk Done untuk ditinjau."
+        },
+        "gates": {
+          "label": "Hanya gate",
+          "help": "Menjalankan perintah instal, lint, tipe, dan tes dari repo. Tidak ada yang dibuka di browser."
+        },
+        "browser": {
+          "label": "Browser",
+          "help": "Gate, lalu Awak menjalankan aplikasi dan memeriksa setiap kriteria penerimaan di browser."
+        }
+      }
     }
   },
   "llm": {
@@ -218,7 +239,18 @@
       "branch": "Branch {{branch}} ditemukan",
       "yes": "Ya",
       "no": "Tidak",
-      "detected": "Perintah yang ditemukan di repo: {{fields}}. Kolom yang kosong telah diisi darinya."
+      "detected": "Perintah yang ditemukan di repo: {{fields}}. Kolom yang kosong telah diisi darinya.",
+      "apps": {
+        "title_one": "{{count}} aplikasi ditemukan",
+        "title_other": "{{count}} aplikasi ditemukan",
+        "root": "Root repositori",
+        "install_cmd": "Instal",
+        "check_cmd": "Pemeriksaan",
+        "build_cmd": "Build",
+        "run_cmd": "Jalankan",
+        "noCommands": "Tidak ada perintah yang ditemukan.",
+        "hint": "Runbook dapat menjalankan setiap aplikasi ini dengan perintahnya sendiri."
+      }
     },
     "form": {
       "name": "Nama",
@@ -250,6 +282,63 @@
       "api": "API",
       "mobile": "Mobile",
       "other": "Lainnya"
+    }
+  },
+  "runbook": {
+    "title": "Runbook",
+    "description": "Cara Awak menginstal, memeriksa, menjalankan, dan menguji QA aplikasi proyek ini. Menyimpan runbook berarti menyetujuinya.",
+    "unavailable": "Runbook tidak dapat dijangkau. Pastikan orchestrator Kemudi AI berjalan.",
+    "empty": {
+      "title": "Belum ada runbook",
+      "body": "Tanpa runbook, Awak menjalankan perintah milik setiap repositori, dan QA Browser hanya tersedia untuk repositori Kemudi sendiri.",
+      "admin": "Konfigurasi otomatis hadir di pembaruan berikutnya. Sementara itu, Anda dapat menempelkan runbook dalam format JSON.",
+      "member": "Konfigurasi otomatis hadir di pembaruan berikutnya. Sementara itu, admin proyek dapat menempelkan runbook."
+    },
+    "paste": "Tempel JSON runbook",
+    "editJson": "Ubah JSON",
+    "approved": "Versi {{version}} · disetujui oleh {{who}}, {{when}}",
+    "version": "Versi {{version}}",
+    "none": "Tidak ada",
+    "saved": "Runbook disimpan sebagai versi {{version}}",
+    "apps": {
+      "title": "Aplikasi",
+      "root": "(root)",
+      "runIn": "berjalan di {{target}}",
+      "install": "Instal",
+      "checks": "Pemeriksaan",
+      "build": "Build",
+      "env": "Env",
+      "noCommands": "Tidak ada perintah."
+    },
+    "services": {
+      "title": "Layanan",
+      "kinds": {
+        "process": "Proses",
+        "compose": "Compose"
+      },
+      "qaTarget": "Dibuka oleh QA",
+      "ofApp": "aplikasi {{app}}",
+      "command": "Perintah",
+      "expose": "Expose",
+      "health": "Health",
+      "healthWithin": "{{path}} dalam {{seconds}} dtk",
+      "seed": "Seed",
+      "qaEnv": "Env QA"
+    },
+    "env": {
+      "title": "Variabel lingkungan",
+      "secret": "rahasia",
+      "required": "wajib"
+    },
+    "editor": {
+      "title": "Ubah JSON runbook",
+      "description": "Kemudi memeriksa setiap aplikasi, layanan, dan perintah sebelum menyimpan. Dengan menyimpan, Anda menyetujui versi ini.",
+      "label": "JSON runbook",
+      "invalidJson": "JSON tidak valid: {{message}}",
+      "notObject": "Runbook harus berupa objek JSON yang diawali {.",
+      "rejected_one": "Tidak disimpan: {{count}} masalah",
+      "rejected_other": "Tidak disimpan: {{count}} masalah",
+      "save": "Simpan dan setujui"
     }
   },
   "roles": {

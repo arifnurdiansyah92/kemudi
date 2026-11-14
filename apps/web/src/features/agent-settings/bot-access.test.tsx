@@ -14,6 +14,7 @@ vi.mock('@/lib/kemudi-ai/agent', async (importOriginal) => ({
 const settings: AgentSettings = {
   enabled: true,
   merge_mode: 'approve',
+  qa_mode: 'gates',
   deploy_command: '',
   deploy_command_set: false,
   executor: 'local',

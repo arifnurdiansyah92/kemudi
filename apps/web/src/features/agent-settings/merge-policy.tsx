@@ -1,10 +1,13 @@
 import { useState } from 'react'
+import * as RadioGroupPrimitive from '@radix-ui/react-radio-group'
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
   mergeModes,
+  qaModes,
   type Executor,
   type MergeMode,
+  type QaMode,
 } from '@/lib/kemudi-ai/agent'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -13,17 +16,111 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 
 /**
+ * Segmented Off / Gates only / Browser, with every mode's one line under it
+ * so they can be compared without saving. Lowering QA below Browser is
+ * locked while merge is Auto (the server refuses it too).
+ */
+export function QaModeControl({
+  value,
+  mergeMode,
+  canEdit,
+  pending,
+  error,
+  onChange,
+}: {
+  value: QaMode
+  mergeMode: MergeMode
+  canEdit: boolean
+  pending?: boolean
+  /** The server's refusal of the last change, e.g. Browser without a runbook. */
+  error?: string | null
+  onChange: (mode: QaMode) => void
+}) {
+  const { t } = useTranslation('agent')
+  const lockedByAuto = mergeMode === 'auto' && value === 'browser'
+
+  return (
+    <div className='grid gap-2.5'>
+      <div className='flex items-center gap-2'>
+        <span id='qa-mode-label' className='text-sm font-medium'>
+          {t('merge.qa.label')}
+        </span>
+        {pending && (
+          <Loader2 className='size-3.5 animate-spin text-muted-foreground' />
+        )}
+      </div>
+      <RadioGroupPrimitive.Root
+        value={value}
+        disabled={!canEdit || pending}
+        aria-labelledby='qa-mode-label'
+        aria-describedby='qa-mode-help'
+        orientation='horizontal'
+        onValueChange={(v) => {
+          if (v !== value) onChange(v as QaMode)
+        }}
+        className='grid grid-cols-3 gap-0.5 rounded-lg bg-muted p-0.5 sm:inline-grid sm:w-fit'
+      >
+        {qaModes.map((mode) => (
+          <RadioGroupPrimitive.Item
+            key={mode}
+            value={mode}
+            disabled={lockedByAuto && mode !== 'browser'}
+            className={cn(
+              'rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors outline-none',
+              'hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50',
+              'data-[state=checked]:bg-background data-[state=checked]:text-foreground data-[state=checked]:shadow-xs',
+              'disabled:cursor-not-allowed disabled:hover:text-muted-foreground',
+              'data-[state=unchecked]:disabled:opacity-50'
+            )}
+          >
+            {t(`merge.qa.modes.${mode}.label`)}
+          </RadioGroupPrimitive.Item>
+        ))}
+      </RadioGroupPrimitive.Root>
+      <dl id='qa-mode-help' className='grid gap-1 text-sm'>
+        {qaModes.map((mode) => (
+          <div
+            key={mode}
+            className={cn(
+              'grid gap-x-3 sm:grid-cols-[7.5rem_minmax(0,1fr)]',
+              mode === value ? 'text-foreground' : 'text-muted-foreground'
+            )}
+          >
+            <dt className={cn(mode === value && 'font-medium')}>
+              {t(`merge.qa.modes.${mode}.label`)}
+            </dt>
+            <dd>{t(`merge.qa.modes.${mode}.help`)}</dd>
+          </div>
+        ))}
+      </dl>
+      {lockedByAuto && canEdit && (
+        <p className='text-xs text-muted-foreground'>
+          {t('merge.qa.lockedByAuto')}
+        </p>
+      )}
+      {error && (
+        <p role='alert' className='text-sm text-destructive'>
+          {error}
+        </p>
+      )}
+    </div>
+  )
+}
+
+/**
  * Three radio cards, each with the risk it carries. `auto` asks first: it
- * merges and deploys with nobody looking.
+ * merges and deploys with nobody looking, so it also needs Browser QA.
  */
 export function MergePolicy({
   value,
+  qaMode,
   branch,
   canEdit,
   pending,
   onChange,
 }: {
   value: MergeMode
+  qaMode: QaMode
   /** The default branch name(s) to name in the copy. */
   branch: string
   canEdit: boolean
@@ -32,13 +129,18 @@ export function MergePolicy({
 }) {
   const { t } = useTranslation('agent')
   const [confirmAuto, setConfirmAuto] = useState(false)
+  // Already Auto (set before QA modes existed) stays selectable.
+  const autoLocked = qaMode !== 'browser' && value !== 'auto'
 
   return (
-    <>
+    <div className='grid gap-2.5'>
+      <span id='merge-mode-label' className='text-sm font-medium'>
+        {t('merge.label', { branch })}
+      </span>
       <RadioGroup
         value={value}
         disabled={!canEdit || pending}
-        aria-label={t('merge.title')}
+        aria-labelledby='merge-mode-label'
         onValueChange={(v) => {
           const mode = v as MergeMode
           if (mode === value) return
@@ -47,39 +149,53 @@ export function MergePolicy({
         }}
         className='gap-2'
       >
-        {mergeModes.map((mode) => (
-          <label
-            key={mode}
-            htmlFor={`merge-${mode}`}
-            className={cn(
-              'flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 transition-colors hover:bg-accent/40',
-              'has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-accent/40',
-              'has-[:disabled]:cursor-default has-[:disabled]:hover:bg-transparent'
-            )}
-          >
-            <RadioGroupItem
-              id={`merge-${mode}`}
-              value={mode}
-              className='mt-0.5'
-            />
-            <span className='grid gap-0.5'>
-              <span className='flex flex-wrap items-center gap-2 text-sm font-medium'>
-                {t(`merge.modes.${mode}.label`)}
-                {mode === 'approve' && (
-                  <Badge variant='outline' className='font-normal'>
-                    {t('merge.default')}
-                  </Badge>
-                )}
-                {pending && mode === value && (
-                  <Loader2 className='size-3.5 animate-spin text-muted-foreground' />
+        {mergeModes.map((mode) => {
+          const locked = mode === 'auto' && autoLocked
+          return (
+            <label
+              key={mode}
+              htmlFor={`merge-${mode}`}
+              className={cn(
+                'flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 transition-colors hover:bg-accent/40',
+                'has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-accent/40',
+                'has-[:disabled]:cursor-default has-[:disabled]:hover:bg-transparent',
+                locked && 'border-dashed'
+              )}
+            >
+              <RadioGroupItem
+                id={`merge-${mode}`}
+                value={mode}
+                disabled={locked}
+                aria-describedby={locked ? 'merge-auto-locked' : undefined}
+                className='mt-0.5'
+              />
+              <span className='grid gap-0.5'>
+                <span className='flex flex-wrap items-center gap-2 text-sm font-medium'>
+                  {t(`merge.modes.${mode}.label`)}
+                  {mode === 'approve' && (
+                    <Badge variant='outline' className='font-normal'>
+                      {t('merge.default')}
+                    </Badge>
+                  )}
+                  {pending && mode === value && (
+                    <Loader2 className='size-3.5 animate-spin text-muted-foreground' />
+                  )}
+                </span>
+                <span className='text-sm text-muted-foreground'>
+                  {t(`merge.modes.${mode}.risk`, { branch })}
+                </span>
+                {locked && (
+                  <span
+                    id='merge-auto-locked'
+                    className='mt-1 text-xs font-medium text-foreground'
+                  >
+                    {t('merge.modes.auto.needsBrowser')}
+                  </span>
                 )}
               </span>
-              <span className='text-sm text-muted-foreground'>
-                {t(`merge.modes.${mode}.risk`, { branch })}
-              </span>
-            </span>
-          </label>
-        ))}
+            </label>
+          )
+        })}
       </RadioGroup>
       <ConfirmDialog
         open={confirmAuto}
@@ -93,7 +209,7 @@ export function MergePolicy({
           onChange('auto')
         }}
       />
-    </>
+    </div>
   )
 }
 
