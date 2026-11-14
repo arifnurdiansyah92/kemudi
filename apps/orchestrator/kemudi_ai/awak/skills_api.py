@@ -21,7 +21,9 @@ from ..auth import TaigaUser, current_user
 from ..config import Settings, get_settings
 from ..deps import actor, get_db, is_kemudi_admin, kemudi_admin
 from ..store import AwakSkill, AwakSkillVersion, record_decision
-from . import skills
+from . import marketplace, skills
+from .fetched import FetchError
+from .runner import HttpRunner, Runner
 
 router = APIRouter(prefix="/skills")
 
@@ -62,6 +64,14 @@ def _detail(db: Session, sk: AwakSkill) -> dict:
     out.update(origin=sk.origin or {}, created_by=sk.created_by, created_at=sk.created_at)
     versions = (db.query(AwakSkillVersion).filter_by(slug=sk.slug)
                 .order_by(AwakSkillVersion.version.desc()).all())
+    if sk.source == "marketplace":
+        out["pending"] = marketplace.pending_detail(db, sk)
+        o = sk.origin or {}
+        if o.get("repo") and o.get("sha"):
+            out["origin_url"] = (f"https://github.com/{o['repo']}/tree/{o['sha']}/"
+                                 f"{o.get('path', '')}").rstrip("/")
+    else:
+        out["pending"] = []
     out["versions"] = [{"version": v.version, "sha256": v.sha256, "size": v.size,
                         "files": len(v.files or {}), "status": v.status,
                         "scan_level": _scan_level(v), "created_by": v.created_by,
@@ -83,6 +93,11 @@ def _detail(db: Session, sk: AwakSkill) -> dict:
                           if p in LICENSE_FILES],
     }
     return out
+
+
+def get_fetch_runner(settings: Settings = Depends(get_settings)) -> Runner:
+    """kemudi-runner, for `fetch_repo` (marketplace fetches)."""
+    return HttpRunner(settings.runner_url, settings.runner_key)
 
 
 def _get(db: Session, slug: str) -> AwakSkill:
@@ -118,19 +133,19 @@ def _conflict(db: Session, slug: str) -> HTTPException:
 
 
 def _findings_rise(db: Session, sk: AwakSkill, cur: AwakSkillVersion | None,
-                   c: skills.Checked) -> dict | None:
+                   worst: str) -> dict | None:
     """What a new version of `sk` would bring to the roles that run it: set
     when the skill is enabled, listed by a role, and the new version's worst
     scan level is above the current one's."""
     if not sk.enabled:
         return None
     before = _scan_level(cur)
-    if skills.severity_rank(c.worst) <= skills.severity_rank(before):
+    if skills.severity_rank(worst) <= skills.severity_rank(before):
         return None
     used = skills.used_by(db).get(sk.slug, [])
     if not used:
         return None
-    return {"from": before, "to": c.worst, "used_by": used}
+    return {"from": before, "to": worst, "used_by": used}
 
 
 def _add_version(db: Session, sk: AwakSkill, files: dict[str, bytes], c: skills.Checked,
@@ -145,7 +160,7 @@ def _add_version(db: Session, sk: AwakSkill, files: dict[str, bytes], c: skills.
     cur = _current(db, sk)
     if cur is not None and cur.sha256 == c.sha:
         return None, False, None
-    rise = _findings_rise(db, sk, cur, c)
+    rise = _findings_rise(db, sk, cur, c.worst)
     if rise is not None and not accept_findings:
         n = len(rise["used_by"])
         raise _problems(
@@ -474,3 +489,129 @@ def delete_skill(slug: str, user: TaigaUser = Depends(kemudi_admin),
     db.commit()
     _record(db, user, slug, "delete", source=sk.source, versions=len(versions))
     return {"deleted": slug}
+
+
+# --- marketplace updates ------------------------------------------------------------------
+
+@router.post("/{slug}/check-update")
+def check_update(slug: str, user: TaigaUser = Depends(kemudi_admin),
+                 settings: Settings = Depends(get_settings),
+                 runner: Runner = Depends(get_fetch_runner), db: Session = Depends(get_db)):
+    """A marketplace skill: fetch its origin at the followed ref; a changed
+    folder becomes a `pending` version (never used by runs) to approve or
+    reject. `result.status`: up_to_date | pending | rejected | invalid | missing."""
+    sk = _get(db, slug)
+    if sk.source != "marketplace":
+        raise _problems(409, "only marketplace skills have an upstream to check", [],
+                        code="not_marketplace", source=sk.source)
+    try:
+        res = marketplace.check_update(db, runner, settings, sk, actor(user))
+    except marketplace.MarketplaceError as e:
+        raise _problems(422, str(e), [str(e)]) from e
+    except FetchError as e:
+        db.rollback()
+        _record(db, user, slug, "check_update_failed", error=str(e)[:300])
+        raise _problems(502, "the upstream repository could not be fetched", [str(e)],
+                        code="fetch_failed") from e
+    except IntegrityError as e:
+        raise _conflict(db, slug) from e
+    if res["status"] == "pending" and res.get("new"):
+        v = (db.query(AwakSkillVersion)
+             .filter_by(slug=slug, version=res["version"]).one())
+        _record(db, user, slug, "update_pending", upstream_sha=res["sha"],
+                **_version_detail(v))
+    return {"result": res, "skill": _detail(db, sk)}
+
+
+def _pending(db: Session, slug: str, version: int,
+             sha256: str) -> tuple[AwakSkill, AwakSkillVersion]:
+    """The pending version the admin reviewed: `sha256` (its tree, as the
+    review showed it) must still match, else 409 `stale`."""
+    sk = _get(db, slug)
+    v = db.query(AwakSkillVersion).filter_by(slug=slug, version=version).one_or_none()
+    if v is None:
+        raise HTTPException(404, "no such version")
+    if v.status != "pending":
+        raise _problems(409, f"version {version} is not pending", [], code="not_pending")
+    if v.sha256 != sha256:
+        raise _problems(409, f"version {version} is not the one you reviewed (it was "
+                        "replaced by a newer upstream change); review it again", [],
+                        code="stale", sha256=v.sha256)
+    return sk, v
+
+
+# The reviewed version's tree (`pending[].sha256` of the skill detail).
+SHA256_QUERY = Query(..., min_length=64, max_length=64, pattern="^[0-9a-f]{64}$")
+
+
+@router.post("/{slug}/versions/{version}/approve")
+def approve_version(slug: str, version: int, sha256: str = SHA256_QUERY,
+                    accept_findings: bool = Query(False),
+                    user: TaigaUser = Depends(kemudi_admin), db: Session = Depends(get_db)):
+    """A pending version becomes current (every role using the skill gets it
+    on its next run). `sha256` must be the reviewed version's (409 `stale`
+    otherwise). A scan worse than the current version's on a skill in use is
+    refused (409 `findings_rise`) unless `accept_findings`; a high finding
+    disables the skill."""
+    sk, v = _pending(db, slug, version, sha256)
+    cur = _current(db, sk)
+    worst = _scan_level(v)
+    findings = (v.scan or {}).get("findings", [])
+    rise = _findings_rise(db, sk, cur, worst)
+    if rise is not None and not accept_findings:
+        n = len(rise["used_by"])
+        raise _problems(
+            409, f"this version's scan ({rise['to']}) is worse than the current version's "
+            f"({rise['from'] or 'clean'}) and {n} role{'s' if n != 1 else ''} will get it on "
+            "the next run; send accept_findings=true to use it anyway",
+            [f"{f['path']}:{f['line']} {f['rule']}" for f in findings],
+            code="findings_rise", slug=slug, worst=rise["to"], previous=rise["from"],
+            findings=findings, used_by=rise["used_by"])
+    try:
+        meta = skills.validate(slug, skills.decode_files(v.files or {}))
+    except skills.SkillError as e:
+        raise _problems(422, "the pending version is not valid", e.problems) from e
+    vo = v.origin or {}
+    v.status = "active"
+    sk.current_version = v.version
+    sk.description = meta.description
+    sk.license = str(vo.get("license") or meta.license or "")[:100]
+    origin = dict(sk.origin or {})
+    if vo.get("sha"):
+        origin["sha"] = vo["sha"]
+    # where the version came from: the marketplace entry may have moved the
+    # plugin to another repo or pin since the install
+    for k in ("repo", "ref"):
+        if isinstance(vo.get(k), str) and (k == "ref" or vo[k]):
+            origin[k] = vo[k]
+    origin.pop("rejected", None)  # the old single-sha form
+    origin["rejected_shas"] = [s for s in marketplace.rejected_shas(origin) if s != v.sha256]
+    sk.origin = origin
+    sk.updated_at = datetime.now(UTC)
+    disabled = sk.enabled and worst == "high"
+    if disabled:
+        sk.enabled = False
+    db.commit()
+    _record(db, user, slug, "approve_version", upstream_sha=vo.get("sha", ""),
+            disabled=disabled, **_version_detail(v), **_rise_detail(rise))
+    out = _detail(db, sk)
+    out["disabled_now"] = disabled
+    return out
+
+
+@router.post("/{slug}/versions/{version}/reject")
+def reject_version(slug: str, version: int, sha256: str = SHA256_QUERY,
+                   user: TaigaUser = Depends(kemudi_admin), db: Session = Depends(get_db)):
+    """Deletes a pending version; the same upstream tree is not proposed again
+    (the last REJECTED_KEPT rejected trees are remembered). `sha256` as for
+    approve."""
+    sk, v = _pending(db, slug, version, sha256)
+    detail = _version_detail(v)
+    upstream = (v.origin or {}).get("sha", "")
+    origin = dict(sk.origin or {})
+    marketplace.remember_rejected(origin, v.sha256)
+    sk.origin = origin
+    db.delete(v)
+    db.commit()
+    _record(db, user, slug, "reject_version", upstream_sha=upstream, **detail)
+    return _detail(db, sk)

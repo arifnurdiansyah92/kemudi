@@ -201,6 +201,8 @@ services:
       # kemudi-awak (docs/superpowers/specs/2026-11-14-awak-skills-design.md).
       - kemudi-awak-skills:/opt/skills
       - kemudi-awak-profiles:/opt/awak-profiles
+      # Repos kemudi-runner fetched for the skill marketplace (read only here).
+      - kemudi-skills-fetch:/var/lib/kemudi-ai/skills-fetch:ro
     # kemudi-svcnet: the only way to kemudi-svc (and so to the sandboxed Docker).
     networks: [default, kemudi-sandbox, kemudi-svcnet]
     restart: unless-stopped
@@ -272,6 +274,10 @@ services:
     volumes:
       - kemudi-awak-workspace:/workspace
       - kemudi-pnpm-store:/pnpm-store
+      # Marketplace fetches (uid 10001; fetch.py): never the workspace, which
+      # project code and Hermes write. Only this service and the orchestrator
+      # (read-only) mount it.
+      - kemudi-skills-fetch:/skills-fetch
     # kemudi-dindnet: published ports of compose services (http://kemudi-dind:<port>).
     networks: [kemudi-sandbox, kemudi-egress, kemudi-dindnet]
     # The server runs as root only to drop each child to uid 10000
@@ -376,6 +382,7 @@ volumes:
   kemudi-awak-workspace:
   kemudi-awak-skills:
   kemudi-awak-profiles:
+  kemudi-skills-fetch:
   kemudi-pnpm-store:
   kemudi-dind-sock:
   kemudi-dind-data:

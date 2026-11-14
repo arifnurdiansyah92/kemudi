@@ -367,6 +367,10 @@ class AwakSkill(Base):
     license: Mapped[str] = mapped_column(String(100), default="")
     enabled: Mapped[bool] = mapped_column(default=True)
     current_version: Mapped[int] = mapped_column(default=0)
+    # The highest version number ever given (skills.next_version): a deleted
+    # pending version's number is never reused, so an approve can never
+    # apply content other than the one reviewed under that number.
+    last_version: Mapped[int] = mapped_column(default=0)
     # Where it came from: {repo, commit, path, ...} or {uploaded_by}.
     origin: Mapped[dict[str, Any]] = mapped_column(default=dict)
     created_by: Mapped[str] = mapped_column(String(200), default="")
@@ -388,6 +392,29 @@ class AwakSkillVersion(Base):
     # {"findings": [{rule, severity, path, line, excerpt}], "warnings": [...]}
     scan: Mapped[dict[str, Any]] = mapped_column(default=dict)
     status: Mapped[str] = mapped_column(String(10), default="active")  # active|pending
+    created_by: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(default=now)
+    # A marketplace version's source: {repo, sha, path, license}; NULL in rows
+    # from before the column.
+    origin: Mapped[dict[str, Any] | None] = mapped_column(default=dict)
+
+
+class AwakSkillMarketplace(Base):
+    """A registered skill marketplace: a GitHub repo with
+    .claude-plugin/marketplace.json (or a skills/ folder). kemudi_ai/awak/marketplace.py.
+    `listing` caches the last refresh (plugins -> skills, at `last_sha`)."""
+
+    __tablename__ = "awak_skill_marketplaces"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), default="")
+    owner: Mapped[str] = mapped_column(String(100))
+    repo: Mapped[str] = mapped_column(String(100))
+    ref: Mapped[str] = mapped_column(String(200), default="")  # "" = default branch
+    builtin: Mapped[bool] = mapped_column(default=False)
+    last_sha: Mapped[str] = mapped_column(String(40), default="")
+    last_fetched_at: Mapped[datetime | None] = mapped_column(default=None)
+    error: Mapped[str] = mapped_column(Text, default="")
+    listing: Mapped[dict[str, Any]] = mapped_column(default=dict)
     created_by: Mapped[str] = mapped_column(String(200), default="")
     created_at: Mapped[datetime] = mapped_column(default=now)
 
@@ -506,7 +533,8 @@ def _set_qa_modes(engine, host_git: str | None) -> None:
 # Tables that existed before a column was added to them. `create_all` never
 # alters an existing table, so missing columns are added here.
 _MIGRATED_TABLES = ("awak_jobs", "awak_projects", "awak_roles", "ai_calls",
-                    "awak_llm_aliases", "awak_setup_runs")
+                    "awak_llm_aliases", "awak_setup_runs", "awak_skill_versions",
+                    "awak_skills")
 
 
 def _sql_literal(value: Any) -> str:

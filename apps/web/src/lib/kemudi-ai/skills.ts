@@ -73,8 +73,42 @@ export type SkillVersion = {
 
 export type SkillFileEntry = { path: string; size: number; binary: boolean }
 
+/** Where a marketplace skill came from, and its last update check. */
+export type SkillOrigin = {
+  marketplace_id?: number
+  marketplace?: string
+  repo?: string
+  ref?: string
+  sha?: string
+  plugin?: string
+  path?: string
+  checked_at?: string
+  checked_sha?: string
+  check_status?: UpdateStatus
+  [key: string]: unknown
+}
+
+export type FileDiff = { added: string[]; removed: string[]; changed: string[] }
+
+/** A marketplace update awaiting approval (never used by runs). */
+export type PendingVersion = {
+  version: number
+  sha256: string
+  origin: { repo?: string; sha?: string; path?: string; license?: string }
+  diff: FileDiff
+  findings: Finding[]
+  warnings: string[]
+  scan_level: ScanLevel
+  previous_scan_level: ScanLevel
+  created_by: string
+  created_at: string
+}
+
 export type SkillDetail = LibrarySkill & {
-  origin: Record<string, unknown>
+  origin: SkillOrigin
+  /** Marketplace skills: the folder at the pinned commit on GitHub. */
+  origin_url?: string
+  pending?: PendingVersion[]
   created_by: string
   created_at: string
   versions: SkillVersion[]
@@ -339,5 +373,249 @@ export function useCheckDraft(draft: SkillDraft | null) {
     placeholderData: (prev) => prev,
     staleTime: Infinity,
     retry: false,
+  })
+}
+
+// --- marketplaces (/skill-marketplaces) ----------------------------------------
+
+export type UpdateStatus =
+  | 'up_to_date'
+  | 'pending'
+  | 'rejected'
+  | 'invalid'
+  | 'missing'
+
+export type UpdateResult = {
+  status: UpdateStatus
+  sha: string
+  version?: number
+  new?: boolean
+  problems?: string[]
+  message?: string
+}
+
+export type Marketplace = {
+  id: number
+  name: string
+  repo: string
+  ref: string
+  builtin: boolean
+  url: string
+  last_sha: string
+  last_fetched_at: string | null
+  error: string
+  description: string
+  plugin_count: number
+  skill_count: number
+  created_by: string
+  created_at: string
+}
+
+export type MarketplaceSkill = {
+  name: string
+  path: string
+  description: string
+  license: string
+  version: string
+  valid: boolean
+  problems: string[]
+  scan_level: ScanLevel
+  files: number
+  size: number
+  installed: {
+    slug: string
+    source: SkillSource
+    version: number
+    enabled: boolean
+    same_origin: boolean
+    sha: string
+  } | null
+}
+
+export type PluginSource =
+  | { type: 'relative'; path: string }
+  | {
+      type: 'github'
+      repo: string
+      ref: string
+      sha: string
+      resolved_sha?: string
+    }
+  | { type: string; [key: string]: unknown }
+
+export type MarketplacePlugin = {
+  name: string
+  description: string
+  version: string
+  category: string
+  source: PluginSource
+  supported: boolean
+  reason: string
+  skills: MarketplaceSkill[]
+}
+
+export type MarketplaceListing = {
+  marketplace: Marketplace
+  refreshed: boolean
+  owner: string
+  kind: 'marketplace' | 'skills' | ''
+  plugins: MarketplacePlugin[]
+}
+
+const marketsKey = ['kemudi-ai', 'skill-marketplaces'] as const
+const pluginsKey = (id: number) => [...marketsKey, id, 'plugins'] as const
+
+export function useMarketplaces() {
+  return useQuery({
+    queryKey: marketsKey,
+    queryFn: async () =>
+      (
+        await api.get<{ marketplaces: Marketplace[] }>(
+          '/skill-marketplaces',
+          base
+        )
+      ).data.marketplaces,
+  })
+}
+
+export function useMarketplacePlugins(id: number | null) {
+  return useQuery({
+    queryKey: pluginsKey(id ?? 0),
+    enabled: id !== null,
+    queryFn: async () =>
+      (
+        await api.get<MarketplaceListing>(
+          `/skill-marketplaces/${id}/plugins`,
+          base
+        )
+      ).data,
+  })
+}
+
+function useMarketsRefresh() {
+  const qc = useQueryClient()
+  return (id?: number) => {
+    void qc.invalidateQueries({ queryKey: marketsKey, exact: true })
+    if (id !== undefined)
+      void qc.invalidateQueries({ queryKey: pluginsKey(id) })
+  }
+}
+
+/** `repo`: owner/repo, owner/repo@ref or a github.com URL. */
+export function useAddMarketplace() {
+  const refresh = useMarketsRefresh()
+  return useMutation({
+    mutationFn: async (repo: string) =>
+      (await api.post<Marketplace>('/skill-marketplaces', { repo }, base)).data,
+    onSuccess: () => refresh(),
+  })
+}
+
+export function useDeleteMarketplace() {
+  const qc = useQueryClient()
+  const refresh = useMarketsRefresh()
+  return useMutation({
+    mutationFn: async (id: number) =>
+      (await api.delete<{ deleted: number }>(`/skill-marketplaces/${id}`, base))
+        .data,
+    onSuccess: ({ deleted }) => {
+      qc.removeQueries({ queryKey: pluginsKey(deleted) })
+      refresh()
+    },
+  })
+}
+
+/** Fetch the repo again (through kemudi-runner) and cache its listing. A
+ * failure is kept on the marketplace, so the list is refreshed either way. */
+export function useRefreshMarketplace() {
+  const refresh = useMarketsRefresh()
+  return useMutation({
+    mutationFn: async (id: number) =>
+      (
+        await api.post<Marketplace>(
+          `/skill-marketplaces/${id}/refresh`,
+          null,
+          base
+        )
+      ).data,
+    onSettled: (_d, _e, id) => refresh(id),
+  })
+}
+
+export function useInstallSkill() {
+  const refresh = useRefresh()
+  const refreshMarkets = useMarketsRefresh()
+  return useMutation({
+    mutationFn: async ({
+      id,
+      plugin,
+      skill,
+    }: {
+      id: number
+      plugin: string
+      skill: string
+    }) =>
+      (
+        await api.post<SkillDetail>(
+          `/skill-marketplaces/${id}/install`,
+          { plugin, skill },
+          base
+        )
+      ).data,
+    onSuccess: (d, { id }) => {
+      refresh(d)
+      refreshMarkets(id)
+    },
+  })
+}
+
+export function useCheckUpdate() {
+  const refresh = useRefresh()
+  return useMutation({
+    mutationFn: async (slug: string) =>
+      (
+        await api.post<{ result: UpdateResult; skill: SkillDetail }>(
+          `/skills/${slug}/check-update`,
+          null,
+          base
+        )
+      ).data,
+    onSuccess: (r) => refresh(r.skill),
+  })
+}
+
+export function useDecideVersion() {
+  const refresh = useRefresh()
+  return useMutation({
+    mutationFn: async ({
+      slug,
+      version,
+      decision,
+      sha256,
+      acceptFindings = false,
+    }: {
+      slug: string
+      version: number
+      decision: 'approve' | 'reject'
+      /** The reviewed version's tree: the server answers 409 `stale` when the
+       * pending version is no longer that one. */
+      sha256: string
+      /** Approve a version whose scan is worse than the current one's. */
+      acceptFindings?: boolean
+    }) =>
+      (
+        await api.post<SkillDetail & { disabled_now?: boolean }>(
+          `/skills/${slug}/versions/${version}/${decision}`,
+          null,
+          {
+            ...base,
+            params: {
+              sha256,
+              ...(acceptFindings ? { accept_findings: true } : {}),
+            },
+          }
+        )
+      ).data,
+    onSuccess: (d) => refresh(d),
   })
 }

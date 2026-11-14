@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     svc_url: str = "http://kemudi-svc:8810"
     svc_key: str = ""
     workspace_dir: str = "/workspace"
+    # Repos kemudi-runner fetched for the skill marketplace (the
+    # kemudi-skills-fetch volume, read-only here; awak/fetched.py). Fetch
+    # folders belong to skills_fetch_uid, the runner's fetch child.
+    skills_fetch_dir: str = "/var/lib/kemudi-ai/skills-fetch"
+    skills_fetch_uid: int = 10001
     bare_repo: str = "/var/lib/kemudi-ai/awak.git"
     host_git: str = "/host-git"
     awak_uid: int = 10000

@@ -7,12 +7,13 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AppHeader } from '@/components/layout/app-header'
 import { Main } from '@/components/layout/main'
+import { MarketplaceTab } from './marketplace'
 import { SkillDetailSheet } from './skill-detail'
 import { SkillEditor, VersionEditor } from './skill-editor'
 import { SkillList } from './skill-list'
 import { UploadDialog } from './upload-dialog'
 
-type SkillsTab = 'installed' | 'create'
+type SkillsTab = 'installed' | 'marketplace' | 'create'
 
 type SkillsSearch = {
   tab?: SkillsTab
@@ -20,6 +21,8 @@ type SkillsSearch = {
   skill?: string
   /** On the Create tab: a new version of this local skill. */
   edit?: string
+  /** On the Marketplace tab: the marketplace shown. */
+  market?: number
 }
 
 /** The skill library (/skills): Kemudi admins only. */
@@ -58,10 +61,20 @@ export function SkillsPage({
         >
           <TabsList>
             <TabsTrigger value='installed'>{t('tabs.installed')}</TabsTrigger>
+            <TabsTrigger value='marketplace'>
+              {t('tabs.marketplace')}
+            </TabsTrigger>
             <TabsTrigger value='create'>{t('tabs.create')}</TabsTrigger>
           </TabsList>
           <TabsContent value='installed'>
             <SkillList onOpen={openSkill} />
+          </TabsContent>
+          <TabsContent value='marketplace'>
+            <MarketplaceTab
+              selected={search.market ?? null}
+              onSelect={(id) => navigate({ tab: 'marketplace', market: id })}
+              onOpenSkill={openSkill}
+            />
           </TabsContent>
           <TabsContent value='create'>
             {search.edit ? (

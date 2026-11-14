@@ -24,6 +24,10 @@ POST /reap       {}                          stop every process service left run
 POST /clean_check {path}                     HEAD sha and `git status --ignored` entries
 POST /deploy     {path, command}             the project's post-merge deploy command (sh -c)
                                              in the job workspace at the merged commit
+POST /fetch_repo {owner, repo, ref?}         a GitHub repo at a full commit sha, extracted
+                                             by a child (uid FETCH_UID) into
+                                             FETCH_ROOT/<hex> (fetch.py), with a manifest
+POST /fetch_cleanup {dir}                    remove that tree (`dir` = <hex>)
 
 `path` names one checkout under WORKSPACE: `<slug>/us-<ref>/<repo>` for a
 story, `<slug>/setup/<repo>` for setup runs.
@@ -40,7 +44,9 @@ runs as CHILD_UID:CHILD_GID (10000, the owner of /workspace) with no
 supplementary groups and a clean environment from `child_env`: no runner key,
 no other KEMUDI_* variable. A child therefore cannot read the key from the
 server's (or tini's) /proc/<pid>/environ. KILL lets the server stop a
-child's process group.
+child's process group. The marketplace fetch child is the exception: it
+runs as FETCH_UID (10001), which owns nothing in the workspace and whose
+files no CHILD_UID process can change (see "marketplace fetch" below).
 
 The workspace belongs to the children, so the server never writes or reads
 a file there itself (a symlink would make it do so as root): `.qa/` is made
@@ -1035,10 +1041,123 @@ def op_programs(body: dict) -> dict:
     return {"ok": True, "programs": sorted(p for p in ALLOWED_PROGRAMS if shutil.which(p))}
 
 
+# --- marketplace fetch (skills) ----------------------------------------------------
+# A GitHub repo at a full commit sha, extracted into FETCH_ROOT/<hex> by a child
+# running fetch.py (see its doc). FETCH_ROOT is its own volume
+# (kemudi-skills-fetch), mounted only here and, read-only, in the orchestrator:
+# not the workspace, which project code (gates, QA) and Hermes can write. The
+# child runs as FETCH_UID, a uid nothing else runs as; FETCH_ROOT is
+# root:FETCH_GID 1771 (the image makes it; the volume copies it), so only that
+# uid creates folders there and other uids can only traverse. Each fetch folder
+# (0755, files 0644) belongs to FETCH_UID; the child prints a {path: sha256}
+# manifest the orchestrator checks every read against. The orchestrator
+# removes a tree with `fetch_cleanup`; a killed child's folder is removed at
+# once, and fetch.py's sweep removes any left for an hour.
+
+FETCH_SCRIPT = Path(__file__).with_name("fetch.py")
+FETCH_ROOT = Path(os.environ.get("RUNNER_SKILLS_FETCH", "/skills-fetch"))
+FETCH_UID = int(os.environ.get("RUNNER_FETCH_UID", "10001"))
+FETCH_GID = int(os.environ.get("RUNNER_FETCH_GID", str(FETCH_UID)))
+FETCH_DIR_RE = re.compile(r"[0-9a-f]{32}")
+FETCH_TIMEOUT = 300
+
+
+def fetch_kw() -> dict:
+    """subprocess arguments that start a child as FETCH_UID:FETCH_GID."""
+    if not dropping():
+        return {}
+    return {"user": FETCH_UID, "group": FETCH_GID, "extra_groups": []}
+
+
+def fetch_env() -> dict[str, str]:
+    env = child_env()
+    if dropping():
+        env["HOME"] = "/tmp"  # FETCH_UID has no home (and no passwd entry)
+    return env
+
+
+def remove_fetch_dir(target: Path) -> None:
+    """rm -rf a fetch folder as FETCH_UID (its owner; root here has no
+    DAC_OVERRIDE, and must not follow anything planted there)."""
+    if not dropping():
+        shutil.rmtree(target, ignore_errors=True)
+        return
+    try:
+        subprocess.run(["rm", "-rf", "--", str(target)], capture_output=True, timeout=120,
+                       cwd="/", env=fetch_env(), **fetch_kw())
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def _fetch_module():
+    """fetch.py, for its argument checks (the fetch itself runs in a child)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("kemudi_runner_fetch", FETCH_SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _run_fetch_child(args: dict) -> dict:
+    """fetch.py as FETCH_UID with a clean environment; its JSON line. The
+    child sets its own memory / CPU limits first thing (fetch.limit_self)."""
+    import sys
+
+    try:
+        p = subprocess.run([sys.executable, "-I", str(FETCH_SCRIPT), json.dumps(args)],
+                           capture_output=True, text=True, timeout=FETCH_TIMEOUT, cwd="/",
+                           env=fetch_env(), **fetch_kw())
+    except subprocess.TimeoutExpired:
+        return {"error": f"the fetch took longer than {FETCH_TIMEOUT} s"}
+    lines = [ln for ln in p.stdout.splitlines() if ln.strip()]
+    try:
+        out = json.loads(lines[-1]) if lines else None
+    except ValueError:
+        out = None
+    if not isinstance(out, dict):
+        return {"error": "the fetch failed: " + tail(p.stderr or p.stdout, 500)}
+    return out
+
+
+def op_fetch_repo(body: dict) -> dict:
+    """{owner, repo, ref?} -> {ok, sha, dir, files, bytes, skipped,
+    skipped_truncated, manifest} or {ok: False, error}. `dir` is the folder's
+    name under FETCH_ROOT (32 hex)."""
+    import secrets as pysecrets
+
+    owner = body.get("owner")
+    repo = body.get("repo")
+    ref = body.get("ref") or ""
+    _fetch_module().check_args(owner, repo, ref)  # ValueError -> 400
+    name = pysecrets.token_hex(16)
+    dest = FETCH_ROOT / name
+    out = _run_fetch_child({"owner": owner, "repo": repo, "ref": ref, "dest": str(dest)})
+    manifest = out.get("manifest")
+    if out.get("error") or not out.get("sha") or not isinstance(manifest, dict):
+        # a child killed on the timeout (or by a limit) left its folder
+        remove_fetch_dir(dest)
+        return {"ok": False, "error": str(out.get("error") or "the fetch failed")[:1000]}
+    return {"ok": True, "sha": out["sha"], "dir": name, "files": out.get("files", 0),
+            "bytes": out.get("bytes", 0), "skipped": out.get("skipped") or [],
+            "skipped_truncated": bool(out.get("skipped_truncated")), "manifest": manifest}
+
+
+def op_fetch_cleanup(body: dict) -> dict:
+    """{dir}: remove a `fetch_repo` tree (as FETCH_UID)."""
+    name = str(body.get("dir") or "")
+    if not FETCH_DIR_RE.fullmatch(name):
+        raise ValueError(f"bad fetch dir {name!r}")
+    target = FETCH_ROOT / name
+    remove_fetch_dir(target)
+    return {"ok": True, "removed": not os.path.lexists(target)}
+
+
 OPS = {"install": op_install, "commit": op_commit, "gates": op_gates, "deploy": op_deploy,
        "qa_reset": op_qa_reset, "qa": op_qa, "clean_check": op_clean_check,
        "health": op_health, "reap": op_reap, "screenshot": op_screenshot,
-       "programs": op_programs}
+       "programs": op_programs, "fetch_repo": op_fetch_repo,
+       "fetch_cleanup": op_fetch_cleanup}
 
 
 class Handler(BaseHTTPRequestHandler):
