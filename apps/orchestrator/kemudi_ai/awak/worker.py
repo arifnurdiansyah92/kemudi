@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from ..config import Settings
 from ..store import AwakJob, AwakKey, AwakProject, AwakWorkerLease, record_event
 from . import config_store, llm_conn, secrets, ssh
-from .config_store import ProjectConfig, RepoConfig, RoleConfig
+from .config_store import QA_MODES, ProjectConfig, RepoConfig, RoleConfig
 from .crypto import SecretKeyMissing
 from .agent import Agent, AgentError
 from .gitops import GitError, Repo, _force_remove, branch_for
@@ -472,9 +472,12 @@ class Worker:
         self._set(job.id, last_sha=sha)
 
         # gates
-        self._set(job.id, phase="gates")
-        gates = (self._runner("gates", path=self._path(workdir), **_commands(rc, "gates"))
-                 .get("gates") or [])
+        qa_mode, qa_note = self._qa_mode(route)
+        gates: list[dict] = []
+        if qa_mode != "off":
+            self._set(job.id, phase="gates")
+            gates = (self._runner("gates", path=self._path(workdir), **_commands(rc, "gates"))
+                     .get("gates") or [])
         failed = [g for g in gates if not g.get("ok")]
         table = "\n".join(f"- {'✅' if g.get('ok') else '❌'} {g['name']}" for g in gates)
         if failed:
@@ -484,6 +487,9 @@ class Worker:
                         f"{table}\n\n" + "\n\n".join(
                             f"**{g['name']}**\n```\n{g.get('output', '')[-1200:]}\n```"
                             for g in failed))
+        if qa_mode != "browser":
+            return self._done_without_qa(project, job, story, workdir, sha, route, n,
+                                         qa_mode, qa_note, gates)
         story = self._ours(story["id"], {"in-progress"}, project)
         self._move(story["id"], project.status("ready-for-test"), story["version"])
         self._say(story["id"], job.id,
@@ -500,10 +506,7 @@ class Worker:
             # counts only if the workspace was exactly that commit.
             unclean = self._unclean(workdir, sha, rc)
             if unclean:
-                return Fail("The checks and QA ran with files that are not in your commit "
-                            "(or HEAD was not your commit): " + "; ".join(unclean)
-                            + ". Commit everything the story needs and leave no other "
-                              "files (ignored ones included) in the workspace.",
+                return Fail(_unclean_feedback(unclean),
                             f"QA lulus, tetapi workspace tidak sama dengan commit `{sha[:8]}` "
                             "yang akan di-merge, jadi hasilnya tidak dipakai: "
                             + "; ".join(f"`{u}`" for u in unclean)
@@ -518,22 +521,70 @@ class Worker:
                                     status=project.status("done"), tags=tags)
             self._set(job.id, state="passed", phase="", attempts=n)
             head = f"QA lulus untuk `{sha[:8]}`:\n{_table(verdict, evidence)}\n\n"
-            if mode == "manual":
-                tail = (f"Pindah ke Done dengan tag `{DONE_TAG}`: branch `{job.branch}` "
-                        f"belum di-merge dan perlu direview manusia.")
-            elif mode == "approve":
-                tail = (f"Pindah ke Done dengan tag `{DONE_TAG}`: branch `{job.branch}` "
-                        f"menunggu Merge di Kemudi.")
-            else:
-                tail = (f"Pindah ke Done dengan tag `{DONE_TAG}`; merge otomatis ke "
-                        f"`{repo.default_branch}` berjalan.")
-            self._say(story["id"], job.id, head + tail, n)
+            self._say(story["id"], job.id, head + _done_tail(mode, job.branch, repo), n)
             if mode == "auto":
                 Merger(self).merge(self._job(job.id), project, story, require_qa_rerun=True)
             return None
         return Fail("QA failed these acceptance criteria:\n" + verdict.failures(),
                     f"QA gagal untuk `{sha[:8]}`:\n{_table(verdict, evidence)}\n\n"
                     f"Kembali ke In progress; Awak akan memperbaiki.")
+
+    def _qa_mode(self, route: Route) -> tuple[str, str]:
+        """The project's QA mode for this attempt, and why it was lowered (if)."""
+        mode = route.config.qa_mode if route.config.qa_mode in QA_MODES else "gates"
+        if mode == "browser" and route.rc.url != self.s.host_git:
+            # Until runbooks drive QA, browser QA knows only how to start Kemudi.
+            return "gates", ("Mode QA proyek Browser, tetapi QA browser belum bisa berjalan "
+                             f"untuk repo {route.rc.name} (perlu runbook dengan bagian QA); "
+                             "diperlakukan sebagai Gates only.")
+        return mode, ""
+
+    def _done_without_qa(self, project: Project, job: AwakJob, story: dict, workdir: Path,
+                         sha: str, route: Route, n: int, qa_mode: str, note: str,
+                         gates: list[dict]) -> Fail | None:
+        """QA mode off or gates: Done + awaiting-merge, without browser QA. The
+        clean check runs last, so Done is tied to the commit that gets merged."""
+        unclean = self._unclean(workdir, sha, route.rc)
+        if unclean:
+            return Fail(_unclean_feedback(unclean),
+                        f"Pemeriksaan selesai, tetapi workspace tidak sama dengan commit "
+                        f"`{sha[:8]}` yang akan di-merge, jadi hasilnya tidak dipakai: "
+                        + "; ".join(f"`{u}`" for u in unclean)
+                        + "\n\nKembali ke In progress; Awak akan memperbaiki.")
+        story = self._ours(story["id"], {"in-progress"}, project)
+        with self.sessions() as db:
+            current = config_store.load(db, project.slug).merge_mode
+        mode = effective_mode(self._job(job.id).merge_mode, current)
+        if mode == "auto":
+            mode = "approve"  # auto merge only follows browser QA
+        tags = sorted(set(tag_names(story)) | {DONE_TAG})
+        self.taiga.update_story(story["id"], version=story["version"],
+                                status=project.status("done"), tags=tags)
+        self._set(job.id, state="passed", phase="", attempts=n)
+
+        checked = ["cakupan berkas peran", "secret di diff"]
+        if gates:
+            checked.append("pemeriksaan otomatis di atas")
+        checked.append("workspace sama persis dengan commit")
+        if qa_mode == "off":
+            label = "Off"
+            skipped = ["pemeriksaan otomatis (tipe, lint, tes, build)",
+                       "QA browser terhadap kriteria penerimaan"]
+            head = f"Commit `{sha[:8]}` di branch `{job.branch}`."
+        else:
+            label = "Gates only"
+            skipped = [] if gates else [
+                "pemeriksaan otomatis (repo ini belum punya perintah check/build)"]
+            skipped.append("QA browser terhadap kriteria penerimaan (tanpa bukti screenshot)")
+            table = "\n".join(f"- ✅ {g['name']}" for g in gates)
+            head = (f"Commit `{sha[:8]}` di branch `{job.branch}`. Pemeriksaan otomatis:\n"
+                    f"{table}" if gates else f"Commit `{sha[:8]}` di branch `{job.branch}`.")
+        text = (f"{head}\n\n" + (f"{note}\n\n" if note else "")
+                + f"Mode QA proyek: {label}. Diperiksa: " + ", ".join(checked) + ". "
+                + "Tidak diperiksa: " + "; ".join(skipped) + ".\n\n"
+                + _done_tail(mode, job.branch, route.repo))
+        self._say(story["id"], job.id, text, n)
+        return None
 
     def _qa(self, project: Project, job: AwakJob, story: dict, workdir: Path,
             route: Route) -> Verdict:
@@ -637,14 +688,16 @@ class Worker:
     def _requested_merge(self, project: Project, job: AwakJob) -> None:
         """A human clicked Merge (approve mode). Re-checks the mode first."""
         with self.sessions() as db:
-            current = config_store.load(db, project.slug).merge_mode
-        mode = effective_mode(job.merge_mode, current)
+            cfg = config_store.load(db, project.slug)
+        mode = effective_mode(job.merge_mode, cfg.merge_mode)
         merger = Merger(self)
         if mode == "manual":
             merger.fail(job.id, job.story_id,
                         "mode merge proyek sekarang manual; merge dibatalkan.")
             return
-        merger.merge(job, project, {"id": job.story_id}, require_qa_rerun=mode == "auto")
+        # The QA re-run needs a spec, which only browser QA writes.
+        merger.merge(job, project, {"id": job.story_id},
+                     require_qa_rerun=mode == "auto" and cfg.qa_mode == "browser")
 
     def _unclean(self, workdir: Path, sha: str, rc: RepoConfig) -> list[str]:
         """What in the workspace differs from `sha`, besides build output."""
@@ -847,6 +900,25 @@ def _commands(rc: RepoConfig, op: str) -> dict:
         raise Stop(f"perintah repo {rc.name} tidak valid ({e}); perbaiki di "
                    f"Pengaturan proyek → Agen.") from e
     return {"subdir": rc.subdir, "commands": cmds}
+
+
+def _unclean_feedback(unclean: list[str]) -> str:
+    return ("The checks and QA ran with files that are not in your commit "
+            "(or HEAD was not your commit): " + "; ".join(unclean)
+            + ". Commit everything the story needs and leave no other "
+              "files (ignored ones included) in the workspace.")
+
+
+def _done_tail(mode: str, branch: str, repo: Repo) -> str:
+    """What happens next with a Done card, by merge mode."""
+    if mode == "manual":
+        return (f"Pindah ke Done dengan tag `{DONE_TAG}`: branch `{branch}` "
+                f"belum di-merge dan perlu direview manusia.")
+    if mode == "approve":
+        return (f"Pindah ke Done dengan tag `{DONE_TAG}`: branch `{branch}` "
+                f"menunggu Merge di Kemudi.")
+    return (f"Pindah ke Done dengan tag `{DONE_TAG}`; merge otomatis ke "
+            f"`{repo.default_branch}` berjalan.")
 
 
 def _quote(text: str) -> str:

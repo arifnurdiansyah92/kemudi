@@ -69,6 +69,8 @@ def get_worker_starter(
 class AgentSettings(BaseModel):
     enabled: bool
     merge_mode: Literal["manual", "approve", "auto"]
+    # Omitted: keep the stored mode (clients from before QA modes).
+    qa_mode: Literal["off", "gates", "browser"] | None = None
     deploy_command: str = Field("", max_length=2000)
     executor: Literal["local", "ssh"]
     ssh_host: str = Field("", max_length=255, pattern=r"^[A-Za-z0-9.\-:\[\]]*$")
@@ -156,6 +158,12 @@ def put_agent_settings(
         p = AwakProject(slug=slug, **config_store.DEFAULTS)
         db.add(p)
     new = body.model_dump()
+    if new["qa_mode"] is None:
+        new["qa_mode"] = p.qa_mode or config_store.DEFAULTS["qa_mode"]
+    why = _qa_mode_blocker(db, settings, slug, new["merge_mode"], new["qa_mode"])
+    if why:
+        db.rollback()
+        raise HTTPException(422, why)
     changed = {k: new[k] for k in config_store.SETTING_FIELDS if getattr(p, k) != new[k]}
     if (p.ssh_host and ({"ssh_host", "ssh_port"} & set(changed))
             and p.ssh_host not in _hosts_in_use(db, slug, machine=False)):
@@ -187,6 +195,22 @@ def put_agent_settings(
     if grant_error and not status["ok"]:
         status = {**status, "error": grant_error}
     return _settings_out(db, slug, True, status)
+
+
+def _qa_mode_blocker(db: Session, settings: Settings, slug: str, merge_mode: str,
+                     qa_mode: str) -> str | None:
+    """Why this merge/QA mode pair cannot be saved."""
+    if merge_mode == "auto" and qa_mode != "browser":
+        # Auto-merging code that nothing exercised is the one case refused.
+        return "auto merge needs QA mode browser"
+    if qa_mode == "browser" and not (db.query(AwakRepo)
+                                     .filter_by(project_slug=slug, url=settings.host_git)
+                                     .count()):
+        # Browser QA starts the app from a runbook's QA section; without a
+        # runbook only Kemudi's own repo has a known way to run.
+        return ("QA mode browser needs a runbook with a qa section (or Kemudi's own repo); "
+                "use gates until the project has one")
+    return None
 
 
 def _hosts_in_use(db: Session, slug: str, skip_repo: int | None = None,

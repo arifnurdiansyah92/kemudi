@@ -182,6 +182,8 @@ class AwakProject(Base):
     slug: Mapped[str] = mapped_column(String(200), primary_key=True)
     enabled: Mapped[bool] = mapped_column(default=False)
     merge_mode: Mapped[str] = mapped_column(String(10), default="approve")
+    # off | gates | browser: what runs after the commit is collected.
+    qa_mode: Mapped[str] = mapped_column(String(10), default="gates")
     deploy_command: Mapped[str] = mapped_column(Text, default="")
     executor: Mapped[str] = mapped_column(String(10), default="local")
     ssh_host: Mapped[str] = mapped_column(String(255), default="")
@@ -306,9 +308,33 @@ def make_session(db_url: str) -> sessionmaker[Session]:
     return sessionmaker(engine, expire_on_commit=False)
 
 
-def init_db(engine) -> None:
+def init_db(engine, host_git: str | None = None) -> None:
+    """`host_git`: the local Kemudi repo (settings.host_git), for one-time
+    data fix-ups; read from the settings when not given."""
     Base.metadata.create_all(engine)
-    _migrate(engine)
+    added = _migrate(engine)
+    if "qa_mode" in added.get("awak_projects", set()):
+        if host_git is None:
+            from .config import get_settings
+
+            host_git = get_settings().host_git
+        _set_qa_modes(engine, host_git)
+
+
+def _set_qa_modes(engine, host_git: str) -> None:
+    """Runs once, when `awak_projects.qa_mode` is added: projects with the
+    Kemudi repo keep browser QA (iteration 1-2 behaviour); the others get
+    `gates`, and `auto` merge, which needs browser QA, becomes `approve`."""
+    with Session(engine) as db:
+        kemudi = {r.project_slug for r in db.query(AwakRepo).filter_by(url=host_git)}
+        for p in db.query(AwakProject):
+            p.qa_mode = "browser" if p.slug in kemudi else "gates"
+            if p.merge_mode == "auto" and p.qa_mode != "browser":
+                p.merge_mode = "approve"
+                db.add(Decision(actor="migration", action="awak_settings", subject=p.slug,
+                                detail={"changed": {"merge_mode": "approve"},
+                                        "reason": "auto merge needs QA mode browser"}))
+        db.commit()
 
 
 # Tables that existed before a column was added to them. `create_all` never
@@ -324,13 +350,16 @@ def _sql_literal(value: Any) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def _migrate(engine) -> None:
+def _migrate(engine) -> dict[str, set[str]]:
+    """Adds missing columns; returns {table: names of the columns added}."""
+    added: dict[str, set[str]] = {}
     for name in _MIGRATED_TABLES:
         table = Base.metadata.tables[name]
         existing = {c["name"] for c in inspect(engine).get_columns(name)}
         missing = [c for c in table.columns if c.name not in existing]
         if not missing:
             continue
+        added[name] = {c.name for c in missing}
         with engine.begin() as conn:
             for col in missing:
                 ddl = f"ALTER TABLE {name} ADD COLUMN {col.name} {col.type.compile(dialect=engine.dialect)}"
@@ -340,6 +369,7 @@ def _migrate(engine) -> None:
                     if not col.nullable:
                         ddl += " NOT NULL"
                 conn.execute(text(ddl))
+    return added
 
 
 def record_ai_call(session: Session, **fields: Any) -> AiCall:
