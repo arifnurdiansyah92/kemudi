@@ -22,8 +22,12 @@ story, `<slug>/setup/<repo>` for setup runs.
 job workspace; argv[0] must be in ALLOWED_PROGRAMS. Without `commands`, the
 iteration 1 apps/web steps run.
 
-Children (branch code) get a clean environment from `child_env`: never the
-runner's key or any other KEMUDI_* variable.
+Children (branch code) are started with a clean environment from
+`child_env`: the runner's key and other KEMUDI_* variables are not passed
+to them. That is not a boundary yet: children run as the runner's own uid,
+so one can still read the key from the server's /proc/<pid>/environ.
+Running children as a separate uid (and the server keeping only
+SETUID/SETGID) is planned for stage 1b.
 
 Every reply is JSON. `infra_error` is set when the step could not run at all
 (as opposed to the code failing a check).
@@ -66,7 +70,8 @@ def tail(text: str, n: int = 6000) -> str:
 
 
 # What a child keeps from the runner's own environment: the toolchain's
-# locations and the locale, nothing else (no key, no gateway settings).
+# locations and the locale, nothing else (no key, no gateway settings in its
+# environment; same uid as the server until stage 1b, see the module doc).
 KEEP_ENV = {"PATH", "HOME", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "TZ", "TERM", "USER",
             "LOGNAME", "SHELL", "TMPDIR", "PLAYWRIGHT_BROWSERS_PATH", "PNPM_HOME", "NODE_PATH",
             "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "COREPACK_HOME",
