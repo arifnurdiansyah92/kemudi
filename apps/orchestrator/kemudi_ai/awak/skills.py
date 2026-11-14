@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import json
 import logging
 import os
@@ -23,6 +24,9 @@ import re
 import secrets as pysecrets
 import shutil
 import time
+import unicodedata
+import zipfile
+import zlib
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -1010,3 +1014,237 @@ def seed_builtin(db: Session, root: Path = BUILTIN_DIR) -> list[str]:
             log.error("builtin skill %s has a high scan finding; stored disabled", slug)
     db.commit()
     return changed
+
+
+# --- Upload (zip / .skill / SKILL.md) ----------------------------------------------
+
+MAX_UPLOAD_BYTES = 4 * 1024 * 1024  # the archive itself, before decompressing
+MAX_ZIP_ENTRIES = 400  # files and folder entries
+MAX_RATIO = 100  # decompressed bytes per compressed byte, per entry (floor 1 KiB)
+_RATIO_FLOOR = 1024
+_ARCHIVE_EXT = (".zip", ".skill", ".jar", ".war", ".apk", ".tar", ".tgz", ".gz", ".bz2",
+                ".xz", ".zst", ".7z", ".rar", ".cab", ".iso")
+_ARCHIVE_MAGIC = (b"PK\x03\x04", b"PK\x05\x06", b"\x1f\x8b", b"BZh", b"\xfd7zXZ\x00",
+                  b"7z\xbc\xaf\x27\x1c", b"Rar!\x1a\x07", b"\x28\xb5\x2f\xfd", b"MSCF")
+# Junk a zip tool adds; dropped (never stored), reported as a warning.
+_JUNK_DIRS = ("__MACOSX/",)
+_JUNK_FILES = (".DS_Store", "Thumbs.db")
+_S_IFMT, _S_IFLNK, _S_IFDIR, _S_IFREG = 0o170000, 0o120000, 0o040000, 0o100000
+_DRIVE_RE = re.compile(r"^[A-Za-z]:")
+
+
+@dataclass(frozen=True)
+class Upload:
+    """A skill read from an upload: its folder name and files (not validated)."""
+
+    slug: str
+    files: dict[str, bytes]
+    warnings: tuple[str, ...] = ()
+
+
+def _is_archive(path: str, head: bytes) -> bool:
+    if path.lower().endswith(_ARCHIVE_EXT):
+        return True
+    if any(head.startswith(m) for m in _ARCHIVE_MAGIC):
+        return True
+    return len(head) >= 262 and head[257:262] == b"ustar"
+
+
+def _zip_name_problem(name: str) -> str | None:
+    if not name:
+        return "an entry with no name"
+    if "\\" in name:
+        return f"{name!r}: backslash in the path"
+    if name.startswith("/") or _DRIVE_RE.match(name) or ":" in name:
+        return f"{name!r}: absolute path or drive letter"
+    if any(ord(c) < 32 or c == "\x7f" for c in name):
+        return f"{name!r}: control characters in the path"
+    segs = name.rstrip("/").split("/")
+    if any(s in ("", ".", "..") for s in segs):
+        return f"{name!r}: empty, '.' or '..' segment"
+    if len(segs) > MAX_DEPTH + 1:  # + the top-level skill folder
+        return f"{name!r}: nested deeper than {MAX_DEPTH} folders"
+    return None
+
+
+def read_zip(data: bytes) -> tuple[dict[str, bytes], list[str]]:
+    """A zip's files, in memory, with every safety check; raises SkillError.
+
+    Decompressed bytes are counted as they are read (declared sizes are not
+    trusted); entry count, depth and the per-entry ratio are capped; symlinks
+    (the entry's Unix mode), encrypted entries, duplicates, case or Unicode
+    (NFC) collisions and nested archives are refused."""
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise SkillError([f"the archive is larger than {MAX_UPLOAD_BYTES} bytes"])
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+        infos = zf.infolist()
+    except (zipfile.BadZipFile, ValueError, OSError, EOFError) as e:
+        raise SkillError([f"not a readable zip archive ({e.__class__.__name__})"]) from e
+    if len(infos) > MAX_ZIP_ENTRIES:
+        raise SkillError([f"{len(infos)} entries in the archive; at most {MAX_ZIP_ENTRIES}"])
+    problems: list[str] = []
+    seen_raw: set[str] = set()
+    seen_folded: dict[str, str] = {}
+    keep: list[zipfile.ZipInfo] = []
+    dropped = 0
+    for info in infos:
+        name = info.filename
+        if name in seen_raw:
+            problems.append(f"{name!r}: appears twice in the archive")
+            continue
+        seen_raw.add(name)
+        bad = _zip_name_problem(name)
+        if bad:
+            problems.append(bad)
+            continue
+        folded = unicodedata.normalize("NFC", name.rstrip("/")).casefold()
+        if folded in seen_folded:
+            problems.append(f"{name!r} and {seen_folded[folded]!r} collide (case or Unicode "
+                            "normalisation)")
+            continue
+        seen_folded[folded] = name
+        mode = (info.external_attr >> 16) & _S_IFMT
+        if mode == _S_IFLNK:
+            problems.append(f"{name!r}: symlinks are not allowed")
+            continue
+        if mode and mode not in (_S_IFDIR, _S_IFREG):
+            problems.append(f"{name!r}: not a regular file")
+            continue
+        if info.flag_bits & 0x1:
+            problems.append(f"{name!r}: encrypted entries are not allowed")
+            continue
+        if name.startswith(_JUNK_DIRS) or name.rstrip("/").rsplit("/", 1)[-1] in _JUNK_FILES:
+            dropped += 1
+            continue
+        if info.is_dir():
+            continue
+        keep.append(info)
+    if problems:
+        raise SkillError(problems)
+    files: dict[str, bytes] = {}
+    total = 0
+    for info in keep:
+        out = bytearray()
+        limit = MAX_RATIO * max(info.compress_size, _RATIO_FLOOR)
+        try:
+            with zf.open(info) as f:
+                while chunk := f.read(64 * 1024):
+                    out += chunk
+                    total += len(chunk)
+                    if total > MAX_TOTAL_BYTES:
+                        raise SkillError([f"more than {MAX_TOTAL_BYTES} bytes once "
+                                          "decompressed"])
+                    if len(out) > limit:
+                        raise SkillError([f"{info.filename!r}: compression ratio above "
+                                          f"{MAX_RATIO}:1"])
+        except (zipfile.BadZipFile, zlib.error, OSError, EOFError, NotImplementedError,
+                RuntimeError) as e:
+            raise SkillError([f"{info.filename!r}: cannot be read "
+                              f"({e.__class__.__name__})"]) from e
+        body = bytes(out)
+        if _is_archive(info.filename, body[:262]):
+            problems.append(f"{info.filename!r}: archives inside the archive are not allowed")
+            continue
+        files[info.filename] = body
+    if problems:
+        raise SkillError(problems)
+    warnings = [f"ignored {dropped} __MACOSX / .DS_Store entries"] if dropped else []
+    return files, warnings
+
+
+def _slug_from_skill_md(raw: bytes) -> str:
+    if not _is_text(raw):
+        raise SkillError(["SKILL.md is not UTF-8 text"])
+    meta, _, _ = split_frontmatter(raw.decode("utf-8"))
+    name = meta.get("name")
+    if not isinstance(name, str) or not name:
+        raise SkillError(["frontmatter name is missing"])
+    return name
+
+
+def read_upload(filename: str, data: bytes) -> Upload:
+    """An uploaded `.zip` / `.skill` (one top-level skill folder, or the files
+    at the root) or a lone `SKILL.md` as a skill tree (not validated yet)."""
+    lower = (filename or "").lower()
+    if lower.endswith(".md"):
+        if len(data) > MAX_TOTAL_BYTES:
+            raise SkillError([f"SKILL.md is larger than {MAX_TOTAL_BYTES} bytes"])
+        return Upload(_slug_from_skill_md(data), {SKILL_FILE: data})
+    if not lower.endswith((".zip", ".skill")):
+        raise SkillError(["upload a .zip or .skill archive, or a SKILL.md file"])
+    files, warnings = read_zip(data)
+    if not files:
+        raise SkillError(["the archive is empty"])
+    if SKILL_FILE in files:
+        return Upload(_slug_from_skill_md(files[SKILL_FILE]), files, tuple(warnings))
+    tops = {p.split("/", 1)[0] for p in files}
+    if len(tops) != 1 or any("/" not in p for p in files):
+        raise SkillError(["put one skill folder at the top of the archive (<name>/SKILL.md) "
+                          "or SKILL.md at its root"])
+    (top,) = tops
+    inner = {p.split("/", 1)[1]: d for p, d in files.items()}
+    if SKILL_FILE not in inner:
+        raise SkillError([f"no SKILL.md in {top}/"])
+    return Upload(top, inner, tuple(warnings))
+
+
+# --- Authoring -----------------------------------------------------------------------
+
+def build_skill_md(slug: str, description: str, body: str, license: str = "") -> bytes:
+    """SKILL.md from the editor: frontmatter (name, description, licence) + body."""
+    meta: dict = {"name": slug, "description": description.strip()}
+    if license.strip():
+        meta["license"] = license.strip()
+    front = yaml.safe_dump(meta, sort_keys=False, allow_unicode=True, width=1_000_000)
+    body = body.replace("\r\n", "\n")
+    if body and not body.endswith("\n"):
+        body += "\n"
+    return f"---\n{front}---\n\n{body}".encode()
+
+
+def authored_files(slug: str, description: str, body: str, extra: dict[str, str] | None,
+                   license: str = "") -> dict[str, bytes]:
+    """The editor's skill as a tree: the built SKILL.md + extra text files."""
+    files = {SKILL_FILE: build_skill_md(slug, description, body, license)}
+    for path, text in (extra or {}).items():
+        if path.casefold() == SKILL_FILE.casefold():
+            raise SkillError(["SKILL.md is built from the description and body, "
+                              "not an extra file"])
+        files[path] = text.replace("\r\n", "\n").encode("utf-8")
+    return files
+
+
+@dataclass(frozen=True)
+class Checked:
+    """A tree that passed validate, with its sha and scan."""
+
+    meta: SkillMeta
+    sha: str
+    findings: list[dict]
+
+    @property
+    def worst(self) -> str:
+        return worst(self.findings)
+
+
+def check(slug: str, files: dict[str, bytes]) -> Checked:
+    meta = validate(slug, files)
+    return Checked(meta, canonical_sha(files), scan(files))
+
+
+def store_version(db: Session, slug: str, files: dict[str, bytes], c: Checked,
+                  by: str) -> AwakSkillVersion:
+    """The next version of `slug` (active). The caller makes it current."""
+    last = max([v.version for v in db.query(AwakSkillVersion).filter_by(slug=slug)], default=0)
+    return _store_version(db, slug, last + 1, files, c.sha, c.findings, c.meta.warnings, by)
+
+
+def used_by(db: Session) -> dict[str, list[dict]]:
+    """slug -> the roles that list it: [{project, role, role_id}]."""
+    out: dict[str, list[dict]] = {}
+    for r in db.query(AwakRole).order_by(AwakRole.project_slug, AwakRole.name).all():
+        for slug in r.skills or []:
+            out.setdefault(slug, []).append(
+                {"project": r.project_slug, "role": r.name, "role_id": r.id})
+    return out
