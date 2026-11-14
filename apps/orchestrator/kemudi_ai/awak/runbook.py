@@ -100,6 +100,9 @@ class App(_Strict):
     env: dict[str, str] = Field(default_factory=dict)
     # "<service>:<compose service>": run the commands in that image (stage 1b).
     run_in: str = ""
+    # Ignored files the install or build writes (globs, relative to `dir`),
+    # e.g. a generated CSS bundle; the clean check accepts them.
+    generated: list[str] = Field(default_factory=list, max_length=20)
 
     @field_validator("dir")
     @classmethod
@@ -223,6 +226,12 @@ def _problems(rb: Runbook, repo_names: set[str]) -> list[str]:
         p = rel_path_problem(a.dir, "dir")
         if p:
             out.append(f"{w}: {p}")
+        for g in a.generated:
+            parts = g.split("/")
+            if (not g or g.startswith("/") or "\\" in g or ".." in parts
+                    or any(not set(x) - {"*", "?"} for x in parts) or any(c.isspace() for c in g)):
+                out.append(f"{w}.generated: {g!r} must be a relative path or glob inside the "
+                           "app dir, naming at least one fixed part per segment")
         native = not a.run_in  # run_in commands run in the project's own image
         if a.run_in and (":" not in a.run_in or a.run_in.split(":", 1)[0] not in services):
             out.append(f"{w}: run_in must be '<compose service>:<service in its file>'")

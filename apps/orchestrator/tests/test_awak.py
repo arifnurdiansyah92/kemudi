@@ -419,6 +419,30 @@ def test_build_output_allowlist():
     assert build_output("!!", "frontend/.next/", ["", "frontend", "backend"])
     assert build_output("!!", "backend/.pytest_cache/", ["frontend", "backend"])
     assert not build_output("!!", "frontend/.next/", "apps/web")
+    # Ignored files an install writes: next-env.d.ts in an app dir, runbook globs.
+    assert build_output("!!", "frontend/next-env.d.ts", ["frontend"])
+    assert not build_output("??", "frontend/next-env.d.ts", ["frontend"])
+    assert not build_output("!!", "frontend/src/next-env.d.ts", ["frontend"])
+    gen = ["frontend/src/assets/iconify-icons/generated-*.css"]
+    assert build_output("!!", "frontend/src/assets/iconify-icons/generated-icons.css",
+                        ["frontend"], gen)
+    assert not build_output("??", "frontend/src/assets/iconify-icons/generated-icons.css",
+                            ["frontend"], gen)
+    assert not build_output("!!", "frontend/src/other.css", ["frontend"], gen)
+
+
+def test_runbook_generated_globs_are_validated():
+    from kemudi_ai.awak.runbook import validate
+
+    def app(generated):
+        return {"apps": [{"name": "web", "repo": "r", "dir": "frontend",
+                          "generated": generated}], "services": [], "env": []}
+
+    rb, problems = validate(app(["src/assets/generated-*.css", "next-env.d.ts"]), {"r"})
+    assert rb is not None and problems == []
+    for bad in (["../x"], ["/etc/x"], ["*"], ["src/**"], ["a b"]):
+        _, problems = validate(app(bad), {"r"})
+        assert any("generated" in p for p in problems), bad
 
 
 def test_ignored_file_during_qa_fails_the_attempt(tmp_path, repo):

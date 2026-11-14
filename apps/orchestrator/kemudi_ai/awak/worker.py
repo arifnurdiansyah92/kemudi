@@ -4,6 +4,7 @@ One story at a time. Taiga is the source of truth for where a story is; the
 job row only remembers attempts, feedback and cost between ticks.
 """
 
+import fnmatch
 import logging
 import os
 import shutil
@@ -774,7 +775,9 @@ class Worker:
                  rb: Runbook | None = None) -> list[str]:
         """What in the workspace differs from `sha`, besides build output (in the
         repo's subdir and in the runbook's app dirs of the repo)."""
-        dirs = [rc.subdir, *(a.dir for a in (rb.apps_of(rc.name) if rb else []))]
+        apps = rb.apps_of(rc.name) if rb else []
+        dirs = [rc.subdir, *(a.dir for a in apps)]
+        generated = [f"{a.dir}/{g}" if a.dir else g for a in apps for g in a.generated]
         res = self._runner("clean_check", path=self._path(workdir))
         out = []
         head = str(res.get("head") or "")
@@ -782,7 +785,8 @@ class Worker:
             out.append(f"HEAD {head[:8] or '?'} != {sha[:8]}")
         entries = res.get("entries") or []
         out += [f"{e.get('status', '')} {e.get('path', '')}".strip() for e in entries
-                if not build_output(str(e.get("status", "")), str(e.get("path", "")), dirs)]
+                if not build_output(str(e.get("status", "")), str(e.get("path", "")), dirs,
+                                    generated)]
         if res.get("truncated"):
             out.append("(more paths not listed)")
         return out[:20]
@@ -961,14 +965,27 @@ ANYWHERE_DIRS = {"node_modules", "__pycache__"}  # at any depth
 BUILD_DIRS = {"dist", ".vite", ".turbo", "coverage", ".pytest_cache", ".ruff_cache",
               ".mypy_cache", ".venv", "target", ".next"}  # at the repo root or an app dir
 BUILD_SUFFIXES = (".tsbuildinfo",)               # at any depth
+BUILD_FILES = {"next-env.d.ts"}                  # ignored, at the root or an app dir
 
 
-def build_output(status: str, path: str, subdir: str | list[str] = "") -> bool:
+def build_output(status: str, path: str, subdir: str | list[str] = "",
+                 generated: list[str] | tuple[str, ...] = ()) -> bool:
+    """Whether a `git status` entry is something install/gates/QA produce.
+    `generated`: repo-relative globs from the runbook's apps; like
+    BUILD_FILES they only excuse *ignored* paths (an untracked, unignored
+    file is something the commit is missing)."""
     if status not in ("??", "!!"):
         return False
     parts = path.strip("/").split("/")
     if not parts or any(p in ("", ".", "..") for p in parts):
         return False
+    dirs = [subdir] if isinstance(subdir, str) else subdir
+    app_dirs = {"", *(d.strip("/") for d in dirs)}
+    if status == "!!" and not path.endswith("/"):
+        if parts[-1] in BUILD_FILES and "/".join(parts[:-1]) in app_dirs:
+            return True
+        if any(fnmatch.fnmatchcase(path, g) for g in generated):
+            return True
     if any(p in ANYWHERE_DIRS for p in parts[:-1]) or (
             path.endswith("/") and parts[-1] in ANYWHERE_DIRS):
         return True
@@ -979,8 +996,7 @@ def build_output(status: str, path: str, subdir: str | list[str] = "") -> bool:
         return False
     if name == QA_DIR and parent == "":
         return True
-    dirs = [subdir] if isinstance(subdir, str) else subdir
-    return name in BUILD_DIRS and parent in {"", *(d.strip("/") for d in dirs)}
+    return name in BUILD_DIRS and parent in app_dirs
 
 
 def _gone_repo(name: str) -> str:
