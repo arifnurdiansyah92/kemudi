@@ -4,11 +4,12 @@
 
 **Contract-driven delivery management for IT vendors and system integrators.**
 
-Kemudi establishes the signed contract as the baseline for every project,
-identifies out-of-scope requests as billable change, and deploys an AI
-engineering agent to deliver the work, entirely within your own infrastructure.
+Kemudi establishes the signed contract as the baseline for every project and
+checks any client request against it in seconds, citing the relevant clause, so
+out-of-scope work is recognised as billable change. It runs entirely within your
+own infrastructure, with an optional AI engineering agent to deliver the work.
 
-[Capabilities](#capabilities) · [Product tour](#product-tour) · [Roadmap](#roadmap) · [Getting started](#getting-started)
+[Capabilities](#capabilities) · [Product tour](#product-tour) · [Roadmap](#roadmap) · [Install](docs/install.md) · [Pilot guide](docs/pilot-guide.md) · [Security](SECURITY.md)
 
 <img src="docs/screenshots/contract-backtest.png" alt="Change request backtest results for a pilot contract" width="100%">
 
@@ -30,10 +31,12 @@ proven [Taiga](https://taiga.io) backend, and pairs a modern web interface with
 **Awak**, an AI agent that implements, tests and documents work alongside the
 delivery team.
 
-> **Project status.** Kemudi is in active early development. The web interface
-> provides full parity with Taiga ([coverage report](docs/web-feature-coverage.md)).
-> Contract baselining, change request backtesting, intake and the Awak delivery
-> loop are operational end to end. See the [Roadmap](#roadmap) for what follows.
+> **Release status.** Kemudi **1.0** is a self-hosted *pilot edition*, intended
+> for an IT vendor running one live client contract. It includes contract
+> baselining, on-demand change request checks, retrospective scope audits,
+> intake and full agile project management. Awak is included as an opt-in,
+> experimental component. See the [changelog](CHANGELOG.md) for details and the
+> [Roadmap](#roadmap) for what follows.
 
 ## Capabilities
 
@@ -42,8 +45,8 @@ delivery team.
 | Capability | Description |
 |---|---|
 | **Contract baseline** | Upload a signed SOW or SPK in PDF or DOCX format. Kemudi structures the document into numbered sections and drafts a baseline of modules, features, obligations and terms, each traceable to its source clause and contract value. The baseline is reviewed by the project manager and locked as a versioned record on approval. |
-| **Change request detection** | Each incoming request is assessed against the approved baseline and classified as *in baseline*, *change request candidate* or *requires clarification*. Change request candidates include an effort and price estimate based on the vendor's rate card. Every assessment states its reasoning, and the final decision always rests with a project administrator. |
-| **Backtesting** | Historical requests can be replayed against the baseline and compared with the decisions the project manager actually made, so the classification can be validated before it is relied upon in live delivery. |
+| **Change request check** | Any story or issue can be checked against the approved baseline on demand and classified as *in baseline*, *change request candidate* or *requires clarification*, with the reasoning and the cited clauses. The project manager records a verdict on each check, and all checks can be exported as CSV to support a change request or addendum. Effort is shown in person-days as an indicative figure; Rupiah prices from the rate card are hidden until enabled for the project. |
+| **Retrospective scope audit** | Historical requests from a completed or running project can be replayed against the baseline and compared with the decisions actually made, revealing unbilled change and measuring how far the classification can be trusted before it is relied upon. |
 | **Intake** | Briefs, meeting notes, client emails and documents are converted into draft user stories with acceptance criteria, in English or Bahasa Indonesia, for review before they enter the backlog. |
 
 ### AI-assisted delivery
@@ -54,6 +57,7 @@ delivery team.
 | **Governed merging** | Each project defines its own merge policy: *Manual*, where changes stop at the branch for team review; *Approve*, where an administrator authorises the merge and Kemudi re-runs all checks before pushing and deploying; or *Auto*, intended for low-risk projects. Quality assurance can be set to off, gates only, or full browser verification. |
 | **Project workspace and runbook** | Each project maintains its repositories, services, health checks, commands and an encrypted secrets vault that is never exposed to the model. The Setup Assistant proposes a runbook automatically and proves it by building and starting the application before it is saved. |
 | **Skills library and marketplace** | Awak can be equipped with organisation-specific reference material. Skills can be authored in Kemudi, uploaded, or installed from GitHub-based marketplaces pinned to an exact commit. Every skill is security-scanned and licence-checked, enabled per role, and subject to approval before updates take effect. |
+| **Usage control** | Every model call made by Awak is metered by token and cost against a per-model price table. Each project can set a monthly token budget and a per-story cap, after which Awak stops and hands the work back to the team. |
 | **Model independence** | Awak runs on [Hermes](https://github.com/NousResearch/hermes-agent) and connects to any OpenAI-compatible endpoint, including OpenAI, OpenRouter, DeepSeek, Groq, or a locally hosted model through Ollama. Organisations with strict data residency requirements can keep all processing within their own network. |
 
 ### Project management
@@ -63,6 +67,7 @@ delivery team.
 | **Agile delivery** | Epics, backlog and sprint planning, taskboards with burndown charts, kanban boards, issue tracking, wiki and timeline. |
 | **Governance and access** | Roles and permissions, sprint-level access control per role, watchers, webhooks, and integrations with GitHub, GitLab, Bitbucket and Gogs. |
 | **Migration** | Importers for Jira, Trello, GitHub and Asana. |
+| **Audit and data protection** | An append-only audit trail of merges, deploys, configuration changes and change request decisions, exportable as CSV. Model prompts are retained as hashes by default with a configurable retention period, and a contract can be deleted with all derived data. |
 | **Bilingual by design** | A complete English and Bahasa Indonesia interface, selectable per user, with localised formatting for dates, Rupiah amounts and the WIB, WITA and WIT time zones. |
 
 ## Product tour
@@ -124,7 +129,7 @@ AI-assisted task boards are now commonplace. Kemudi differentiates on the needs
 specific to contract delivery:
 
 1. **Contract awareness.** The statement of work becomes the project baseline,
-   so scope changes are captured as billable change requests rather than
+   so scope changes are recognised as billable change requests rather than
    absorbed as cost.
 2. **Data sovereignty.** Kemudi is deployed self-hosted or on-premises, with an
    interchangeable AI engine and support for local models, meeting the
@@ -134,52 +139,55 @@ specific to contract delivery:
 
 ## Roadmap
 
-**Delivered**
+**Delivered in 1.0**
 
-- **Platform foundation.** Monorepo with maintained forks of taiga-back and
-  taiga-events, and a new web interface at full Taiga parity, including
-  sprint-level access control.
-- **Bilingual interface.** Internationalisation framework, English and Bahasa
-  Indonesia translations, and localised formats.
-- **Contract baseline and change request backtest.** Contract ingestion,
-  versioned baselines and a backtest validated on a pilot contract
-  ([report](docs/poc/2026-11-pilot-backtest.md)).
-- **Intake.** Conversion of briefs, notes and documents into draft user stories.
-- **Awak delivery loop.** Story-to-branch implementation with quality gates and
-  browser verification ([design](docs/superpowers/specs/2026-11-13-awak-dev-loop-design.md),
-  [operating guide](apps/orchestrator/README.md#awak-dev-loop)).
-- **Awak project configuration.** Bring-your-own model connection, repositories,
-  roles and access, merge policy, project workspace and runbook, encrypted
-  secrets vault, and the Setup Assistant.
-- **Skills.** Skills runtime, library and marketplace with scanning, licence
-  checks and update approval.
+- **Platform.** Monorepo with maintained forks of taiga-back and taiga-events,
+  and a new web interface at full Taiga parity, including sprint-level access
+  control, in English and Bahasa Indonesia.
+- **Contract intelligence.** Contract ingestion, versioned baselines, on-demand
+  change request checks with verdicts and CSV export, retrospective scope audits
+  validated on a pilot contract ([report](docs/poc/2026-11-pilot-backtest.md)),
+  and intake.
+- **Awak (experimental).** Story-to-branch delivery with quality gates and
+  browser verification, merge policies, project workspace and runbook,
+  encrypted vault, Setup Assistant, skills library and marketplace,
+  bring-your-own model, and usage accounting with budgets.
+- **Production readiness.** Production deployment with published images,
+  security hardening, an audit trail, and installation, upgrade, backup and
+  security documentation.
 
-**In progress**
+**Next (1.1)**
 
-- Native-speaker review of all Bahasa Indonesia interface copy.
-
-**Next**
-
-- **Live change request detection.** Automatic assessment of new tickets,
-  scope labels on the board, and a sprint gate for unresolved change requests.
-- **Estimate calibration.** Improved accuracy of change request effort and
-  price estimates.
+- **Automatic change request checks.** Assessment of every new ticket, scope
+  labels on the board, and a sprint gate for unresolved change requests, once
+  on-demand accuracy has been measured on real projects.
+- **Weekly status reports.** Automatically generated, client-ready reports in
+  formal Bahasa Indonesia or English.
+- **Estimate calibration.** Improved accuracy of effort and price estimates.
+- **Retrospective audit import.** Loading past requests from Jira or CSV
+  without preparing a dataset by hand.
 - **Baseline traceability.** Linking existing tickets to baseline items.
-- **Status reporting.** Automatically generated weekly status reports.
-- **Board enhancements.** Linked items, cloning, board fields, filter search
-  and moving tasks between stories.
+- **Interface review.** Native-speaker review of all Bahasa Indonesia copy.
 
 **Later**
 
-- Per-story preview environments with automatic clean-up.
-- Awak execution on client infrastructure over SSH.
-- Stories spanning multiple repositories.
+- Scope checking for teams that remain on Jira.
+- Board enhancements: linked items, cloning, board fields, filter search and
+  moving tasks between stories.
+- Per-story preview environments, Awak execution on client infrastructure over
+  SSH, and stories spanning multiple repositories.
 - A read-only client portal, a multi-client portfolio view with schedule and
   margin health, WhatsApp intake, and single sign-on.
 
 ## Getting started
 
-Requirements: Docker with Compose v2, Git.
+**To deploy Kemudi**, follow the [installation guide](docs/install.md). It uses
+the production configuration in `infra/docker-compose.yml` with published
+images, generated secrets and TLS. See also the [upgrade](docs/upgrade.md) and
+[backup](docs/backup.md) guides and the [security policy](SECURITY.md).
+
+**To develop Kemudi**, run the development stack. Requirements: Docker with
+Compose v2, Git.
 
 ```sh
 git clone --recurse-submodules https://github.com/arifnurdiansyah92/kemudi.git

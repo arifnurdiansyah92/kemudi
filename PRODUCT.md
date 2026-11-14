@@ -50,21 +50,27 @@ Where Kemudi deliberately does not try to win:
 
 ## Capabilities and Constraints
 
-**Built today:**
+**Built (v1.0, pilot edition):**
 
 - Backend: fork of taiga-back 6.10.2 and taiga-events (`services/`), Taiga REST API and websocket.
-- `apps/web`: React 19, Vite, TanStack Router/Query, Tailwind 4, shadcn/ui. It covers taiga-front parity: epics, backlog, sprints and taskboard, kanban, issues, wiki, team, timeline, item sheet, filters and saved filters, project admin, importers, plus sprint access. It has no i18n yet; all strings are hard-coded English.
+- `apps/web`: React 19, Vite, TanStack Router/Query, Tailwind 4, shadcn/ui, at taiga-front parity (epics, backlog, sprints and taskboard, kanban, issues, wiki, team, timeline, item sheet, filters and saved filters, project admin, importers) plus sprint access. English and Bahasa Indonesia through an i18n framework.
+- `apps/orchestrator` (Kemudi AI, through Hermes): contract upload and baseline with versioned approval, on-demand CR check per ticket with PM verdicts and CSV export, backtest (retrospective scope audit), intake from briefs and documents.
+- Awak (opt-in, experimental): story-to-branch implementation with gates and browser QA, merge policy (Manual, Approve, Auto), project workspace and runbook, encrypted vault, Setup Assistant, skills library and marketplace, BYOK model connection, usage accounting and token budget.
+- Release path: production compose, GHCR images, install, upgrade and backup guides.
 
 **Planned, not built** (never present these as shipping):
 
-- SOW → baseline backlog, CR Detector (out-of-baseline tickets flagged as billable Change Requests with an effort estimate), auto-generated status reports, read-only client portal, multi-client portfolio with RAG status and margin health.
-- Awak, the AI agent (fork of hermes-agent), the orchestrator and the code sandbox. Swappable engine: Claude Code or Hermes with a local model.
-- WhatsApp intake. GitLab/GitHub and SSO integrations.
+- Automatic CR check on every new ticket, scope labels on the board and a sprint gate (v1.1).
+- Auto-generated weekly status reports (v1.1), read-only client portal, multi-client portfolio with RAG status and margin health.
+- Scope checking for teams that stay on Jira; import of past requests for retrospective audits.
+- WhatsApp intake, SSO, per-story preview environments, Awak execution on client infrastructure over SSH.
+
+See `docs/strategy/2026-11-v1-release-decisions.md` for the v1.0 scope decisions and market validation.
 
 **Bilingual from day one (binding):**
 
 - Bahasa Indonesia and English, switchable per user. Three layers of setting: per user, per workspace (default for new members), and per client portal (usually Indonesian, independent of the vendor team).
-- An i18n framework in `apps/web` with no hard-coded UI strings, enforced by a CI check that fails on one. The existing strings must be migrated.
+- An i18n framework in `apps/web` with no hard-coded UI strings, enforced by a CI check that fails on one.
 - Awak's output and reports follow the reader's locale: developers get English agent comments, the client's weekly report arrives in formal Indonesian.
 - Locale formats, not just words: dates (11 Nov 2026), currency (Rp1.500.000), number separators (1.000,50), time zones (WIB/WITA/WIT).
 - Layouts must absorb longer Indonesian strings in buttons and table headers without breaking.
