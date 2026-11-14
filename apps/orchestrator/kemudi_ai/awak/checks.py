@@ -33,13 +33,18 @@ class Unsupported(Exception):
 class ServiceFailed(Exception):
     """A compose service, an init/seed command or the QA login did not work.
     `infra`: retry later (kemudi-svc down, a start or health timeout); else a
-    human must look (a failing init, missing vault value, the login form).
+    human must look (missing vault value, the login form, a refused file).
+    `rework`: the story's code is the likely cause (init/seed exits non-zero
+    in an image built from the branch): back to the coding agent, counted as
+    an attempt; after the last attempt a human looks anyway.
     `logs`: the redacted output tail for the event and the card."""
 
-    def __init__(self, message: str, logs: str = "", infra: bool = True):
+    def __init__(self, message: str, logs: str = "", infra: bool = True,
+                 rework: bool = False):
         super().__init__(message)
         self.logs = logs
-        self.infra = infra
+        self.infra = infra and not rework
+        self.rework = rework
 
 
 def command_lines(text: str) -> list[list[str]]:
@@ -420,7 +425,7 @@ class Compose:
         if code != 0:
             raise ServiceFailed(f"{o['label']} `{o['command']}` di {o['service']}:"
                                 f"{o['compose_service']} gagal (exit {code}).",
-                                logs=str(res.get("output") or ""), infra=False)
+                                logs=str(res.get("output") or ""), rework=True)
 
     @contextmanager
     def for_qa(self, plan: dict) -> Iterator[dict[str, str]]:

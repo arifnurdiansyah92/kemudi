@@ -367,19 +367,22 @@ def test_failed_start_logs_reach_the_card_redacted(tmp_path, repo):
     assert v["JWT_SECRET_KEY"] not in str(events(sessions, "compose_up"))
 
 
-def test_failing_init_blocks_with_redacted_output(tmp_path, repo):
+def test_failing_init_goes_back_to_the_agent_redacted(tmp_path, repo):
+    # init runs in an image built from the branch: the story's code is the
+    # likely cause, so it is reworked (an attempt), not blocked
     w, taiga, sessions, runner, agent, order, v = setup(tmp_path, repo)
     w.svc.exec = [{"ok": False, "exit": 1,
                    "output": f"psql: password authentication failed ({v['QA_ADMIN_PASSWORD']})"}]
     w.tick()
     with sessions() as db:
-        assert db.query(AwakJob).one().state == "failed"
-    assert taiga.story(1)["is_blocked"]
-    assert "qa" not in runner.calls and order[-1] == "svc_down"
-    text = taiga.texts(1)[-1]
-    assert "init `python scripts/init_qa.py`" in text and "authentication failed" in text
-    assert v["QA_ADMIN_PASSWORD"] not in text
+        job = db.query(AwakJob).one()
+        assert job.state == "passed" and job.attempts == 2
+    assert not taiga.story(1)["is_blocked"]
+    fail = next(x for x in taiga.texts(1) if "Gagal: init" in x)
+    assert "init `python scripts/init_qa.py`" in fail and "authentication failed" in fail
+    assert "Kembali ke In progress" in fail and v["QA_ADMIN_PASSWORD"] not in fail
     assert v["QA_ADMIN_PASSWORD"] not in str(events(sessions, "service_failed"))
+    assert order.count("svc_down") == 2
 
 
 def test_login_failure_blocks_the_story(tmp_path, repo):

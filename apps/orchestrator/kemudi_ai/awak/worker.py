@@ -500,6 +500,18 @@ class Worker:
                                                        "logs": e.logs[-4000:],
                                                        "infra": e.infra})
                 logs = f"\n\n```\n{e.logs.strip()[-1500:]}\n```" if e.logs.strip() else ""
+                if e.rework:
+                    feedback = secrets.redact(
+                        f"{e}\n\nOutput:\n{e.logs.strip()[-3000:]}\n\nThe runbook's command "
+                        "runs in an image built from your branch, on a fresh database, and "
+                        "works on the default branch: fix your change so it does.",
+                        self.redact_values_for(project.slug))
+                    job = self._set(job_id, attempts=job.attempts + 1, feedback=feedback,
+                                    phase="")
+                    self._move(story["id"], project.status("in-progress"))
+                    self._say(story["id"], job_id, f"Gagal: {e}{logs}\n\nKembali ke In "
+                              "progress; Awak akan memperbaiki.")
+                    continue
                 if not e.infra:
                     self._block(project, story, job_id, f"Berhenti: {e}{logs}")
                     return
