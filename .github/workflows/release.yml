@@ -1,0 +1,187 @@
+name: release
+
+# Pushing a tag vX.Y.Z builds every Kemudi image, pushes it to GHCR as
+# ghcr.io/arifnurdiansyah92/kemudi-<component>:X.Y.Z (plus X.Y and latest for
+# a final release), then creates the GitHub Release with the CHANGELOG.md
+# section for that version. infra/docker-compose.yml pulls these tags.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  # Image names must be lowercase.
+  IMAGE_PREFIX: ghcr.io/arifnurdiansyah92/kemudi
+
+jobs:
+  images:
+    name: image ${{ matrix.component }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - component: back
+            context: services/kemudi-back
+            file: services/kemudi-back/docker/Dockerfile
+          - component: events
+            context: services/kemudi-events
+            file: services/kemudi-events/docker/Dockerfile
+          - component: web
+            context: apps/web
+            file: apps/web/Dockerfile
+          - component: orchestrator
+            context: apps/orchestrator
+            file: apps/orchestrator/Dockerfile
+          - component: svc
+            context: infra/svc
+            file: infra/svc/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-${{ matrix.component }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+          flavor: |
+            latest=auto
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+
+  # Hermes (services/awak, a submodule) first, then kemudi-runner, which is
+  # built FROM the hermes image just pushed (infra/runner/Dockerfile,
+  # ARG HERMES_IMAGE). Both are large (~5 GB), so free the runner's disk.
+  awak-images:
+    name: image hermes + runner
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af
+          df -h /
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta-hermes
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-hermes
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+          flavor: |
+            latest=auto
+      - id: meta-runner
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-runner
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+          flavor: |
+            latest=auto
+      - name: Build and push hermes
+        uses: docker/build-push-action@v6
+        with:
+          context: services/awak
+          push: true
+          tags: ${{ steps.meta-hermes.outputs.tags }}
+          labels: ${{ steps.meta-hermes.outputs.labels }}
+      - name: Build and push runner
+        uses: docker/build-push-action@v6
+        with:
+          context: infra/runner
+          file: infra/runner/Dockerfile
+          build-args: |
+            HERMES_IMAGE=${{ env.IMAGE_PREFIX }}-hermes:${{ steps.meta-hermes.outputs.version }}
+          push: true
+          tags: ${{ steps.meta-runner.outputs.tags }}
+          labels: ${{ steps.meta-runner.outputs.labels }}
+
+  github-release:
+    name: GitHub Release
+    needs: [images, awak-images]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Release notes from CHANGELOG.md
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          notes="$RUNNER_TEMP/notes.md"
+          if [ -f CHANGELOG.md ]; then
+            # The section whose heading names this version ("## [1.0.0]",
+            # "## 1.0.0 - date", "## v1.0.0"), up to the next "## " heading.
+            awk -v v="$version" '
+              /^## / {
+                if (found) exit
+                h = $0
+                gsub(/[][]/, " ", h)
+                n = split(h, w, /[ \t]+/)
+                for (i = 2; i <= n; i++) if (w[i] == v || w[i] == "v" v) { found = 1; next }
+              }
+              found { print }
+            ' CHANGELOG.md > "$notes"
+          fi
+          if [ ! -s "$notes" ] || ! grep -q '[^[:space:]]' "$notes"; then
+            echo "No CHANGELOG.md section for $version." > "$notes"
+          fi
+          {
+            echo
+            echo "## Images"
+            echo
+            for c in back events web orchestrator hermes runner svc; do
+              echo "- \`${IMAGE_PREFIX}-$c:$version\`"
+            done
+            echo
+            echo "Install: [docs/install.md](https://github.com/${GITHUB_REPOSITORY}/blob/$TAG/docs/install.md) · Upgrade: [docs/upgrade.md](https://github.com/${GITHUB_REPOSITORY}/blob/$TAG/docs/upgrade.md)"
+          } >> "$notes"
+          cat "$notes"
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          prerelease=""
+          case "$TAG" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$TAG" --verify-tag --title "Kemudi ${TAG#v}" \
+            --notes-file "$RUNNER_TEMP/notes.md" $prerelease

@@ -1,0 +1,462 @@
+# Kemudi — production stack.
+#
+#   sh scripts/init-secrets.sh                 # writes infra/.env, every secret filled
+#   $EDITOR infra/.env                         # domain, SMTP, model provider
+#   docker compose -f infra/docker-compose.yml --env-file infra/.env up -d
+#   docker compose -f infra/docker-compose.yml --env-file infra/.env exec kemudi-back \
+#       python manage.py createsuperuser
+#
+# docs/install.md is the full guide; docs/upgrade.md and docs/backup.md cover
+# day-two operations.
+#
+# Images come from ghcr.io (built by .github/workflows/release.yml); nothing is
+# built here and no source is mounted. To build from a checkout instead, add
+# -f infra/docker-compose.build.yml.
+#
+# Service names, networks and volumes match infra/docker-compose.dev.yml, so
+# the apps need no production-specific configuration.
+#
+# The Awak services (kemudi-hermes, kemudi-awak, kemudi-runner, kemudi-dind,
+# kemudi-svc) are EXPERIMENTAL and off by default: enable them with
+# --profile awak (docs/install.md, "Awak (experimental)"). kemudi-hermes alone,
+# which the contract/CR features need, can be enabled with --profile ai.
+#
+# Every secret uses ${VAR:?...}: compose refuses to start while one is unset or
+# empty. Interpolation covers the whole file, so the Awak keys are required
+# even when the profile is off; scripts/init-secrets.sh fills them all.
+
+name: kemudi
+
+x-back-environment: &back-environment
+  POSTGRES_DB: "taiga"
+  POSTGRES_USER: "${POSTGRES_USER:?set POSTGRES_USER in infra/.env}"
+  POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?}"
+  POSTGRES_HOST: "kemudi-db"
+  TAIGA_SECRET_KEY: "${SECRET_KEY:?run scripts/init-secrets.sh}"
+  TAIGA_SITES_SCHEME: "${KEMUDI_SCHEME:-https}"
+  TAIGA_SITES_DOMAIN: "${KEMUDI_DOMAIN:?set KEMUDI_DOMAIN (host[:port] users open) in infra/.env}"
+  TAIGA_SUBPATH: ""
+  # Real mail: invitations, password resets and notifications.
+  EMAIL_BACKEND: "${EMAIL_BACKEND:-django.core.mail.backends.smtp.EmailBackend}"
+  EMAIL_HOST: "${EMAIL_HOST:?set EMAIL_HOST (SMTP server) in infra/.env}"
+  EMAIL_PORT: "${EMAIL_PORT:-587}"
+  EMAIL_HOST_USER: "${EMAIL_HOST_USER:-}"
+  EMAIL_HOST_PASSWORD: "${EMAIL_HOST_PASSWORD:-}"
+  EMAIL_USE_TLS: "${EMAIL_USE_TLS:-True}"
+  EMAIL_USE_SSL: "${EMAIL_USE_SSL:-False}"
+  DEFAULT_FROM_EMAIL: "${DEFAULT_FROM_EMAIL:?set DEFAULT_FROM_EMAIL in infra/.env}"
+  PUBLIC_REGISTER_ENABLED: "${PUBLIC_REGISTER_ENABLED:-False}"
+  SESSION_COOKIE_SECURE: "${SESSION_COOKIE_SECURE:-True}"
+  CSRF_COOKIE_SECURE: "${CSRF_COOKIE_SECURE:-True}"
+  RABBITMQ_USER: "${RABBITMQ_USER:?set RABBITMQ_USER in infra/.env}"
+  RABBITMQ_PASS: "${RABBITMQ_PASS:?run scripts/init-secrets.sh}"
+  TAIGA_EVENTS_RABBITMQ_HOST: "kemudi-events-rabbitmq"
+  TAIGA_ASYNC_RABBITMQ_HOST: "kemudi-async-rabbitmq"
+  ENABLE_TELEMETRY: "False"
+
+x-back-volumes: &back-volumes
+  - kemudi-static-data:/taiga-back/static
+  - kemudi-media-data:/taiga-back/media
+
+x-rabbitmq: &rabbitmq
+  # Not 4.1+: it requires frame_max >= 8192, and kemudi-events' amqplib 0.8
+  # offers 4096, so the events service can never connect.
+  image: rabbitmq:4.0.9-alpine
+  # No RABBITMQ_ERLANG_COOKIE: RabbitMQ 4 images ignore it and each node
+  # writes its own cookie file on first boot (single node, CLI access only).
+  environment:
+    RABBITMQ_DEFAULT_USER: "${RABBITMQ_USER:?set RABBITMQ_USER in infra/.env}"
+    RABBITMQ_DEFAULT_PASS: "${RABBITMQ_PASS:?run scripts/init-secrets.sh}"
+    RABBITMQ_DEFAULT_VHOST: "taiga"
+  healthcheck:
+    # Waits for the server to write its Erlang cookie: a CLI call before that
+    # creates the file as root, and the first boot crashes on it.
+    test: ["CMD-SHELL", "[ -s /var/lib/rabbitmq/.erlang.cookie ] && rabbitmq-diagnostics -q ping"]
+    interval: 10s
+    timeout: 10s
+    retries: 10
+    start_period: 30s
+  restart: unless-stopped
+
+# Labels the experimental Awak services carry (docker ps --filter label=...).
+x-experimental: &experimental
+  io.kemudi.experimental: "true"
+
+services:
+  kemudi-db:
+    image: postgres:16.16-alpine
+    environment:
+      POSTGRES_DB: "taiga"
+      POSTGRES_USER: "${POSTGRES_USER:?set POSTGRES_USER in infra/.env}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d taiga"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    volumes:
+      - kemudi-db-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # Runs migrations and loads the default templates on every start
+  # (services/kemudi-back/docker/entrypoint.sh), then serves the API.
+  kemudi-back:
+    image: ghcr.io/arifnurdiansyah92/kemudi-back:${KEMUDI_VERSION:-1.0.0}
+    environment: *back-environment
+    volumes: *back-volumes
+    healthcheck:
+      # Any answer below 500 means Django is up (the API root may answer 4xx).
+      test: ["CMD", "python", "-c", "import sys,urllib.request as r,urllib.error as e\ntry: r.urlopen('http://127.0.0.1:8000/api/v1/', timeout=5)\nexcept e.HTTPError as x: sys.exit(x.code >= 500)"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      # First start runs every migration.
+      start_period: 300s
+    restart: unless-stopped
+    depends_on:
+      kemudi-db: { condition: service_healthy }
+      kemudi-events-rabbitmq: { condition: service_healthy }
+      kemudi-async-rabbitmq: { condition: service_healthy }
+
+  kemudi-async:
+    image: ghcr.io/arifnurdiansyah92/kemudi-back:${KEMUDI_VERSION:-1.0.0}
+    entrypoint: ["/taiga-back/docker/async_entrypoint.sh"]
+    environment: *back-environment
+    volumes: *back-volumes
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A taiga.celery inspect ping -d \"celery@$$HOSTNAME\" --timeout 10 >/dev/null 2>&1"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    depends_on:
+      # Healthy back = migrations applied.
+      kemudi-back: { condition: service_healthy }
+      kemudi-async-rabbitmq: { condition: service_healthy }
+
+  kemudi-async-rabbitmq:
+    <<: *rabbitmq
+    hostname: kemudi-async-rabbitmq
+    volumes:
+      - kemudi-async-rabbitmq-data:/var/lib/rabbitmq
+
+  kemudi-events:
+    image: ghcr.io/arifnurdiansyah92/kemudi-events:${KEMUDI_VERSION:-1.0.0}
+    environment:
+      RABBITMQ_USER: "${RABBITMQ_USER:?set RABBITMQ_USER in infra/.env}"
+      RABBITMQ_PASS: "${RABBITMQ_PASS:?run scripts/init-secrets.sh}"
+      TAIGA_SECRET_KEY: "${SECRET_KEY:?run scripts/init-secrets.sh}"
+      TAIGA_EVENTS_RABBITMQ_HOST: "kemudi-events-rabbitmq"
+    healthcheck:
+      # Liveness server on APP_PORT (services/kemudi-events/docker/env.template).
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3023/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
+    depends_on:
+      kemudi-events-rabbitmq: { condition: service_healthy }
+
+  kemudi-events-rabbitmq:
+    <<: *rabbitmq
+    hostname: kemudi-events-rabbitmq
+    volumes:
+      - kemudi-events-rabbitmq-data:/var/lib/rabbitmq
+
+  kemudi-protected:
+    image: taigaio/taiga-protected:6.10.1
+    environment:
+      MAX_AGE: "360"
+      SECRET_KEY: "${SECRET_KEY:?run scripts/init-secrets.sh}"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8003), 5)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+
+  kemudi-web:
+    image: ghcr.io/arifnurdiansyah92/kemudi-web:${KEMUDI_VERSION:-1.0.0}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+  # Kemudi AI service (apps/orchestrator): contract baseline, CR check,
+  # backtests, the skill library and (with --profile awak) the Awak loop.
+  # Served at /api/kemudi/ by the gateway.
+  kemudi-orchestrator:
+    image: ghcr.io/arifnurdiansyah92/kemudi-orchestrator:${KEMUDI_VERSION:-1.0.0}
+    environment:
+      KEMUDI_HERMES_URL: "${KEMUDI_HERMES_URL:-http://kemudi-hermes:8642/v1}"
+      KEMUDI_HERMES_API_KEY: "${KEMUDI_HERMES_API_KEY:?run scripts/init-secrets.sh}"
+      KEMUDI_AI_MODEL: "${KEMUDI_AI_MODEL:-deepseek-flash}"
+      KEMUDI_AI_DB_URL: "sqlite:////var/lib/kemudi-ai/kemudi-ai.db"
+      KEMUDI_TAIGA_API_URL: "http://kemudi-back:8000/api/v1"
+      # Empty KEMUDI_AWAK_PROJECTS keeps the Awak worker off.
+      KEMUDI_AWAK_PROJECTS: "${KEMUDI_AWAK_PROJECTS:-}"
+      KEMUDI_AWAK_PASSWORD: "${KEMUDI_AWAK_PASSWORD:-}"
+      KEMUDI_QA_PASSWORD: "${KEMUDI_QA_PASSWORD:-}"
+      KEMUDI_AWAK_API_KEY: "${KEMUDI_AWAK_API_KEY:?run scripts/init-secrets.sh}"
+      KEMUDI_AWAK_MODEL: "${KEMUDI_AWAK_MODEL:-deepseek-flash}"
+      KEMUDI_QA_MODEL: "${KEMUDI_QA_MODEL:-deepseek-flash}"
+      KEMUDI_RUNNER_KEY: "${KEMUDI_RUNNER_KEY:?run scripts/init-secrets.sh}"
+      KEMUDI_SVC_KEY: "${KEMUDI_SVC_KEY:?run scripts/init-secrets.sh}"
+      # Fernet key for the SSH keys and BYOK model keys stored at rest. Losing
+      # or changing it makes them unusable: back it up (docs/backup.md).
+      KEMUDI_SECRET_KEY: "${KEMUDI_SECRET_KEY:?run scripts/init-secrets.sh}"
+      # Server-default model connection (also what Awak's /llm/v1 proxy uses
+      # when a project brings no key of its own).
+      KEMUDI_AI_BASE_URL: "${KEMUDI_AI_BASE_URL:-}"
+      KEMUDI_AI_API_KEY: "${KEMUDI_AI_API_KEY:-}"
+      KEMUDI_LLM_PROXY_TOKEN: "${KEMUDI_LLM_PROXY_TOKEN:?run scripts/init-secrets.sh}"
+      # Production mode: refuse to start with an empty or placeholder secret
+      # key or proxy token. Model prompts are kept as hashes unless
+      # KEMUDI_AI_LOG_PROMPTS=true; AI call records are purged after
+      # KEMUDI_AI_LOG_RETENTION_DAYS (0 keeps them).
+      KEMUDI_ENV: "production"
+      KEMUDI_AI_LOG_PROMPTS: "${KEMUDI_AI_LOG_PROMPTS:-false}"
+      KEMUDI_AI_LOG_RETENTION_DAYS: "${KEMUDI_AI_LOG_RETENTION_DAYS:-90}"
+      # Kemudi instance admins (the skill library): Taiga user ids,
+      # comma-separated (GET /api/kemudi/me shows yours). Usernames are a
+      # weaker fallback.
+      KEMUDI_ADMIN_USER_IDS: "${KEMUDI_ADMIN_USER_IDS:-}"
+      KEMUDI_ADMIN_USERNAMES: "${KEMUDI_ADMIN_USERNAMES:-}"
+    volumes:
+      # Contracts, the Awak vault and generated keys: back this up.
+      - kemudi-ai-data:/var/lib/kemudi-ai
+      - kemudi-awak-workspace:/workspace
+      - kemudi-awak-skills:/opt/skills
+      - kemudi-awak-profiles:/opt/awak-profiles
+      - kemudi-skills-fetch:/var/lib/kemudi-ai/skills-fetch:ro
+      # No /host-git here (dev mounts the checkout's .git): in production Awak
+      # works on repositories added by SSH URL in Project settings -> Agent.
+    networks: [default, kemudi-sandbox, kemudi-svcnet]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as r; r.urlopen('http://127.0.0.1:8700/health', timeout=5)"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
+    depends_on:
+      kemudi-back: { condition: service_healthy }
+      # Only present with --profile ai or --profile awak.
+      kemudi-hermes: { condition: service_healthy, required: false }
+
+  kemudi-gateway:
+    image: nginx:1.30.6-alpine
+    ports:
+      # Loopback by default: put a TLS reverse proxy in front (docs/install.md).
+      # KEMUDI_BIND=0.0.0.0 publishes it on every interface.
+      - "${KEMUDI_BIND:-127.0.0.1}:${KEMUDI_HTTP_PORT:-8080}:80"
+    volumes:
+      - ./gateway/kemudi.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - kemudi-static-data:/taiga/static:ro
+      - kemudi-media-data:/taiga/media:ro
+    # On kemudi-sandbox so Awak's QA runs reach the app the way a browser would.
+    networks: [default, kemudi-sandbox]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+    depends_on:
+      kemudi-web: { condition: service_healthy }
+      kemudi-back: { condition: service_healthy }
+      kemudi-events: { condition: service_healthy }
+      kemudi-protected: { condition: service_healthy }
+      kemudi-orchestrator: { condition: service_healthy }
+
+  # --- Kemudi AI model gateway (profiles ai, awak) -------------------------
+  # Hermes (services/awak) as an OpenAI-compatible API server with every tool
+  # off. Config: infra/hermes/config.yaml. Needed for the contract baseline,
+  # CR check and backtests; not published on the host.
+  kemudi-hermes:
+    image: ghcr.io/arifnurdiansyah92/kemudi-hermes:${KEMUDI_VERSION:-1.0.0}
+    profiles: [ai, awak]
+    labels: *experimental
+    command: ["gateway", "run"]
+    environment:
+      API_SERVER_ENABLED: "true"
+      API_SERVER_HOST: "0.0.0.0"
+      API_SERVER_PORT: "8642"
+      API_SERVER_KEY: "${KEMUDI_HERMES_API_KEY:?run scripts/init-secrets.sh}"
+      API_SERVER_MODEL_NAME: "kemudi-hermes"
+      KEMUDI_AI_BASE_URL: "${KEMUDI_AI_BASE_URL:-}"
+      KEMUDI_AI_API_KEY: "${KEMUDI_AI_API_KEY:-}"
+      KEMUDI_AI_MODEL: "${KEMUDI_AI_MODEL:-deepseek-flash}"
+    volumes:
+      - ./hermes/config.yaml:/etc/hermes/config.yaml:ro
+      - kemudi-hermes-data:/opt/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8642/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  # --- Awak dev loop: EXPERIMENTAL (profile awak) ---------------------------
+  # Awak runs model-written code. Read docs/install.md, "Awak (experimental)",
+  # before enabling. kemudi-sandbox is internal (no internet); Awak holds no
+  # provider key and reaches the model through the orchestrator's /llm/v1 proxy.
+  kemudi-awak:
+    image: ghcr.io/arifnurdiansyah92/kemudi-hermes:${KEMUDI_VERSION:-1.0.0}
+    profiles: [awak]
+    labels: *experimental
+    command: ["gateway", "run"]
+    environment:
+      API_SERVER_ENABLED: "true"
+      API_SERVER_HOST: "0.0.0.0"
+      API_SERVER_PORT: "8642"
+      API_SERVER_KEY: "${KEMUDI_AWAK_API_KEY:?run scripts/init-secrets.sh}"
+      API_SERVER_MODEL_NAME: "kemudi-awak"
+      KEMUDI_AWAK_MODEL: "${KEMUDI_AWAK_MODEL:-deepseek-flash}"
+      KEMUDI_LLM_PROXY_TOKEN: "${KEMUDI_LLM_PROXY_TOKEN:?run scripts/init-secrets.sh}"
+      HERMES_WRITE_SAFE_ROOT: "/workspace"
+      GATEWAY_MULTIPLEX_PROFILES: "true"
+    volumes:
+      - ./awak/config.yaml:/etc/hermes/config.yaml:ro
+      - kemudi-awak-data:/opt/data
+      - kemudi-awak-workspace:/workspace
+      - kemudi-awak-skills:/opt/skills:ro
+      - kemudi-awak-profiles:/opt/data/profiles
+    networks: [kemudi-sandbox]
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER, KILL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 2g
+    pids_limit: 512
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8642/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+    depends_on:
+      kemudi-orchestrator: { condition: service_healthy }
+
+  # Runs branch code (pnpm install, gates, Playwright). No secrets; internet
+  # for package installs only through kemudi-egress.
+  kemudi-runner:
+    image: ghcr.io/arifnurdiansyah92/kemudi-runner:${KEMUDI_VERSION:-1.0.0}
+    profiles: [awak]
+    labels: *experimental
+    init: true
+    environment:
+      KEMUDI_RUNNER_KEY: "${KEMUDI_RUNNER_KEY:?run scripts/init-secrets.sh}"
+      KEMUDI_DEV_GATEWAY: "http://kemudi-gateway"
+    volumes:
+      - kemudi-awak-workspace:/workspace
+      - kemudi-pnpm-store:/pnpm-store
+      - kemudi-skills-fetch:/skills-fetch
+    networks: [kemudi-sandbox, kemudi-egress, kemudi-dindnet]
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, KILL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 4g
+    pids_limit: 1024
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8800/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+
+  # Sandboxed Docker for a project's compose services. PRIVILEGED: listens
+  # only on a unix socket that only kemudi-svc mounts.
+  kemudi-dind:
+    image: docker:27.5.1-dind
+    profiles: [awak]
+    labels: *experimental
+    privileged: true
+    command: ["dockerd", "--host=unix:///run/dind/docker.sock", "--userns-remap=default",
+              "--default-address-pool", "base=10.201.0.0/16,size=24"]
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    volumes:
+      - kemudi-dind-sock:/run/dind
+      - kemudi-dind-data:/var/lib/docker
+    networks: [kemudi-dindnet, kemudi-egress]
+    mem_limit: 5g
+    pids_limit: 2048
+    healthcheck:
+      test: ["CMD", "docker", "-H", "unix:///run/dind/docker.sock", "version"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  # The only client of kemudi-dind (infra/svc/svc.py). Reachable only from
+  # the orchestrator (kemudi-svcnet), with its own key.
+  kemudi-svc:
+    image: ghcr.io/arifnurdiansyah92/kemudi-svc:${KEMUDI_VERSION:-1.0.0}
+    profiles: [awak]
+    labels: *experimental
+    init: true
+    environment:
+      KEMUDI_SVC_KEY: "${KEMUDI_SVC_KEY:?run scripts/init-secrets.sh}"
+      DOCKER_HOST: "unix:///run/dind/docker.sock"
+    volumes:
+      - kemudi-dind-sock:/run/dind
+      - kemudi-awak-workspace:/workspace:ro
+    tmpfs:
+      - /run/svc:mode=0700
+    networks: [kemudi-svcnet]
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, KILL, DAC_READ_SEARCH]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1g
+    pids_limit: 512
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request as r; r.urlopen('http://127.0.0.1:8810/health', timeout=5)"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+    depends_on:
+      kemudi-dind: { condition: service_healthy }
+
+volumes:
+  kemudi-static-data:
+  kemudi-media-data:
+  kemudi-db-data:
+  kemudi-async-rabbitmq-data:
+  kemudi-events-rabbitmq-data:
+  kemudi-hermes-data:
+  kemudi-ai-data:
+  kemudi-awak-data:
+  kemudi-awak-workspace:
+  kemudi-awak-skills:
+  kemudi-awak-profiles:
+  kemudi-skills-fetch:
+  kemudi-pnpm-store:
+  kemudi-dind-sock:
+  kemudi-dind-data:
+
+networks:
+  default: {}
+  kemudi-sandbox:
+    internal: true
+  # Outbound internet for kemudi-runner and kemudi-dind (package installs,
+  # image pulls). There is no egress proxy service: restrict it on the host
+  # firewall if you need to (docs/install.md).
+  kemudi-egress: {}
+  kemudi-dindnet:
+    internal: true
+  kemudi-svcnet:
+    internal: true
