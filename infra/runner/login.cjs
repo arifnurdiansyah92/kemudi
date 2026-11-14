@@ -24,12 +24,14 @@ async function main() {
     await page.locator(cfg.submit).first().click({ timeout: 30_000 })
     const done = (url) =>
       cfg.success_url ? url.pathname.startsWith(cfg.success_url) : url.pathname !== loginPath
+    // A dev server compiles the page the login lands on at its first visit;
+    // on a busy machine that alone can take more than 30 s.
     try {
-      await page.waitForURL(done, { timeout: 30_000 })
+      await page.waitForURL(done, { timeout: 120_000 })
     } catch {
       const where = new URL(page.url()).pathname
       throw new Error(
-        `still at ${where} 30 s after submitting the login form` +
+        `still at ${where} 120 s after submitting the login form` +
           (cfg.success_url ? ` (expected ${cfg.success_url})` : '') +
           '; check the selectors and the vault values of qa.login',
       )
