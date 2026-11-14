@@ -432,13 +432,13 @@ def test_run_in_gates_build_up_deps_exec_and_down(tmp_path, repo):
     w.tick()
     assert taiga.status_of(1) == "done", taiga.texts(1)
     assert [o for o in order if o.startswith("svc")] == [
-        "svc_up", "svc_exec:python -m pytest -q tests", "svc_exec:python -m flake8 app",
-        "svc_down"]
+        "svc_up", "svc_exec:python scripts/init_qa.py", "svc_exec:python -m pytest -q tests",
+        "svc_exec:python -m flake8 app", "svc_down"]  # init first: the same fresh DB as QA
     [up] = w.svc.ops("svc_up")
     assert up["up"] == ["postgres", "redis"] and "expose" not in up
     assert up["path"] == "kemudi/us-12/kemudi" and up["env"] == {
         "JWT_SECRET_KEY": v["JWT_SECRET_KEY"]}
-    ex = w.svc.ops("svc_exec")[0]
+    ex = w.svc.ops("svc_exec")[1]
     assert ex["service"] == "backend" and ex["timeout"] == checks.TIMEOUTS["checks"]
     assert "api: python -m pytest -q tests" in taiga.texts(1)[-1]
     # install never ran for the run_in app
@@ -449,7 +449,8 @@ def test_run_in_gates_build_up_deps_exec_and_down(tmp_path, repo):
 def test_run_in_gate_failure_reworks_and_still_goes_down(tmp_path, repo):
     w, taiga, sessions, runner, agent, order, v = setup(tmp_path, repo, _run_in_spec(),
                                                         qa_mode="gates")
-    w.svc.exec = [{"ok": False, "exit": 1,
+    w.svc.exec = [{"ok": True, "exit": 0, "output": "schema ready"},  # init
+                  {"ok": False, "exit": 1,
                    "output": f"FAILED tests/test_x.py {v['JWT_SECRET_KEY']}"}]
     w.tick()
     assert order.index("svc_down") > order.index("svc_exec:python -m pytest -q tests")

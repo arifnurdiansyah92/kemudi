@@ -482,7 +482,8 @@ class Compose:
     def run_in_gates(self, path: str, p: dict) -> list[dict]:
         """A run_in app's checks in its compose service: build the image from the
         story checkout, start only the other listed services (dependencies),
-        run each command with `compose run --rm`, then down."""
+        run init (as QA does), run each command with `compose run --rm`, then
+        down."""
         s = self._service(p["run_in"]["service"])
         inner = p["run_in"]["compose_service"]
         project = self.projects[s.name]
@@ -496,6 +497,11 @@ class Compose:
                     return [{"name": f"build {s.name}:{inner}", "ok": False,
                              "output": str(res.get("logs_tail") or res.get("error") or "")}]
                 raise self._start_failed(s, res)
+            # the same fresh databases as QA: init (schema, users) first
+            for label, o in self.rb.one_shots():
+                one = _one_shot(self.rb, label, o)
+                if label == "init" and one["service"] == s.name:
+                    self._one_shot(one)
             gates: list[dict] = []
             for i, c in enumerate(p["commands"]):
                 r = self.exec(project, inner, c["argv"], p["env"], c["timeout"])
