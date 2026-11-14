@@ -470,7 +470,14 @@ class Worker:
         # collect
         self._set(job.id, phase="collect")
         sha = repo.collect(job.branch)
-        if sha == base_sha:
+        # A card put back in Ready keeps its branch. With no human feedback and
+        # work already on the branch, "nothing to add" is a fair answer: check
+        # the existing tip instead of failing the attempt.
+        recheck = (sha == base_sha and not self._job(job.id).feedback
+                   and bool(repo.changed_files(job.branch)))
+        if recheck:
+            self._event(job.id, "recheck", {"sha": sha})
+        if sha == base_sha and not recheck:
             return Fail("You made no commit. Implement the story and commit it.",
                         "Awak tidak menghasilkan commit. Laporan Awak:\n\n"
                         + _quote(report))

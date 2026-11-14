@@ -268,3 +268,40 @@ def test_migration_fix_up_resumes_after_a_crash(tmp_path):
     init_db(engine, host_git="/host-git")
     with S() as db:
         assert db.get(AwakProject, "new").qa_mode == "browser"
+
+
+def test_ready_again_with_work_on_the_branch_rechecks_without_a_new_commit(tmp_path, repo):
+    """Back in Ready, the branch keeps its commits; an agent with nothing to
+    add is not failed: the existing tip goes through the checks again."""
+    from .awak_fakes import STATUSES
+
+    def code(d, n):
+        if n == 1:
+            commit_file(d, "feature1.txt", "x")  # later runs add nothing
+
+    w, taiga, sessions, runner = _worker(tmp_path, repo, "gates", agent=FakeAgent(code=code))
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    assert taiga.status_of(1) == "done"
+    first = job_of(sessions).last_sha
+    taiga.stories_by_id[1]["status"] = STATUSES["ready"]
+    w.tick()
+    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 1
+    assert job_of(sessions).last_sha == first
+    assert not any("tidak menghasilkan commit" in t for t in taiga.texts(1))
+
+
+def test_human_rework_without_a_commit_still_fails(tmp_path, repo):
+    from .awak_fakes import STATUSES
+
+    def code(d, n):
+        if n == 1:
+            commit_file(d, "feature1.txt", "x")
+
+    w, taiga, sessions, runner = _worker(tmp_path, repo, "gates", agent=FakeAgent(code=code))
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    taiga.human_comment(1, "Warnanya salah, ganti biru.")
+    taiga.stories_by_id[1]["status"] = STATUSES["in-progress"]
+    w.tick()
+    assert any("tidak menghasilkan commit" in t for t in taiga.texts(1))
