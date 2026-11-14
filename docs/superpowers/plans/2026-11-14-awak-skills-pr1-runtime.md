@@ -130,3 +130,26 @@ afterwards. Profiles work; the design holds with the changes below.
   own state writes are not file-tool writes). Dropped `/opt/data`.
 - Deleting a served profile dir is safe (the watcher unserves it;
   `/p/<id>/v1/models` → 404). The default profile keeps serving `/health`.
+  At the next Hermes boot a deleted profile can come back as a log-only
+  ghost (`logs/agent.log`, `logs/errors.log`, no identity marker): never
+  served; the sweep removes `sk-<hex>` ghosts by mtime after 24 h.
+
+## Implementation notes (Tasks 1-2)
+
+- Runtime layout: orchestrator `/opt/skills/sets/<setid>/<slug>/…` (volume
+  `kemudi-awak-skills`, root 0755/0644; read-only at the same path in
+  kemudi-awak) and `/opt/awak-profiles/sk-<setid>/{config.yaml,.env}`
+  (volume `kemudi-awak-profiles` = kemudi-awak's `/opt/data/profiles`,
+  owned by uid 10000, `.env` 0600). Empty set: `e3b0c44298fc`.
+- `skills.prepare_set` runs before every code, QA and setup run (DB +
+  files, re-verifies the set bytes and the profile files' hashes);
+  `HermesAgent.run(profile=...)` (required) waits for `gateway.lock` and
+  retries `409 profile_mismatch` up to `KEMUDI_AWAK_PROFILE_WAIT_S` (90 s).
+- impeccable vendored from `pbakaus/impeccable@1995764b` (plugin 4.9.1):
+  `plugin/skills/impeccable` without `scripts/` (its launcher downloads a
+  binary; the data is > 1 MB, the folder would pass the 2 MB cap), plus
+  the repo's LICENSE and NOTICE.md; origin in `builtin_skills/sources.json`.
+- `prompt_version` gets `.s<setid>` and the prompt a Skills section only
+  when the role has skills, so roles without skills keep their version.
+- Verify: `docker exec -u hermes -w /tmp kemudi-dev-kemudi-awak-1 hermes -p
+  sk-<setid> skills list` (`GET /p/<id>/v1/skills` is the Hermes bug above).
