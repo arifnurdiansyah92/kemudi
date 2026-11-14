@@ -525,3 +525,12 @@ def test_human_feedback_is_the_latest_human_comment(tmp_path, repo):
         {"user": {"username": "pm"}, "comment": "old", "created_at": "2026-11-13T09:00:00Z"},
     ]
     assert w._human_feedback(1) == "new"
+
+
+def test_runbook_generated_trailing_slash_is_the_same_path():
+    from kemudi_ai.awak.runbook import validate
+
+    rb, problems = validate({"apps": [{"name": "web", "repo": "r", "dir": "frontend",
+                                       "generated": ["out/", "public/sw.js"]}],
+                             "services": [], "env": []}, {"r"})
+    assert problems == [] and rb.apps[0].generated == ["out", "public/sw.js"]

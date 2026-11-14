@@ -212,11 +212,17 @@ the service logs (redacted) in the event.
 
 ## 6. Setup Assistant
 
-A **setup run** (`awak_setup_runs`) is processed by the worker like a
-requested merge (before stories), so it shares the lease and the runner.
+A **setup run** (`awak_setup_runs`) is processed by the worker after
+requested merges, so it shares the lease and the runner. Setup steps and
+stories take turns: a step runs when the last tick did not run one, or when
+no story is ready, so one project's setup never holds every project's
+stories. An environment problem sets `not_before` (10 s × failures) instead
+of sleeping in the tick. One active run per project is a partial unique
+index on `project_slug`.
 
 States: `queued → reading → proving → needs_input → proving → ready →
-approved | failed | cancelled`.
+approved | failed | cancelled | superseded` (a `ready` run is superseded
+when a newer run starts or another is approved; it can't be approved).
 
 1. **Clone**: sync every repo, check out the default branch to
    `/workspace/<slug>/setup/<repo>/`.
@@ -232,6 +238,12 @@ approved | failed | cancelled`.
 5. **Missing env**: `required` names without a vault value → state
    `needs_input`; the UI shows a form (name, description, secret). Values
    go to the vault; the run continues.
+   **Confirm saved env**: the agent picks which vault names its runbook
+   wires (compose `env`, `init`/`seed` `env`, `qa.env`, `qa.login`), so
+   before a proof uses a saved value not typed in this run, the run stops in
+   `needs_input` with `confirm_env: [{name, secret, used_in}]`; an admin
+   confirms (`POST /setup/{id}/env` with `confirm: true`), the names go to
+   `confirmed_env`. The proof gets only the wired values.
 6. **Prove** in the runner/svc: install every app, run its checks once
    (failures reported, not blocking: an existing red test is the project's
    state, not a broken runbook), `svc_up`, seed, start processes, health,
@@ -278,7 +290,8 @@ dir.
 - `GET /env` (names, flags, non-secret values), `PUT /env/{name}`,
   `DELETE /env/{name}` (admin).
 - `POST /setup` (admin; one active run per project), `GET /setup/latest`,
-  `POST /setup/{id}/env` (fill missing values and resume),
+  `POST /setup/{id}/env` (`{values, confirm}`: fill missing values and/or
+  confirm the listed saved ones, then resume),
   `POST /setup/{id}/approve`, `POST /setup/{id}/cancel`,
   `GET /setup/{id}/screenshot`.
 - `PUT /settings` accepts `qa_mode`.

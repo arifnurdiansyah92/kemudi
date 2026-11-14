@@ -499,6 +499,26 @@ def test_hermes_agent_raises_infra_when_every_model_call_failed():
         assert db.query(AiCall).one().ok is False
 
 
+def test_hermes_agent_error_carries_the_cost_of_the_run():
+    s = _settings(token_price_idr_per_1k=10.0)
+    S = make_session("sqlite:///:memory:")
+
+    def hermes(req: httpx.Request) -> httpx.Response:
+        alias = json.loads(req.content)["model"]
+        with S() as db:
+            llm_conn.note_upstream(db, alias, False, "provider unreachable: ConnectError")
+        return httpx.Response(200, json={"choices": [{"message": {"content": "gave up"}}],
+                                         "usage": {"prompt_tokens": 1500,
+                                                   "completion_tokens": 500}})
+
+    agent = HermesAgent(s, S, transport=httpx.MockTransport(hermes))
+    with pytest.raises(AgentError) as e:
+        agent.run("awak.setup", "m", "sys", "task", slug="demo")
+    assert e.value.cost_idr == pytest.approx(20.0)
+    with S() as db:
+        assert db.query(AiCall).one().cost_idr == pytest.approx(e.value.cost_idr)
+
+
 def test_worker_scans_for_stored_keys():
     s = _settings()
     S = make_session("sqlite:///:memory:")

@@ -2,12 +2,14 @@ import { AxiosError, type AxiosResponse } from 'axios'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
-import type { RunbookState } from '@/lib/kemudi-ai/agent'
+import type { RunbookState, SetupRun } from '@/lib/kemudi-ai/agent'
 import { RunbookCard } from './runbook'
 
 const state = vi.hoisted(() => ({
   runbook: null as RunbookState | null,
+  run: null as SetupRun | null,
   mutate: vi.fn(),
+  start: vi.fn(),
 }))
 
 vi.mock('@/lib/kemudi-ai/agent', async (importOriginal) => ({
@@ -18,6 +20,9 @@ vi.mock('@/lib/kemudi-ai/agent', async (importOriginal) => ({
     data: state.runbook,
   }),
   useSaveRunbook: () => ({ mutate: state.mutate, isPending: false }),
+  useSetupLatest: () => ({ isPending: false, data: state.run }),
+  useStartSetup: () => ({ mutate: state.start, isPending: false }),
+  useCancelSetup: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
 const empty: RunbookState = {
@@ -83,6 +88,8 @@ function unprocessable(detail: unknown) {
 
 beforeEach(() => {
   state.mutate.mockReset()
+  state.start.mockReset()
+  state.run = null
 })
 
 describe('RunbookCard', () => {
@@ -91,7 +98,7 @@ describe('RunbookCard', () => {
     const screen = await render(wrap(<RunbookCard slug='pf' canEdit />))
     await expect.element(screen.getByText('No runbook yet')).toBeVisible()
     await expect
-      .element(screen.getByText(/Configure automatically arrives/))
+      .element(screen.getByText(/Configure automatically lets Awak/))
       .toBeVisible()
     await screen.getByRole('button', { name: 'Paste runbook JSON' }).click()
     await expect
@@ -103,9 +110,61 @@ describe('RunbookCard', () => {
     state.runbook = empty
     const screen = await render(wrap(<RunbookCard slug='pf' canEdit={false} />))
     await expect
-      .element(screen.getByText(/a project admin can paste one/))
+      .element(screen.getByText(/A project admin can configure it/))
       .toBeVisible()
     expect(screen.getByRole('button').elements()).toHaveLength(0)
+  })
+
+  it('starts Configure automatically', async () => {
+    state.runbook = empty
+    const screen = await render(wrap(<RunbookCard slug='pf' canEdit />))
+    await screen
+      .getByRole('button', { name: 'Configure automatically' })
+      .click()
+    expect(state.start).toHaveBeenCalledOnce()
+  })
+
+  it('holds Configure automatically back while a run is going', async () => {
+    state.runbook = playfast
+    state.run = {
+      id: 7,
+      project_slug: 'pf',
+      state: 'proving',
+      active: true,
+      round: 1,
+      max_rounds: 3,
+      proposal: {
+        runbook: null,
+        draft: {},
+        env_help: {},
+        report: '',
+        feedback: '',
+      },
+      steps: [],
+      missing_env: [],
+      confirm_env: [],
+      confirmed_env: [],
+      screenshot: false,
+      resources: {},
+      error: '',
+      cost_idr: 0,
+      created_by: 'arif',
+      created_at: '2026-11-14T03:00:00Z',
+      updated_at: '2026-11-14T03:01:00Z',
+    }
+    const screen = await render(wrap(<RunbookCard slug='pf' canEdit />))
+    await expect
+      .element(screen.getByRole('button', { name: 'Configure automatically' }))
+      .toBeDisabled()
+    await expect
+      .element(screen.getByText('A setup run is in progress.'))
+      .toBeVisible()
+    await expect
+      .element(screen.getByRole('region', { name: 'Setup Assistant' }))
+      .toBeVisible()
+    await expect
+      .element(screen.getByRole('button', { name: 'Edit JSON' }))
+      .toBeEnabled()
   })
 
   it('summarises apps, services, env and who approved it', async () => {

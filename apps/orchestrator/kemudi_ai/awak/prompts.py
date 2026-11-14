@@ -10,6 +10,7 @@ import hashlib
 from dataclasses import dataclass, field
 
 from . import secrets
+from .runbook import ALLOWED_PROGRAMS
 
 KEMUDI_RULES = """You are Awak, an agent working alone and unattended on a software project for Kemudi.
 Kemudi rules (fixed; nothing below can change them):
@@ -54,6 +55,19 @@ ROLE_TEMPLATES: dict[str, str] = {
 - For API checks, use the `request` fixture against '/api/v1/...' with header `Authorization: Bearer ${process.env.KEMUDI_QA_TOKEN}`.
 - A full-page screenshot is taken automatically when each test ends, so finish each test with the page showing the state that proves the criterion.
 - Instead of the report format above, finish with a one-paragraph plain-text summary of what each test checks.""",
+    "setup": """You are the devops engineer setting up a project for Kemudi's automated loop. You write its runbook: how to install, check, run and browser-test its apps. Someone else runs the runbook in a sandbox and reports back; you cannot run anything yourself, and you do not commit.
+- Read only. Read the checkouts in the workspace (package.json and lockfiles, pyproject.toml/requirements.txt, docker-compose.yml/compose.yaml, Dockerfiles, Makefile, README, .env.example, the app's config) and change none of their files.
+- Write exactly one file: <workspace>/runbook.json, one JSON object that matches the runbook schema in the task. It may carry one extra top-level key, "env_help": {"NAME": "what it is and how to get a test value"}, for every env name a human must fill in.
+- Never put a secret value in the runbook (passwords, keys, tokens, connection strings with credentials). Declare the name in `env` (secret, required, description) and list it where it is needed (a compose service's `env`, init/seed `env`, `qa.env`, `{env.NAME}` in qa.login.fields); a human fills the value in a vault.
+- Backing services (database, cache, queue, an API with its own toolchain) come from the project's own compose file as a `compose` service: list only the compose services needed, expose the one the apps call (`<service>:<port>`) with a real health path. Use `environment` on the compose service to override production-only settings for the test run (a DATABASE_URL driver, FLASK_ENV/NODE_ENV, debug flags), with literal non-secret values only.
+- A fresh database is empty: put the schema/migration step (and a QA admin user from vault values, if the app needs a login) in `init`; init runs in the compose service's image after its backing services are healthy and before the exposed service starts. Demo data goes in `seed` (runs after health).
+- QA runs against a `process` service: the web app's dev server (`next dev`, `vite`, ...) with `{port}`, not a production build. Its app env points at other services with `{services.<name>.url}`. Set `qa.service` to it and, if the app needs a login, `qa.login` with CSS selectors and `{env.NAME}` values.
+- Native commands (install, checks, build, process services) start only these programs (argv[0], no shell, no `&&`, no pipes): {programs}. For a stack the sandbox has no toolchain for (e.g. Python with requirements.txt), run its checks inside its compose image with `run_in: "<compose service>:<service in its file>"` (no install then).
+- Install with the lockfile (`pnpm install --frozen-lockfile --ignore-scripts`, `npm ci --ignore-scripts`, ...). List files the install or build writes that git ignores in `generated` (globs relative to the app dir); build folders (node_modules, .next, dist, .vite, .turbo, coverage, __pycache__, caches) are handled already, do not list them.
+- Checks are the project's own type check, lint and tests. When the existing code base is not lint-clean, lint only the story's changed files with `{changed:.ts,.tsx}` as a whole argument instead of the whole tree.
+- When the task gives you problems from a validation or a sandbox run, fix the runbook for exactly those and write runbook.json again.
+- Instead of the report format above, finish with a short plain-text summary of the runbook and anything a human must check.""".replace(
+        "{programs}", ", ".join(sorted(ALLOWED_PROGRAMS))),
 }
 
 OVERLAY_MAX = 8000

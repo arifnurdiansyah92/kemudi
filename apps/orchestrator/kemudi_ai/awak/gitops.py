@@ -200,12 +200,29 @@ class Repo:
         """This repo at its default branch in story `branch`'s folder: read-only
         context for a story of another repo of the project. Nothing in it is
         ever collected; no remote, like prepare()."""
-        d = self.job_dir(branch)
+        return self._clone_default(self.job_dir(branch))
+
+    def setup_dir(self) -> Path:
+        """`<workspace>/<slug>/setup/<repo name>`: the Setup Assistant's checkout."""
+        if not SLUG_RE.fullmatch(self.slug) or not REPO_NAME_RE.fullmatch(self.name):
+            raise GitError(f"no workspace for repo {self.name!r} of project {self.slug!r}")
+        return Path(self.workspace) / self.slug / "setup" / self.name
+
+    def checkout_setup(self) -> Path:
+        """This repo at its default branch in the project's setup folder (fresh)."""
+        return self._clone_default(self.setup_dir(), exclude=True)
+
+    def _clone_default(self, d: Path, exclude: bool = False) -> Path:
         if d.exists():
             shutil.rmtree(d, onerror=_force_remove)
         d.parent.mkdir(parents=True, exist_ok=True)
         _git("clone", "--no-tags", "--quiet", "--branch", self.default_branch, self.bare, str(d))
         _git("remote", "remove", "origin", cwd=str(d))
+        if exclude:
+            f = d / ".git" / "info" / "exclude"
+            f.parent.mkdir(parents=True, exist_ok=True)
+            with f.open("a") as fh:
+                fh.write("\n.qa/\nnode_modules/\n")
         _chown(d, self.uid)
         return d
 

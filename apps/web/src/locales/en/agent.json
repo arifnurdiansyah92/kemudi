@@ -293,8 +293,8 @@
     "empty": {
       "title": "No runbook yet",
       "body": "Without one, Awak runs each repository's own commands, and Browser QA works only for Kemudi's own repository.",
-      "admin": "Configure automatically arrives in a later update. Until then, you can paste a runbook as JSON.",
-      "member": "Configure automatically arrives in a later update. Until then, a project admin can paste one."
+      "admin": "Configure automatically lets Awak read the repositories, propose a runbook and prove it works. You can also paste one as JSON.",
+      "member": "A project admin can configure it automatically or paste one as JSON."
     },
     "paste": "Paste runbook JSON",
     "editJson": "Edit JSON",
@@ -346,6 +346,101 @@
       "rejected_other": "Not saved: {{count}} problems",
       "save": "Save and approve"
     }
+  },
+  "setup": {
+    "title": "Setup Assistant",
+    "configure": "Configure automatically",
+    "configureBusy": "A setup run is in progress.",
+    "startedBy": "Started by {{who}}, {{when}}",
+    "cost": "Cost {{cost}}",
+    "round": "Round {{round}} of {{max}}",
+    "cancel": "Cancel run",
+    "retry": "Try again",
+    "approved": "Runbook approved from Configure automatically.",
+    "cancelled": "Setup cancelled. The runbook was left as it was.",
+    "approvedToast": "Runbook approved as version {{version}}",
+    "proposed": "Proposed runbook",
+    "report": "Awak's notes",
+    "feedback": "What Awak is fixing",
+    "status": {
+      "queued": "Waiting for the worker to pick this run up.",
+      "reading": "Awak is reading the repositories and drafting a runbook.",
+      "fixing": "The last proof failed. Awak is fixing the runbook and will prove it again.",
+      "needs_input": "Awak needs a few values before it can prove the runbook.",
+      "proving": "Installing, running the checks and starting the services. This can take several minutes.",
+      "ready": "The runbook worked. Review it, then approve it to make it this project's runbook.",
+      "failed": "Setup stopped before the runbook worked.",
+      "approved": "Approved.",
+      "cancelled": "Cancelled.",
+      "superseded": "Superseded by a newer run."
+    },
+    "phases": {
+      "reading": "Reading repos",
+      "proposing": "Proposing",
+      "env": "Waiting for env",
+      "proving": "Proving",
+      "ready": "Ready"
+    },
+    "phaseStatus": {
+      "done": "done",
+      "current": "in progress",
+      "upcoming": "not started",
+      "failed": "failed here",
+      "cancelled": "cancelled here"
+    },
+    "steps": {
+      "title": "Proof",
+      "ok": "Passed",
+      "red": "Checks red",
+      "failed": "Failed",
+      "gates_one": "{{passed}} of {{count}} check passed",
+      "gates_other": "{{passed}} of {{count}} checks passed"
+    },
+    "screenshot": {
+      "title": "What QA saw",
+      "alt": "Screenshot of the app's first page, taken during the proof",
+      "unavailable": "The screenshot isn't available."
+    },
+    "resources": {
+      "title": "Memory at peak",
+      "total": "{{mem}} in total",
+      "mb": "{{mb}} MB",
+      "memCpu": "{{mem}} · CPU {{cpu}}%",
+      "runner": "Runner (peak)"
+    },
+    "env": {
+      "intro": "These values are saved to Env & secrets for this project. Fill in what you have; the run goes on once nothing is missing.",
+      "secret": "Secret",
+      "secretFor": "Keep {{name}} secret",
+      "submit": "Save and continue",
+      "writeOnly": "Values are write-only here; secrets are never shown again.",
+      "noneFilled": "Enter at least one value.",
+      "saved": "Saved. Awak goes on proving the runbook.",
+      "savedMore_one": "Saved. {{count}} value is still missing.",
+      "savedMore_other": "Saved. {{count}} values are still missing.",
+      "memberWait": "Waiting for a project admin to fill in these values:",
+      "savedConfirm": "Saved. Confirm the saved values above to go on."
+    },
+    "confirm": {
+      "title": "Awak will use these saved values",
+      "intro": "Awak's proposed runbook hands these values from Env & secrets to its own commands during the proof. Check where each one goes, then continue.",
+      "memberWait": "Waiting for a project admin to let Awak use these saved values:",
+      "usedIn": "Used in",
+      "submit": "Continue",
+      "hint": "The values stay hidden; only the proof gets them.",
+      "doneMore": "Confirmed. Awak still needs a few values."
+    },
+    "failed": {
+      "title": "Setup failed",
+      "noReason": "No reason was given."
+    },
+    "approve": {
+      "browser": "Switch QA to Browser",
+      "browserHint": "Awak will start the app and check every acceptance criterion in a browser before a story is Done.",
+      "submit": "Approve runbook",
+      "rejected": "Not approved"
+    },
+    "superseded": "Replaced by a newer setup run. This proposal can no longer be approved."
   },
   "env": {
     "title": "Env & secrets",

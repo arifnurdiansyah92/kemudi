@@ -126,6 +126,12 @@ class App(_Strict):
     def _dir(cls, v: str) -> str:
         return v.strip().rstrip("/")  # a leading '/' is reported by _problems
 
+    @field_validator("generated")
+    @classmethod
+    def _generated(cls, v: list[str]) -> list[str]:
+        # "out/" and "out" mean the same; a leading '/' is reported by _problems
+        return [g.strip().rstrip("/") or g for g in v]
+
 
 class Service(_Strict):
     name: str
@@ -524,16 +530,27 @@ MASK = "***"
 
 
 def masked(spec: dict | None) -> dict | None:
-    """The stored runbook with app and process-service env values hidden."""
+    """The stored runbook with app and process-service env values, and the
+    literal values of compose services' `environment`, hidden."""
     if not spec:
         return spec
     out = {**spec}
     out["apps"] = [{**a, "env": {k: MASK for k in a["env"]}}
                    if isinstance(a, dict) and isinstance(a.get("env"), dict) else a
                    for a in spec.get("apps") or []]
-    out["services"] = [{**s, "env": {k: MASK for k in s["env"]}}
-                       if isinstance(s, dict) and isinstance(s.get("env"), dict) else s
-                       for s in spec.get("services") or []]
+
+    def service(s):
+        if not isinstance(s, dict):
+            return s
+        s = {**s}
+        if isinstance(s.get("env"), dict):
+            s["env"] = {k: MASK for k in s["env"]}
+        if isinstance(s.get("environment"), dict):
+            s["environment"] = {c: {k: MASK for k in over} if isinstance(over, dict) else MASK
+                                for c, over in s["environment"].items()}
+        return s
+
+    out["services"] = [service(s) for s in spec.get("services") or []]
     qa = spec.get("qa")
     login = qa.get("login") if isinstance(qa, dict) else None
     if isinstance(login, dict) and isinstance(login.get("fields"), dict):

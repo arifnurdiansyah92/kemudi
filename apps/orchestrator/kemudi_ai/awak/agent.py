@@ -17,7 +17,12 @@ from . import llm_conn
 
 
 class AgentError(Exception):
-    """Hermes did not finish the run (timeout, HTTP error). An infra error."""
+    """Hermes did not finish the run (timeout, HTTP error). An infra error.
+    `cost_idr`: what the run cost anyway (the usage Hermes reported, if any)."""
+
+    def __init__(self, message: str = "", cost_idr: float = 0.0):
+        super().__init__(message)
+        self.cost_idr = cost_idr
 
 
 class Agent(Protocol):
@@ -75,12 +80,14 @@ class HermesAgent:
             with self.sessions() as s:
                 failure = llm_conn.provider_failure(s, alias)
             if failure:
-                raise AgentError(f"model provider failed for the whole run: {failure}")
+                raise AgentError(f"model provider failed for the whole run: {failure}",
+                                 self._cost(usage))
             ok = True
             return content, self._cost(usage)
         except (httpx.HTTPError, KeyError, ValueError) as e:
             content = content or f"{type(e).__name__}: {e}"
-            raise AgentError(f"Awak run failed: {type(e).__name__}: {e}") from e
+            raise AgentError(f"Awak run failed: {type(e).__name__}: {e}",
+                             self._cost(usage)) from e
         finally:
             pt = int(usage.get("prompt_tokens") or 0)
             ct = int(usage.get("completion_tokens") or 0)

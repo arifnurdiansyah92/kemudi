@@ -712,6 +712,237 @@ export function useDeleteEnvVar(slug: string) {
   })
 }
 
+/* ---------- setup assistant (Configure automatically) ---------- */
+
+export type SetupState =
+  | 'queued'
+  | 'reading'
+  | 'proving'
+  | 'needs_input'
+  | 'ready'
+  | 'approved'
+  | 'failed'
+  | 'cancelled'
+  /** A newer run started (or another was approved): it can't be approved. */
+  | 'superseded'
+
+/** One proof step. A `red` checks step ran, but some gates failed. */
+export type SetupStep = {
+  name: string
+  ok: boolean
+  output: string
+  red?: boolean
+  gates?: { name: string; ok: boolean }[]
+  built?: unknown
+}
+
+export type SetupMissingEnv = {
+  name: string
+  description: string
+  secret: boolean
+}
+
+/** A saved vault value the proposed runbook wires, waiting for an admin to
+ * let the proof use it. `used_in`: e.g. "services.api.env", "init[0]",
+ * "seed", "qa.env", "qa.login". */
+export type SetupConfirmEnv = {
+  name: string
+  secret: boolean
+  used_in: string[]
+}
+
+export type SetupResources = {
+  compose?: {
+    service: string
+    container: string
+    mem_mb: number | null
+    cpu_pct: number | null
+  }[]
+  processes?: { name: string; rss_mb: number | null }[]
+  runner_peak_mb?: number | null
+  total_mb?: number | null
+}
+
+export type SetupRun = {
+  id: number
+  project_slug: string
+  state: SetupState
+  active: boolean
+  round: number
+  max_rounds: number
+  proposal: {
+    runbook: Runbook | null
+    draft: Record<string, unknown>
+    env_help: Record<string, string>
+    report: string
+    feedback: string
+  }
+  steps: SetupStep[]
+  missing_env: SetupMissingEnv[]
+  confirm_env: SetupConfirmEnv[]
+  /** Names an admin confirmed (or typed) for this run's proof. */
+  confirmed_env: string[]
+  screenshot: boolean
+  resources: SetupResources
+  error: string
+  cost_idr: number
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+/** Keep polling while the run works or waits for env values. */
+export function isSetupLive(run: SetupRun | null | undefined) {
+  return !!run && (run.active || run.state === 'needs_input')
+}
+
+export function useSetupLatest(slug: string) {
+  return useQuery({
+    queryKey: agentKey(slug, 'setup'),
+    queryFn: async () =>
+      (
+        await api.get<{ run: SetupRun | null }>(
+          `/projects/${slug}/agent/setup/latest`,
+          base
+        )
+      ).data.run,
+    refetchInterval: (q) => (isSetupLive(q.state.data) ? 3_000 : false),
+  })
+}
+
+function useSetRun(slug: string) {
+  const qc = useQueryClient()
+  return (run: SetupRun) => qc.setQueryData(agentKey(slug, 'setup'), run)
+}
+
+/** Starts a run. A 409 (one is already running) refetches the latest. */
+export function useStartSetup(slug: string) {
+  const qc = useQueryClient()
+  const setRun = useSetRun(slug)
+  return useMutation({
+    mutationFn: async () =>
+      (
+        await api.post<{ run: SetupRun }>(
+          `/projects/${slug}/agent/setup`,
+          {},
+          base
+        )
+      ).data.run,
+    onSuccess: setRun,
+    onError: (error) => {
+      onFail(error)
+      return qc.invalidateQueries({ queryKey: agentKey(slug, 'setup') })
+    },
+  })
+}
+
+/** Errors are shown under the form, so no toast here. */
+export function useSetupEnv(slug: string) {
+  const qc = useQueryClient()
+  const setRun = useSetRun(slug)
+  return useMutation({
+    mutationFn: async ({
+      runId,
+      values,
+      confirm,
+    }: {
+      runId: number
+      values: Record<string, { value: string; secret: boolean }>
+      /** Let the proof use the saved values the run listed in `confirm_env`. */
+      confirm?: boolean
+    }) =>
+      (
+        await api.post<{ run: SetupRun }>(
+          `/projects/${slug}/agent/setup/${runId}/env`,
+          confirm ? { values, confirm: true } : { values },
+          base
+        )
+      ).data.run,
+    onSuccess: (run) => {
+      setRun(run)
+      return qc.invalidateQueries({ queryKey: agentKey(slug, 'env') })
+    },
+  })
+}
+
+/** Saves the proven runbook (and the QA mode, when asked). Errors are
+ * listed by the panel, so no toast here. */
+export function useApproveSetup(slug: string) {
+  const qc = useQueryClient()
+  const setRun = useSetRun(slug)
+  return useMutation({
+    mutationFn: async ({
+      runId,
+      qaMode,
+    }: {
+      runId: number
+      qaMode: QaMode | null
+    }) =>
+      (
+        await api.post<{
+          run: SetupRun
+          runbook: RunbookState
+          qa_mode: QaMode
+        }>(
+          `/projects/${slug}/agent/setup/${runId}/approve`,
+          qaMode ? { qa_mode: qaMode } : {},
+          base
+        )
+      ).data,
+    onSuccess: (data) => {
+      setRun(data.run)
+      qc.setQueryData(agentKey(slug, 'runbook'), data.runbook)
+      void qc.invalidateQueries({ queryKey: agentKey(slug, 'env') })
+      return qc.invalidateQueries({ queryKey: agentKey(slug, 'settings') })
+    },
+  })
+}
+
+export function useCancelSetup(slug: string) {
+  const qc = useQueryClient()
+  const setRun = useSetRun(slug)
+  return useMutation({
+    mutationFn: async (runId: number) =>
+      (
+        await api.post<{ run: SetupRun }>(
+          `/projects/${slug}/agent/setup/${runId}/cancel`,
+          {},
+          base
+        )
+      ).data.run,
+    onSuccess: setRun,
+    onError: (error) => {
+      onFail(error)
+      return qc.invalidateQueries({ queryKey: agentKey(slug, 'setup') })
+    },
+  })
+}
+
+/** The proof's screenshot as a blob (the request needs the auth header, so
+ * an <img src> straight to the API would not do). */
+export function useSetupScreenshot(
+  slug: string,
+  runId: number,
+  enabled: boolean
+) {
+  return useQuery({
+    queryKey: agentKey(slug, 'setup', runId, 'screenshot'),
+    queryFn: async () =>
+      (
+        await api.get<Blob>(
+          `/projects/${slug}/agent/setup/${runId}/screenshot`,
+          {
+            ...base,
+            responseType: 'blob',
+          }
+        )
+      ).data,
+    enabled,
+    staleTime: Infinity,
+    retry: false,
+  })
+}
+
 /* ---------- roles ---------- */
 
 export function useRoles(slug: string) {
