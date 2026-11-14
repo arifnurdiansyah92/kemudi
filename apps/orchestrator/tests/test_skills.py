@@ -133,7 +133,7 @@ def test_materialise_writes_the_set_and_cuts_the_description(tmp_path):
     files = demo_files(description=long)
     files["LICENSE"] = b"Apache\n"
     setid, written = skills.materialise(tmp_path / "sets", [("demo", files)])
-    assert written and len(setid) == 12
+    assert written == "created" and len(setid) == 32
     root = tmp_path / "sets" / setid / "demo"
     md = (root / "SKILL.md").read_text(encoding="utf-8")
     meta, _, body = skills.split_frontmatter(md)
@@ -146,10 +146,10 @@ def test_materialise_writes_the_set_and_cuts_the_description(tmp_path):
     # the set id is the one resolve() computes from (slug, stored sha)
     assert setid == skills.set_id([skills.SetEntry("demo", 1, skills.canonical_sha(files), "")])
     # unchanged: kept; tampered: rewritten; no temp folders left
-    assert skills.materialise(tmp_path / "sets", [("demo", files)]) == (setid, False)
+    assert skills.materialise(tmp_path / "sets", [("demo", files)]) == (setid, "")
     (root / "reference" / "more.md").write_bytes(b"tampered")
     (root / "extra.md").write_bytes(b"planted")
-    assert skills.materialise(tmp_path / "sets", [("demo", files)]) == (setid, True)
+    assert skills.materialise(tmp_path / "sets", [("demo", files)]) == (setid, "rewritten")
     assert (root / "reference" / "more.md").read_bytes() == b"More detail.\n"
     assert not (root / "extra.md").exists()
     assert sorted(p.name for p in (tmp_path / "sets").iterdir()) == [setid]
@@ -163,8 +163,34 @@ def test_materialise_short_description_kept_byte_for_byte(tmp_path):
 
 def test_empty_set(tmp_path):
     setid, written = skills.materialise(tmp_path, [])
-    assert setid == skills.EMPTY_SETID and written
+    assert setid == skills.EMPTY_SETID and written == "created"
     assert list((tmp_path / setid).iterdir()) == []
+
+
+@pytest.mark.parametrize("slug,path", [
+    ("demo", "../escape.md"),
+    ("demo", "a/../../escape.md"),
+    ("demo", "/abs.md"),
+    ("demo", "c:/x.md"),
+    ("demo", "a\\b.md"),
+    ("..", "SKILL.md"),
+    ("Demo", "SKILL.md"),
+    ("de/mo", "SKILL.md"),
+])
+def test_materialise_rechecks_stored_paths(tmp_path, slug, path):
+    """A stored row is not trusted: every path is checked again before the
+    write, and nothing lands outside the set folder."""
+    files = {**demo_files(), path: b"x"}
+    with pytest.raises(skills.SkillError):
+        skills.materialise(tmp_path / "sets", [(slug, files)])
+    assert [p.name for p in (tmp_path / "sets").iterdir()] == []
+    assert not (tmp_path / "escape.md").exists()
+
+
+def test_write_tree_refuses_a_path_that_resolves_outside(tmp_path):
+    with pytest.raises(skills.SkillError, match="leaves the set folder"):
+        skills._write_tree(tmp_path / "t", {"a/../../out.md": b"x"}, check=lambda rel: None)
+    assert not (tmp_path / "out.md").exists()
 
 
 # --- builtin seeding ------------------------------------------------------------
@@ -232,13 +258,35 @@ def test_seed_builtin_real_tree():
 
 # --- /me ------------------------------------------------------------------------
 
-def test_me_reports_kemudi_admin(agent_client):
-    agent_client.settings.admin_usernames = "pm, someone"
-    assert agent_client.get("/me", headers=ADMIN).json() == {"username": "pm",
-                                                             "kemudi_admin": True}
-    assert agent_client.get("/me", headers=MEMBER).json() == {"username": "dev",
-                                                              "kemudi_admin": False}
+def test_me_reports_kemudi_admin_by_user_id(agent_client):
+    admin = agent_client.get("/me", headers=ADMIN).json()
+    member = agent_client.get("/me", headers=MEMBER).json()
+    assert admin["kemudi_admin"] is False and member["kemudi_admin"] is False  # none set
+    agent_client.settings.admin_user_ids = f" {admin['id']}, 999 "
+    assert agent_client.get("/me", headers=ADMIN).json() == {
+        "id": admin["id"], "username": "pm", "kemudi_admin": True}
+    assert agent_client.get("/me", headers=MEMBER).json() == {
+        "id": member["id"], "username": "dev", "kemudi_admin": False}
+    # the id matches whatever the username is now
+    agent_client.settings.admin_usernames = "someone-else"
+    assert agent_client.get("/me", headers=ADMIN).json()["kemudi_admin"] is True
     assert agent_client.get("/me").status_code == 401
+
+
+def test_admin_usernames_are_a_fallback(agent_client):
+    agent_client.settings.admin_user_ids = "not-an-id"  # ignored (logged)
+    agent_client.settings.admin_usernames = "pm, someone"
+    assert agent_client.get("/me", headers=ADMIN).json()["kemudi_admin"] is True
+    assert agent_client.get("/me", headers=MEMBER).json()["kemudi_admin"] is False
+
+
+def test_env_example_names_no_admin():
+    from pathlib import Path
+
+    env = (Path(__file__).parents[3] / "infra" / ".env.example").read_text(encoding="utf-8")
+    lines = dict(line.split("=", 1) for line in env.splitlines()
+                 if line.startswith("KEMUDI_ADMIN_"))
+    assert lines == {"KEMUDI_ADMIN_USER_IDS": "", "KEMUDI_ADMIN_USERNAMES": ""}
 
 
 def test_builtin_skills_seeded_at_start(agent_client):

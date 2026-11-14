@@ -140,7 +140,9 @@ afterwards. Profiles work; the design holds with the changes below.
   `kemudi-awak-skills`, root 0755/0644; read-only at the same path in
   kemudi-awak) and `/opt/awak-profiles/sk-<setid>/{config.yaml,.env}`
   (volume `kemudi-awak-profiles` = kemudi-awak's `/opt/data/profiles`,
-  owned by uid 10000, `.env` 0600). Empty set: `e3b0c44298fc`.
+  owned by uid 10000, `.env` 0600). Empty set: `e3b0c44298fc1c149afbf4c8996fb924`
+  (set ids are 32 hex since the review; the 12-hex sets of before are
+  swept).
 - `skills.prepare_set` runs before every code, QA and setup run (DB +
   files, re-verifies the set bytes and the profile files' hashes);
   `HermesAgent.run(profile=...)` (required) waits for `gateway.lock` and
@@ -151,5 +153,13 @@ afterwards. Profiles work; the design holds with the changes below.
   the repo's LICENSE and NOTICE.md; origin in `builtin_skills/sources.json`.
 - `prompt_version` gets `.s<setid>` and the prompt a Skills section only
   when the role has skills, so roles without skills keep their version.
+- Review fixes: `prepare_set` resets the profile home to an allowlist
+  before every run (`skills.reset_profile`: Kemudi's `config.yaml`, `.env`,
+  fixed `SOUL.md`; Hermes' state kept as the live profiles show it; `skills/`
+  except `.hub`, `hooks/`, `plugins/`, `memories/`, cron jobs, `pending/`
+  and unknown entries removed; a `profile_reset` run event lists them) and
+  fixes ownership as root. The agent rebuilds a profile once on 404/503 and
+  names the profiles volume when one is never served; the worker checks the
+  empty-set profile at start. Admins: `KEMUDI_ADMIN_USER_IDS` first.
 - Verify: `docker exec -u hermes -w /tmp kemudi-dev-kemudi-awak-1 hermes -p
   sk-<setid> skills list` (`GET /p/<id>/v1/skills` is the Hermes bug above).

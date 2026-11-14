@@ -193,8 +193,10 @@ This section overrides the sections above where they differ.
 ### Admin and placement
 
 - No instance admin exists today (orchestrator only knows Taiga's project
-  `i_am_admin`). MVP: `KEMUDI_ADMIN_USERNAMES` (comma-separated) in
-  orchestrator settings; `GET /api/kemudi/me` returns `kemudi_admin`.
+  `i_am_admin`). MVP: `KEMUDI_ADMIN_USER_IDS` (Taiga user ids,
+  comma-separated) in orchestrator settings, `KEMUDI_ADMIN_USERNAMES` as a
+  fallback (a username can be changed by its owner, an id cannot); `GET
+  /api/kemudi/me` returns `id` and `kemudi_admin`.
   Library, upload, authoring, marketplaces, refresh, approve and overrides
   are Kemudi-admin only; project admins only assign enabled skills.
 - The Skills page is a top-level route `/skills` shown in the sidebar to
@@ -225,8 +227,9 @@ This section overrides the sections above where they differ.
 - Compose `kemudi-awak`: `GATEWAY_MULTIPLEX_PROFILES: "true"` (env, read
   at boot; without it `/p/<x>/` 404s with one profile). Profiles directory
   is re-read per request, so new profiles need no restart.
-- **Skill sets, content-addressed**: `setid = sha12(sorted (slug, version
-  sha))`. Files at `/opt/skills/sets/<setid>/<slug>/…` in a volume
+- **Skill sets, content-addressed**: `setid` = the first 32 hex of
+  `sha256(sorted (slug, version sha))` (128 bits; `sk-` + 32 fits the
+  40-character alias/profile columns and Hermes' profile name rule). Files at `/opt/skills/sets/<setid>/<slug>/…` in a volume
   `kemudi-awak-skills` (read-only in Hermes, written by the orchestrator,
   root-owned 0755/0644). Profile `sk-<setid>` in a volume
   `kemudi-awak-profiles` mounted at `/opt/data/profiles` (written by the
@@ -250,6 +253,20 @@ This section overrides the sections above where they differ.
 - Agent write roots: drop `/opt/data` from `HERMES_WRITE_SAFE_ROOT` if
   Hermes runs without it (spike); otherwise record it as an accepted limit
   (the container stays the boundary, as for `/workspace`).
+- **Dropping `/opt/data` from `HERMES_WRITE_SAFE_ROOT` does not bind the
+  terminal.** It limits Hermes' file tools only; the agent's terminal runs
+  as uid 10000, which owns `/opt/data/profiles` (Hermes re-chowns it at
+  every boot), so a run can plant `profiles/<any>/skills/x/SKILL.md`,
+  `SOUL.md`, hooks, plugins, memories or cron jobs, or edit another
+  profile's config. **The control is the per-run reset**:
+  `skills.prepare_set` resets the run's profile home to an allowlist
+  before every run (Kemudi's `config.yaml`, `.env` and a fixed `SOUL.md`
+  re-checked by hash; Hermes' runtime state kept; `skills/` except `.hub`,
+  `hooks/`, `plugins/`, `memories/`, cron jobs and any unknown entry
+  removed; profiles in the volume that are not Kemudi's removed), fixes
+  the ownership, and records a `profile_reset` run event listing what it
+  removed. Longer term: run the agent's terminal as a separate uid that
+  cannot write the profiles.
 - Orchestrator call: `{awak_url without /v1}/p/sk-<setid>/v1/chat/completions`.
 - Cleanup: a sweep deletes sets no role references and unused for > 24 h,
   never while a run uses them; profile first, then files.

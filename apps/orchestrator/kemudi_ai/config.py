@@ -1,3 +1,4 @@
+import logging
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -68,8 +69,11 @@ class Settings(BaseSettings):
     llm_proxy_timeout_s: float = 600.0
 
     # --- Awak skills (docs/superpowers/specs/2026-11-14-awak-skills-design.md)
-    # Kemudi instance admins (Taiga usernames, comma-separated): they manage
-    # the skill library. Project admins only assign enabled skills.
+    # Kemudi instance admins: they manage the skill library (project admins
+    # only assign enabled skills). Taiga user ids (comma-separated; `GET
+    # /api/kemudi/me` shows yours) are the primary match: a username can be
+    # changed by its owner. Usernames are a fallback for a quick setup.
+    admin_user_ids: str = ""
     admin_usernames: str = ""
     # Skill sets (/opt/skills/sets/<setid>, read-only in kemudi-awak at the
     # same path) and their Hermes profiles (kemudi-awak's /opt/data/profiles).
@@ -82,6 +86,17 @@ class Settings(BaseSettings):
     def model_choices(self) -> list[str]:
         extra = [m.strip() for m in self.awak_models.split(",") if m.strip()]
         return list(dict.fromkeys([self.awak_model, self.qa_model, *extra]))
+
+    def admin_user_id_set(self) -> set[int]:
+        out: set[int] = set()
+        for part in self.admin_user_ids.split(","):
+            part = part.strip()
+            if part.isdigit():
+                out.add(int(part))
+            elif part:
+                logging.getLogger(__name__).warning(
+                    "KEMUDI_ADMIN_USER_IDS: %r is not a Taiga user id; ignored", part)
+        return out
 
     def admin_username_set(self) -> set[str]:
         return {u.strip() for u in self.admin_usernames.split(",") if u.strip()}

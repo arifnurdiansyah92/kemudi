@@ -433,7 +433,7 @@ def test_proxy_refuses_unknown_expired_alias_and_bad_token(agent_client, upstrea
 
 # --- the agent run, cost log and secret scan --------------------------------------
 
-PROFILE = "sk-e3b0c44298fc"
+PROFILE = "sk-e3b0c44298fc1c149afbf4c8996fb924"
 
 
 def test_hermes_agent_sends_alias_and_logs_real_model():

@@ -5,7 +5,8 @@ docs/superpowers/specs/2026-11-14-awak-skills-design.md ("Panel review" wins).
 A skill is an Agent Skills folder (`<slug>/SKILL.md` + support files), stored
 in the DB as immutable versions ({path: base64}). A run gets its role's skills
 as a *set*: the pinned versions written to `<skills_dir>/sets/<setid>/<slug>/`
-(content-addressed, setid = sha12 of the sorted (slug, sha) pairs) and a
+(content-addressed, setid = the first 32 hex of a sha256 over the sorted
+(slug, sha) pairs) and a
 Hermes profile `sk-<setid>` whose `skills.external_dirs` is that folder only.
 Every Awak run goes through a profile, an empty set included, so the bundled
 Hermes skills never reach a run.
@@ -52,8 +53,11 @@ SOURCES = ("builtin", "local", "marketplace")
 # Where kemudi-awak sees the skill volume (read-only there).
 HERMES_SKILLS_DIR = "/opt/skills"
 PROFILE_PREFIX = "sk-"
-PROFILE_RE = re.compile(r"^sk-[0-9a-f]{12}$")
-SETID_RE = re.compile(r"^[0-9a-f]{12}$")
+SETID_LEN = 32  # "sk-" + 32 fits the 40-character alias/profile columns
+PROFILE_RE = re.compile(r"^sk-[0-9a-f]{32}$")
+SETID_RE = re.compile(r"^[0-9a-f]{32}$")
+# Set ids the sweep removes: today's and the 12-hex ones from before.
+_SWEEPABLE_RE = re.compile(r"^(?:[0-9a-f]{12}|[0-9a-f]{32})$")
 # Hermes creates this in a profile's home once it serves the profile.
 SERVED_MARKER = "gateway.lock"
 SET_IDLE = timedelta(hours=24)
@@ -306,7 +310,7 @@ class SetEntry:
 
 def set_id(entries: Iterable[SetEntry]) -> str:
     lines = sorted(f"{e.slug}:{e.sha256}" for e in entries)
-    return hashlib.sha256("\n".join(lines).encode()).hexdigest()[:12]
+    return hashlib.sha256("\n".join(lines).encode()).hexdigest()[:SETID_LEN]
 
 
 EMPTY_SETID = set_id(())
@@ -482,21 +486,47 @@ def _tree(root: Path) -> dict[str, bytes] | None:
         return None
 
 
+def _is_root() -> bool:
+    """Only root can give files away; elsewhere (tests, a dev checkout) the
+    files stay the caller's."""
+    return hasattr(os, "geteuid") and os.geteuid() == 0
+
+
+def _owner(path: Path) -> int:
+    return os.lstat(path).st_uid
+
+
 def _chown(path: Path, uid: int | None) -> None:
-    if uid is None or not hasattr(os, "chown"):
+    """Gives `path` to `uid` when running as root. A failure is an error (a
+    profile Hermes cannot write is parked for good), never ignored."""
+    if uid is None or not _is_root():
         return
-    try:
-        os.chown(path, uid, uid)
-    except PermissionError:  # not root (tests): the files stay the caller's
-        pass
+    os.chown(path, uid, uid, follow_symlinks=False)
 
 
-def _write_tree(root: Path, files: dict[str, bytes], uid: int | None = None) -> None:
+def _safe_rel(rel: str) -> str | None:
+    """Why `rel` (set-relative, `<slug>/<path>`) may not be written, or None."""
+    slug, _, path = rel.partition("/")
+    if not NAME_RE.match(slug):
+        return f"{rel!r}: not a skill folder name"
+    return _path_problem(path)
+
+
+def _write_tree(root: Path, files: dict[str, bytes], uid: int | None = None,
+                check: Callable[[str], str | None] = _path_problem) -> None:
+    """Writes `files` under the new folder `root`. Every path is re-checked
+    (`check`) and must resolve inside `root`: stored rows are not trusted."""
+    problems = [bad for rel in sorted(files) if (bad := check(rel))]
+    if problems:
+        raise SkillError(problems)
     root.mkdir(mode=0o755)
     os.chmod(root, 0o755)
     _chown(root, uid)
+    base = root.resolve()
     for rel in sorted(files):
         p = root / rel
+        if not p.resolve().is_relative_to(base):
+            raise SkillError([f"{rel!r}: leaves the set folder"])
         for parent in reversed(p.relative_to(root).parents[:-1]):
             d = root / parent
             if not d.exists():
@@ -519,27 +549,33 @@ def _swap_in(tmp: Path, final: Path) -> None:
         os.rename(tmp, final)
 
 
-def materialise(sets_dir: Path, entries: list[tuple[str, dict[str, bytes]]]) -> tuple[str, bool]:
+CREATED, REWRITTEN = "created", "rewritten"
+
+
+def materialise(sets_dir: Path, entries: list[tuple[str, dict[str, bytes]]]) -> tuple[str, str]:
     """Writes the set (`[(slug, files)]`) to `<sets_dir>/<setid>/<slug>/...`,
     built under a `.tmp-` name and renamed into place. An existing set with
     the same bytes is kept; any difference is rewritten. Returns (setid,
-    written)."""
+    "" | CREATED | REWRITTEN)."""
     sets_dir = Path(sets_dir)
     sets_dir.mkdir(parents=True, exist_ok=True)
     setid = set_id(SetEntry(slug, 0, canonical_sha(files), "") for slug, files in entries)
     want = {f"{slug}/{p}": data for slug, files in entries
             for p, data in agent_files(files).items()}
     final = sets_dir / setid
+    existed = final.exists() or final.is_symlink()
     if final.is_dir() and not final.is_symlink() and _tree(final) == want:
-        return setid, False
+        return setid, ""
     tmp = sets_dir / f".tmp-{setid}-{pysecrets.token_hex(4)}"
     try:
-        _write_tree(tmp, want)
+        _write_tree(tmp, want, check=_safe_rel)
+        if final.is_symlink() or final.is_file():
+            final.unlink()
         _swap_in(tmp, final)
     finally:
         if tmp.exists():
             shutil.rmtree(tmp, ignore_errors=True)
-    return setid, True
+    return setid, REWRITTEN if existed else CREATED
 
 
 # --- Profiles -------------------------------------------------------------------
@@ -550,12 +586,19 @@ def _env_value(name: str, value: str) -> str:
     return value
 
 
+# Kemudi's SOUL.md for every profile (Hermes seeds its own persona file when a
+# profile has none; a run's terminal could rewrite it for later runs).
+SOUL_MD = ("You are Awak, Kemudi's coding agent. Each run's system prompt sets the task "
+           "and its rules; follow it. Be direct: report what changed, what is verified "
+           "and what is left, without filler.\n")
+
+
 def profile_files(settings: Settings, setid: str) -> dict[str, bytes]:
-    """config.yaml and .env of profile sk-<setid>. The managed overlay
-    (/etc/hermes/config.yaml) wins over everything but skills.external_dirs;
-    the overlay's ${...} expand from this .env (container env vars do not
-    reach a profile scope), and the gateway checks API_SERVER_KEY per
-    profile."""
+    """config.yaml, .env and SOUL.md of profile sk-<setid>. The managed
+    overlay (/etc/hermes/config.yaml) wins over everything but
+    skills.external_dirs; the overlay's ${...} expand from this .env
+    (container env vars do not reach a profile scope), and the gateway checks
+    API_SERVER_KEY per profile."""
     if not SETID_RE.match(setid):
         raise ValueError(f"bad set id {setid!r}")
     config = ("# Written by Kemudi (kemudi_ai/awak/skills.py); rewritten when it changes.\n"
@@ -566,28 +609,150 @@ def profile_files(settings: Settings, setid: str) -> dict[str, bytes]:
            "KEMUDI_LLM_PROXY_TOKEN="
            f"{_env_value('KEMUDI_LLM_PROXY_TOKEN', settings.llm_proxy_token or 'unset')}\n"
            f"KEMUDI_AWAK_MODEL={_env_value('KEMUDI_AWAK_MODEL', settings.awak_model)}\n")
-    return {"config.yaml": config.encode(), ".env": env.encode()}
+    return {"config.yaml": config.encode(), ".env": env.encode(), "SOUL.md": SOUL_MD.encode()}
 
 
-_FILE_MODES = {"config.yaml": 0o644, ".env": 0o600}
+_FILE_MODES = {"config.yaml": 0o644, ".env": 0o600, "SOUL.md": 0o644}
+
+# What a profile home may hold besides Kemudi's files (profile_files), from
+# the spike (plan 2026-11-14-awak-skills-pr1-runtime.md, "Spike notes") and
+# the live profiles. The agent's terminal runs as the uid that owns the
+# profiles (Hermes re-chowns them at boot), so before every run everything
+# else goes: a planted skill, hook, plugin, memory or cron job never reaches
+# a later run.
+_STATE_FILES = frozenset({"gateway.lock"})
+_STATE_PREFIXES = ("state.db",)  # state.db, -shm, -wal, .fts_rebuild.lock, ...
+# Hermes' runtime state, kept as it is.
+_STATE_DIRS = frozenset({"sessions", "logs", "cache", "audio_cache", "image_cache",
+                         "pairing", "platforms", "plugin-update-checks", "runtime", "backups"})
+# Folders Hermes creates empty; what is inside goes.
+_EMPTY_DIRS = frozenset({"hooks", "plugins", "memories"})
+# Folder -> the entries Hermes itself keeps there.
+_KEEP_INSIDE = {
+    "skills": frozenset({".hub"}),
+    "cron": frozenset({"executions.db", ".jobs.lock", ".tick.lock", "ticker_heartbeat",
+                       "ticker_last_success", "output"}),
+}
+# Caches Hermes rebuilds: removed before every run without a report (a
+# planted skills-prompt snapshot would reach the next run's skills index).
+_ALWAYS_DROP = frozenset({".skills_prompt_snapshot.json"})
+
+
+def _remove(p: Path) -> None:
+    if p.is_symlink() or not p.is_dir():
+        p.unlink()
+    else:
+        shutil.rmtree(p)
+
+
+def _expected(name: str, p: Path) -> bool:
+    """Whether `name` (a profile home entry) is Hermes state left alone."""
+    if p.is_symlink():
+        return False
+    if name in _STATE_FILES or name.startswith(_STATE_PREFIXES):
+        return p.is_file()
+    if name in _STATE_DIRS or name in _EMPTY_DIRS or name in _KEEP_INSIDE:
+        return p.is_dir()
+    return False
+
+
+def reset_profile(home: Path, managed: Iterable[str]) -> list[str]:
+    """Resets profile `home` to the allowlist: Kemudi's `managed` files (the
+    caller re-checks them), Hermes' runtime state, and the folders Hermes
+    keeps empty or holds its own entries in. Removes everything else; returns
+    what it removed that was not a known cache (home-relative, sorted)."""
+    managed = set(managed)
+    removed: list[str] = []
+    for p in sorted(home.iterdir()):
+        name = p.name
+        if name in managed:
+            if p.is_symlink() or p.is_dir():
+                _remove(p)
+                removed.append(name)
+            continue
+        if name in _ALWAYS_DROP:
+            _remove(p)
+            continue
+        if name.startswith(".tmp-"):  # Kemudi's own write in progress or left over
+            _remove(p)
+            continue
+        if not _expected(name, p):
+            _remove(p)
+            removed.append(name)
+            continue
+        if name in _EMPTY_DIRS or name in _KEEP_INSIDE:
+            keep = _KEEP_INSIDE.get(name, frozenset())
+            for child in sorted(p.iterdir()):
+                if child.name in keep and not child.is_symlink():
+                    continue
+                _remove(child)
+                removed.append(f"{name}/{child.name}")
+    return sorted(removed)
+
+
+def _fix_owner(home: Path, uid: int | None) -> bool:
+    """As root: everything in `home` belongs to the agent's uid (Hermes parks
+    a profile it cannot write, for good). Returns whether anything changed."""
+    if uid is None or not _is_root():
+        return False
+    changed = False
+    paths = [home]
+    for dirpath, dirnames, filenames in os.walk(home, followlinks=False):
+        paths += [Path(dirpath) / n for n in dirnames + filenames]
+    for p in paths:
+        if _owner(p) != uid:
+            _chown(p, uid)
+            changed = True
+    return changed
 
 
 def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def write_profile(settings: Settings, setid: str) -> tuple[str, list[str]]:
+@dataclass(frozen=True)
+class ProfileWrite:
+    """What write_profile did: `created` (a new profile), `rewritten`
+    (managed files that differed, "owner" when the ownership was fixed) and
+    `removed` (unexpected entries; see reset_profile)."""
+
+    name: str
+    created: bool = False
+    rewritten: tuple[str, ...] = ()
+    removed: tuple[str, ...] = ()
+
+
+def _unknown_profiles(root: Path) -> list[str]:
+    """Entries of the profiles folder that are not Kemudi's: Hermes serves
+    every profile there, so a run's terminal could plant one (with its own
+    cron jobs). `sk-<hex>` ones and Kemudi's `.tmp-`/`.old-` folders are left
+    to the sweep."""
+    removed = []
+    for p in sorted(root.iterdir()):
+        if re.match(r"^sk-[0-9a-f]+$", p.name) and p.is_dir() and not p.is_symlink():
+            continue
+        if p.name.startswith((".tmp-", ".old-")):
+            continue
+        _remove(p)
+        removed.append(f"profiles/{p.name}")
+    return removed
+
+
+def write_profile(settings: Settings, setid: str) -> ProfileWrite:
     """Creates profile sk-<setid> (built as `.tmp-…`, owned by the agent's uid
     because Hermes writes its runtime state there, then renamed in), or
-    re-checks an existing one's config files by hash and rewrites those that
-    differ. Returns (profile, rewritten file names)."""
+    resets an existing one: unexpected entries removed (reset_profile), the
+    managed files re-checked by hash and rewritten when they differ, the
+    ownership fixed."""
     name = profile_name(setid)
     root = Path(settings.awak_profiles_dir)
     root.mkdir(parents=True, exist_ok=True)
     want = profile_files(settings, setid)
     home = root / name
     uid = settings.awak_uid
+    stray = _unknown_profiles(root)
     if home.is_dir() and not home.is_symlink():
+        removed = reset_profile(home, want)
         rewritten = []
         for fn, data in want.items():
             p = home / fn
@@ -601,13 +766,14 @@ def write_profile(settings: Settings, setid: str) -> tuple[str, list[str]]:
             tmp.write_bytes(data)
             os.chmod(tmp, _FILE_MODES[fn])
             _chown(tmp, uid)
-            if p.is_symlink() or p.is_dir():
-                p.unlink() if p.is_symlink() else shutil.rmtree(p)
             os.replace(tmp, p)
             rewritten.append(fn)
-        return name, rewritten
-    if home.is_symlink():
-        home.unlink()
+        if _fix_owner(home, uid):
+            log.warning("awak profile %s was not owned by uid %s; fixed", name, uid)
+            rewritten.append("owner")
+        return ProfileWrite(name, False, tuple(sorted(rewritten)), tuple(stray + removed))
+    if home.is_symlink() or home.exists():
+        _remove(home)
     tmp = root / f".tmp-{name}-{pysecrets.token_hex(4)}"
     try:
         tmp.mkdir(mode=0o755)
@@ -621,7 +787,19 @@ def write_profile(settings: Settings, setid: str) -> tuple[str, list[str]]:
     finally:
         if tmp.exists():
             shutil.rmtree(tmp, ignore_errors=True)
-    return name, list(want)
+    return ProfileWrite(name, True, (), tuple(stray))
+
+
+def rebuild_profile(settings: Settings, profile: str) -> ProfileWrite:
+    """Deletes profile `profile` and writes it anew: Hermes parks a profile it
+    could not serve (503 runtime_draining) and never retries it; a fresh
+    folder is a new profile to its watcher."""
+    if not PROFILE_RE.match(profile):
+        raise ValueError(f"not a skill-set profile: {profile!r}")
+    home = Path(settings.awak_profiles_dir) / profile
+    if home.is_symlink() or home.exists():
+        _remove(home)
+    return write_profile(settings, profile[len(PROFILE_PREFIX):])
 
 
 def is_served(settings: Settings, profile: str) -> bool:
@@ -640,6 +818,11 @@ def wait_served(settings: Settings, profile: str, timeout_s: float,
     return True
 
 
+def not_served_message(profile: str) -> str:
+    return (f"profile {profile} not served by kemudi-awak; is the kemudi-awak-profiles "
+            "volume mounted at /opt/data/profiles?")
+
+
 # --- Prepare (per run) -----------------------------------------------------------
 
 def _naive_now() -> datetime:
@@ -648,10 +831,18 @@ def _naive_now() -> datetime:
 
 @dataclass(frozen=True)
 class Prepared(Resolved):
+    """`created`: built for this run ("set", "profile"); `rewritten`: found
+    different from what Kemudi wrote (tampering or a mismatch) and rewritten;
+    `removed`: unexpected entries reset_profile removed."""
+
+    created: tuple[str, ...] = field(default=())
     rewritten: tuple[str, ...] = field(default=())
+    removed: tuple[str, ...] = field(default=())
 
     def event(self) -> dict:
         out = super().event()
+        if self.created:
+            out["created"] = list(self.created)
         if self.rewritten:
             out["rewritten"] = list(self.rewritten)
         return out
@@ -659,8 +850,8 @@ class Prepared(Resolved):
 
 def prepare_set(settings: Settings, db: Session, slugs: Iterable[str] | None) -> Prepared:
     """Before every run: the role's skills (disabled or missing ones dropped)
-    written as a set and its profile; existing ones re-verified. The run then
-    calls /p/<profile>/."""
+    written as a set and its profile; existing ones re-verified and the
+    profile reset to its allowlist. The run then calls /p/<profile>/."""
     r = resolve(db, slugs)
     loaded: list[tuple[str, dict[str, bytes]]] = []
     for e in r.entries:
@@ -669,9 +860,9 @@ def prepare_set(settings: Settings, db: Session, slugs: Iterable[str] | None) ->
         if canonical_sha(files) != e.sha256:
             raise SkillError([f"skill {e.slug} v{e.version}: stored files do not match their sha"])
         loaded.append((e.slug, files))
-    setid, set_written = materialise(Path(settings.awak_skills_dir) / "sets", loaded)
+    setid, set_state = materialise(Path(settings.awak_skills_dir) / "sets", loaded)
     assert setid == r.setid
-    profile, rewritten = write_profile(settings, setid)
+    prof = write_profile(settings, setid)
     now = _naive_now()
     row = db.get(AwakSkillSet, setid)
     if row is None:
@@ -680,8 +871,11 @@ def prepare_set(settings: Settings, db: Session, slugs: Iterable[str] | None) ->
     else:
         row.last_used_at = now
     db.commit()
-    changed = (["set"] if set_written else []) + rewritten
-    return Prepared(r.entries, r.dropped, tuple(changed))
+    created = (["set"] if set_state == CREATED else []) + (["profile"] if prof.created else [])
+    rewritten = (["set"] if set_state == REWRITTEN else []) + list(prof.rewritten)
+    if prof.removed:
+        log.warning("awak profile %s reset; removed %s", prof.name, ", ".join(prof.removed))
+    return Prepared(r.entries, r.dropped, tuple(created), tuple(rewritten), prof.removed)
 
 
 # --- Sweep -----------------------------------------------------------------------
@@ -717,10 +911,11 @@ def sweep(settings: Settings, db: Session, now: datetime | None = None,
     rows = {r.setid: r for r in db.query(AwakSkillSet).all()}
     found: set[str] = set(rows)
     if sets_dir.is_dir():
-        found |= {p.name for p in sets_dir.iterdir() if SETID_RE.match(p.name)}
+        found |= {p.name for p in sets_dir.iterdir() if _SWEEPABLE_RE.match(p.name)}
     if prof_dir.is_dir():
         found |= {p.name[len(PROFILE_PREFIX):] for p in prof_dir.iterdir()
-                  if PROFILE_RE.match(p.name)}
+                  if p.name.startswith(PROFILE_PREFIX)
+                  and _SWEEPABLE_RE.match(p.name[len(PROFILE_PREFIX):])}
     removed = []
     for setid in sorted(found - keep):
         row = rows.get(setid)

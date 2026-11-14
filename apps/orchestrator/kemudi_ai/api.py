@@ -123,9 +123,10 @@ def health():
 
 @app.get("/me")
 def me(user: TaigaUser = Depends(current_user), settings: Settings = Depends(get_settings)):
-    """Who is calling, and whether they are a Kemudi instance admin
-    (KEMUDI_ADMIN_USERNAMES: the skill library)."""
-    return {"username": user.username, "kemudi_admin": is_kemudi_admin(user, settings)}
+    """Who is calling (the Taiga user id is what KEMUDI_ADMIN_USER_IDS
+    lists), and whether they are a Kemudi instance admin (the skill library)."""
+    return {"id": user.id, "username": user.username,
+            "kemudi_admin": is_kemudi_admin(user, settings)}
 
 
 @app.get("/skills")

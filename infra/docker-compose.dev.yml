@@ -187,7 +187,9 @@ services:
       KEMUDI_AI_API_KEY: "${KEMUDI_AI_API_KEY}"
       # Shared token kemudi-awak sends to /llm/v1 (infra/awak/config.yaml).
       KEMUDI_LLM_PROXY_TOKEN: "${KEMUDI_LLM_PROXY_TOKEN:-}"
-      # Kemudi instance admins (Taiga usernames, comma-separated): the skill library.
+      # Kemudi instance admins (the skill library): Taiga user ids,
+      # comma-separated; usernames are a fallback (infra/.env.example).
+      KEMUDI_ADMIN_USER_IDS: "${KEMUDI_ADMIN_USER_IDS:-}"
       KEMUDI_ADMIN_USERNAMES: "${KEMUDI_ADMIN_USERNAMES:-}"
     volumes:
       # Contracts are confidential: a named volume, never the repo.

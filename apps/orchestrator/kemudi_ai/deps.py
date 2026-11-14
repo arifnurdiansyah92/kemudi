@@ -50,7 +50,12 @@ def admin(slug: str, user: TaigaUser = Depends(current_user), settings: Settings
 
 
 def is_kemudi_admin(user: TaigaUser, settings: Settings) -> bool:
-    """A Kemudi instance admin (KEMUDI_ADMIN_USERNAMES): manages the skill library."""
+    """A Kemudi instance admin: manages the skill library. Matched by Taiga
+    user id (KEMUDI_ADMIN_USER_IDS); the username list
+    (KEMUDI_ADMIN_USERNAMES) is a fallback, weaker because a user can rename
+    themselves."""
+    if user.id in settings.admin_user_id_set():
+        return True
     return user.username in settings.admin_username_set()
 
 

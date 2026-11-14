@@ -9,6 +9,7 @@ the run's skill set (kemudi_ai/awak/skills.py, `prepare_set`), an empty one
 included, so Hermes' bundled skills never reach a run.
 """
 
+import logging
 import time
 from typing import Protocol
 
@@ -19,6 +20,7 @@ from ..config import Settings
 from ..store import record_ai_call
 from . import llm_conn, skills
 
+log = logging.getLogger(__name__)
 
 class AgentError(Exception):
     """Hermes did not finish the run (timeout, HTTP error). An infra error.
@@ -53,6 +55,7 @@ class HermesAgent:
         self.settings = settings
         self.sessions = sessions
         self.sleep = time.sleep
+        self.clock = time.monotonic
         # Profiles live under /p/<profile>/v1/...; awak_url names /v1.
         self.client = httpx.Client(
             base_url=settings.awak_url.rstrip("/").removesuffix("/v1"),
@@ -124,17 +127,45 @@ class HermesAgent:
                 )
 
     def _post(self, profile: str, body: dict, headers: dict) -> httpx.Response:
+        """Posts the run to the profile. A profile Hermes does not know (404)
+        or parked (503 runtime_draining: it could not write there once, and
+        never retries) is deleted and rebuilt once, then tried again. A
+        profile that was never served and still fails names the likely cause
+        (the profiles volume)."""
+        rebuilt = False
+        while True:
+            served, r = self._serve_and_post(profile, body, headers)
+            if r.status_code in (404, 503) and not rebuilt:
+                rebuilt = True
+                log.warning("awak: profile %s answered %s; rebuilding it", profile,
+                            r.status_code)
+                try:
+                    skills.rebuild_profile(self.settings, profile)
+                except (OSError, ValueError) as e:
+                    raise AgentError(f"profile {profile} could not be rebuilt: {e}") from e
+                continue
+            if not served and r.status_code >= 400:
+                raise AgentError(f"{skills.not_served_message(profile)} "
+                                 f"(HTTP {r.status_code})")
+            return r
+
+    def _serve_and_post(self, profile: str, body: dict,
+                        headers: dict) -> tuple[bool, httpx.Response]:
         """A new profile is served at Hermes' next watcher pass: wait for its
-        marker, then retry `409 profile_mismatch` until the same deadline."""
+        marker (posting anyway when it does not come), then retry `409
+        profile_mismatch` until the same deadline. Returns (served, response)."""
         wait_s = self.settings.awak_profile_wait_s
-        deadline = time.monotonic() + wait_s
-        skills.wait_served(self.settings, profile, wait_s, sleep=self.sleep)
+        deadline = self.clock() + wait_s
+        served = skills.wait_served(self.settings, profile, wait_s, sleep=self.sleep,
+                                    clock=self.clock)
+        if not served:
+            log.warning("awak: %s", skills.not_served_message(profile))
         url = f"/p/{profile}/v1/chat/completions"
         while True:
             r = self.client.post(url, json=body, headers=headers)
             if not (r.status_code == 409 and _NOT_SERVED in r.text
-                    and time.monotonic() < deadline):
-                return r
+                    and self.clock() < deadline):
+                return served, r
             self.sleep(3.0)
 
     def _cost(self, usage: dict) -> float:

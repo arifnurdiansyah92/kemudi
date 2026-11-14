@@ -391,7 +391,7 @@ class AwakSkillSet(Base):
     for the sweep: when a run last used it. Naive UTC times."""
 
     __tablename__ = "awak_skill_sets"
-    setid: Mapped[str] = mapped_column(String(12), primary_key=True)
+    setid: Mapped[str] = mapped_column(String(32), primary_key=True)
     # [{slug, version, sha256, source}]
     skills: Mapped[list[Any]] = mapped_column(default=list)
     created_at: Mapped[datetime] = mapped_column()

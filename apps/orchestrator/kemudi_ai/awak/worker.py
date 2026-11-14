@@ -120,6 +120,7 @@ class Worker:
         self._seeded = False
         self._swept = False
         self._services_swept = False
+        self._profiles_checked = False
         self.clock: Callable[[], float] = time.monotonic
         self._last_compose_sweep: float | None = None
         self._last_skill_sweep: float | None = None
@@ -163,7 +164,11 @@ class Worker:
             if isinstance(x, str):
                 # a commit sha is read back (e.g. `prepared.base`); a short
                 # value that happens to be hex inside it is no leak
-                return x if _SHA_RE.fullmatch(x) else secrets.redact(x, values)
+                # nor is a skill-set profile name (`sk-` + 32 hex looks like an
+                # API key to the pattern scan)
+                if _SHA_RE.fullmatch(x) or (skills.PROFILE_RE.fullmatch(x) and x not in values):
+                    return x
+                return secrets.redact(x, values)
             if isinstance(x, dict):
                 return {k: walk(v) for k, v in x.items()}
             if isinstance(x, list):
@@ -257,6 +262,23 @@ class Worker:
                 skills.sweep(self.s, db)
         except OSError as e:
             log.warning("awak: skill-set sweep failed: %s", e)
+
+    def check_profiles(self) -> bool:
+        """Once per worker: writes the empty-set profile and waits (bounded)
+        for Hermes to serve it, so a missing profiles volume shows at start,
+        not as a failed run 90 s in. Logged, never fatal."""
+        self._profiles_checked = True
+        try:
+            with self.sessions() as db:
+                kit = skills.prepare_set(self.s, db, [])
+        except (OSError, ValueError) as e:
+            log.warning("awak: the empty skill-set profile could not be written: %s", e)
+            return False
+        if skills.wait_served(self.s, kit.profile, self.s.awak_profile_wait_s,
+                              sleep=self.sleep, clock=self.clock):
+            return True
+        log.warning("awak: %s", skills.not_served_message(kit.profile))
+        return False
 
     def idle_sweep(self) -> None:
         """When the worker has nothing to do: a compose sweep at most every
@@ -390,6 +412,9 @@ class Worker:
                         # Newly the only worker: whatever another left running is ours.
                         self.recover()
                         held = True
+                    if not self._profiles_checked:
+                        with self.heartbeat():
+                            self.check_profiles()
                     with self.heartbeat():
                         worked = self.tick()
                 except Exception:  # noqa: BLE001 - the loop must survive anything
@@ -635,6 +660,7 @@ class Worker:
                              story.get("description") or "", job.feedback,
                              siblings=[str(d) for d in siblings], unavailable=unavailable)
             kit = self._skill_set(job.id, role.skills, "code")
+            self._pin_prompt_version(job.id, route, kit)
             system = render_role(role, route.config.repos, bool(kit.entries))
             report, cost = self.agent.run("awak.code", role.model, system, task,
                                           slug=route.config.slug, role_id=role.id,
@@ -926,7 +952,8 @@ class Worker:
     # ------------------------------------------------------------- helpers
     def _route(self, job: AwakJob, story: dict, slug: str) -> Route:
         """Role and repo by the story's area tag, pinned on the job at its first
-        attempt and kept for rework; the prompt version is what this attempt uses."""
+        attempt and kept for rework. The prompt version is pinned at the code run
+        (_pin_prompt_version), from the skill set it got."""
         with self.sessions() as db:
             cfg = config_store.load(db, slug)
             row = db.get(AwakJob, job.id)
@@ -955,18 +982,26 @@ class Worker:
                     raise NeedsHuman("repo untuk story ini sudah dihapus dari pengaturan Agen.")
             # What this attempt runs against; Merge checks it is still the same.
             row.repo_url, row.repo_branch = rc.url, rc.default_branch
-            kit = skills.resolve(db, role.skills)
-            version = prompt_version(role, cfg.repos, kit.setid if kit.entries else "")
-            changed = row.prompt_version != version
-            row.prompt_version = version
             db.commit()
             key = config_store.key_row(db, rc.key_id)
             rb = runbook.load(db, slug)
+        return Route(cfg, role, rc, self._repo_of(cfg, rc, key), rb)
+
+    def _pin_prompt_version(self, job_id: int, route: Route, kit: skills.Prepared) -> None:
+        """The prompt version this attempt runs with, from the skill set the
+        code run actually got (so the two never disagree); a change is
+        recorded as `routed`."""
+        role = route.role
+        version = prompt_version(role, route.config.repos, kit.setid if kit.entries else "")
+        with self.sessions() as db:
+            row = db.get(AwakJob, job_id)
+            changed = row.prompt_version != version
+            row.prompt_version = version
+            db.commit()
         if changed:
-            self._event(job.id, "routed", {"role_id": role.id, "repo_id": rc.id,
+            self._event(job_id, "routed", {"role_id": role.id, "repo_id": route.rc.id,
                                            "prompt_version": version,
                                            "skills": kit.slugs})
-        return Route(cfg, role, rc, self._repo_of(cfg, rc, key), rb)
 
     def _repo_of(self, cfg: ProjectConfig, rc: RepoConfig, key: AwakKey | None) -> Repo:
         if self.repo is not None and rc.url == self.s.host_git:
@@ -1044,6 +1079,10 @@ class Worker:
             except (OSError, ValueError) as e:
                 raise Infra(f"skill set for the run could not be prepared: {e}") from e
         self._event(job_id, "skills", {"phase": phase, **kit.event()})
+        if kit.removed:
+            # Something a run left in the profile (its terminal can write there).
+            self._event(job_id, "profile_reset", {"phase": phase, "profile": kit.profile,
+                                                  "removed": list(kit.removed)})
         if kit.has_marketplace and self._job(job_id).merge_mode == "auto":
             self._set(job_id, merge_mode="approve")
             self._event(job_id, "merge_mode", {"merge_mode": "approve",
