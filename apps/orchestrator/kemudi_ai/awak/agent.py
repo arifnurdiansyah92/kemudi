@@ -135,6 +135,7 @@ class HermesAgent:
                     purpose=purpose,
                     model=conn.model,
                     llm_source=conn.source,
+                    project_slug=slug,
                     prompt=f"[system]\n{system}\n\n[user]\n{task}",
                     response=content,
                     prompt_tokens=pt,

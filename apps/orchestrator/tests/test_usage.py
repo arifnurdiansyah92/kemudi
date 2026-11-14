@@ -18,6 +18,7 @@ from kemudi_ai.store import (
     AwakJob,
     AwakLlmAlias,
     AwakLlmUsage,
+    AuditEvent,
     AwakProject,
     Decision,
     make_session,
@@ -129,6 +130,9 @@ def upstream(agent_client):
     app.dependency_overrides[llm_proxy.get_upstream_transport] = (
         lambda: httpx.MockTransport(handler))
     agent_client.settings.ai_base_url = "https://server.example/v1"
+    # The proxy is closed without its shared token (503).
+    agent_client.settings.llm_proxy_token = "proxy-token"
+    agent_client.headers.update({"Authorization": "Bearer proxy-token"})
     return seen, replies
 
 
@@ -258,6 +262,7 @@ def test_hermes_run_cost_comes_from_the_proxied_calls():
     assert cost == pytest.approx(expected)
     with S() as db:
         call = db.query(AiCall).one()
+        assert call.project_slug == "demo"
         assert call.prompt_tokens == 2_000_000 and call.cost_idr == pytest.approx(expected)
 
 
@@ -399,6 +404,8 @@ def test_usage_summary_and_budget_api(agent_client):
     with S() as db:
         d = db.query(Decision).filter_by(action="awak_budget").one()
         assert d.detail["changed"]["token_budget_monthly"] == 480
+        ev = db.query(AuditEvent).filter_by(action="awak_budget").one()
+        assert ev.project_slug == "demo" and ev.detail["changed"]["token_budget_monthly"] == 480
     assert agent_client.put("/projects/demo/agent/usage/budget", headers=ADMIN,
                             json={"monthly_tokens": -1}).status_code == 422
     # Clearing returns to unlimited and the price table.

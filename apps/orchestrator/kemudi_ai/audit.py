@@ -37,6 +37,7 @@ PROJECT_ACTIONS = frozenset({
     "awak_role",                # includes the skills assigned to an agent
     "awak_runbook",
     "awak_bot_access",
+    "awak_budget",              # token budget, story cap, price override
     "upload_contract",
     "approve_baseline",
     "delete_contract",
