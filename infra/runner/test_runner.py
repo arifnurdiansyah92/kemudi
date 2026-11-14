@@ -645,3 +645,9 @@ def test_screenshot_request_is_validated(runner, tmp_path, change):
     with pytest.raises(ValueError):
         runner.op_screenshot(body)
     assert runner.OPS["screenshot"] is runner.op_screenshot
+
+
+def test_programs_lists_only_installed_allowed_programs(monkeypatch):
+    import runner as r
+    monkeypatch.setattr(r.shutil, "which", lambda p: "/usr/bin/" + p if p in {"node", "npm"} else None)
+    assert r.op_programs({}) == {"ok": True, "programs": ["node", "npm"]}

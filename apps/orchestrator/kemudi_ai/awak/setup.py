@@ -355,7 +355,8 @@ def waiting(db: Session, run: AwakSetupRun, rb: Runbook, confirmed: set[str] | N
 
 
 def setup_task(root: Path, slug: str, repos: list[tuple[str, str]], draft: dict,
-               have: list[str], feedback: str = "", previous: dict | None = None) -> str:
+               have: list[str], feedback: str = "", previous: dict | None = None,
+               programs: list[str] | None = None) -> str:
     """What the setup agent is asked for. `repos`: (name, default branch)."""
     schema = json.dumps(Runbook.model_json_schema(), separators=(",", ":"))
     parts = [
@@ -375,8 +376,9 @@ def setup_task(root: Path, slug: str, repos: list[tuple[str, str]], draft: dict,
         "Env names that already have a value in the project's vault (values are never shown): "
         + (", ".join(sorted(have)) or "none"),
         "",
-        "Programs native commands may start (argv[0]): "
-        + ", ".join(sorted(runbook.ALLOWED_PROGRAMS)),
+        "Programs native commands may start (argv[0]; the sandbox has exactly these "
+        "installed, anything else runs in a compose image with run_in): "
+        + ", ".join(sorted(programs if programs is not None else runbook.ALLOWED_PROGRAMS)),
         "",
         "The runbook JSON schema:",
         schema,
@@ -494,7 +496,7 @@ class SetupRunner:
             have = vault_names(db, slug)
         task = setup_task(root, slug, [(r.name, r.default_branch) for r in cfg.repos],
                           p.get("draft") or {}, sorted(have), p.get("feedback") or "",
-                          p.get("previous"))
+                          p.get("previous"), self._programs())
         system = render("setup", "", RoleScope(repos=[r.name for r in cfg.repos]))
         try:
             report, cost = self.w.agent.run(PURPOSE, self.s.awak_model, system, task,
@@ -838,6 +840,16 @@ class SetupRunner:
             return self.w._vault(slug)
         except checks.Unsupported as e:
             raise SetupBlocked(str(e)) from e
+
+    def _programs(self) -> list[str] | None:
+        """The allowed programs the runner image has; None (the whole allowlist)
+        when the runner cannot say (an older image)."""
+        try:
+            res = self.w.runner.call("programs")
+        except Exception:  # noqa: BLE001 - only a hint for the agent
+            return None
+        got = res.get("programs") if isinstance(res, dict) else None
+        return [p for p in got if p in runbook.ALLOWED_PROGRAMS] if isinstance(got, list) else None
 
     def _run(self, op: str, **payload) -> dict:
         try:

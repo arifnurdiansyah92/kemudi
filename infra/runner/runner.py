@@ -1030,9 +1030,15 @@ def op_deploy(body: dict) -> dict:
     return {"ok": code == 0, "exit": code, "output": out[-4000:]}
 
 
+def op_programs(body: dict) -> dict:
+    """Which allowed programs this image actually has (the setup agent is told)."""
+    return {"ok": True, "programs": sorted(p for p in ALLOWED_PROGRAMS if shutil.which(p))}
+
+
 OPS = {"install": op_install, "commit": op_commit, "gates": op_gates, "deploy": op_deploy,
        "qa_reset": op_qa_reset, "qa": op_qa, "clean_check": op_clean_check,
-       "health": op_health, "reap": op_reap, "screenshot": op_screenshot}
+       "health": op_health, "reap": op_reap, "screenshot": op_screenshot,
+       "programs": op_programs}
 
 
 class Handler(BaseHTTPRequestHandler):
