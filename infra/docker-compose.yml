@@ -217,6 +217,13 @@ services:
       KEMUDI_AI_BASE_URL: "${KEMUDI_AI_BASE_URL:-}"
       KEMUDI_AI_API_KEY: "${KEMUDI_AI_API_KEY:-}"
       KEMUDI_LLM_PROXY_TOKEN: "${KEMUDI_LLM_PROXY_TOKEN:?run scripts/init-secrets.sh}"
+      # Production mode: refuse to start with an empty or placeholder secret
+      # key or proxy token. Model prompts are kept as hashes unless
+      # KEMUDI_AI_LOG_PROMPTS=true; AI call records are purged after
+      # KEMUDI_AI_LOG_RETENTION_DAYS (0 keeps them).
+      KEMUDI_ENV: "production"
+      KEMUDI_AI_LOG_PROMPTS: "${KEMUDI_AI_LOG_PROMPTS:-false}"
+      KEMUDI_AI_LOG_RETENTION_DAYS: "${KEMUDI_AI_LOG_RETENTION_DAYS:-90}"
       # Kemudi instance admins (the skill library): Taiga user ids,
       # comma-separated (GET /api/kemudi/me shows yours). Usernames are a
       # weaker fallback.
