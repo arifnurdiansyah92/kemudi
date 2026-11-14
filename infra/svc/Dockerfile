@@ -8,7 +8,7 @@ FROM docker:27-cli
 
 RUN apk add --no-cache python3
 
-COPY --chmod=0644 svc.py /opt/svc/
+COPY --chmod=0644 svc.py sanitize.py /opt/svc/
 
 # root, with only SETUID, SETGID, KILL and DAC_READ_SEARCH (compose:
 # cap_drop ALL, cap_add those); the compose file is first read as uid 10000.
