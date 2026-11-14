@@ -118,6 +118,8 @@ def test_reset_keeps_hermes_state_and_removes_what_a_run_planted():
     home = root / PROF
     state = _hermes_state(home)
     (home / ".skills_prompt_snapshot.json").write_text("{}")  # a cache: dropped quietly
+    (home / "lsp").mkdir()  # the language-server cache: dropped quietly
+    (home / "lsp" / "x.json").write_text("{}")
     assert skills.write_profile(s, SETID) == skills.ProfileWrite(PROF)
     assert {str(p.relative_to(home).as_posix()) for p in home.rglob("*")} == state
     # what a run's terminal (uid 10000, owner of the profiles) could plant
@@ -130,6 +132,7 @@ def test_reset_keeps_hermes_state_and_removes_what_a_run_planted():
     (home / "pending").mkdir()
     (home / "notes.txt").write_text("x")
     (home / "skills" / ".hub" / "taps.json").write_text("{}")  # Hermes' own: kept
+    (home / "skills" / ".usage.json").write_text("{}")  # Hermes' usage stats: kept
     other = root / "evil-profile"
     (other / "cron").mkdir(parents=True)
     w = skills.write_profile(s, SETID)
@@ -138,7 +141,7 @@ def test_reset_keeps_hermes_state_and_removes_what_a_run_planted():
                          "skills/evil")
     assert not other.exists()
     assert {str(p.relative_to(home).as_posix())
-            for p in home.rglob("*")} == state | {"skills/.hub/taps.json"}
+            for p in home.rglob("*")} == state | {"skills/.hub/taps.json", "skills/.usage.json"}
     for d in ("hooks", "plugins", "memories"):
         assert (home / d).is_dir() and not any((home / d).iterdir())
 

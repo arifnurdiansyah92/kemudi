@@ -15,6 +15,7 @@ import en_item from '@/locales/en/item.json'
 import en_pages from '@/locales/en/pages.json'
 import en_settings from '@/locales/en/settings.json'
 import en_shell from '@/locales/en/shell.json'
+import en_skills from '@/locales/en/skills.json'
 import id_admin from '@/locales/id/admin.json'
 import id_agent from '@/locales/id/agent.json'
 import id_auth from '@/locales/id/auth.json'
@@ -27,6 +28,7 @@ import id_item from '@/locales/id/item.json'
 import id_pages from '@/locales/id/pages.json'
 import id_settings from '@/locales/id/settings.json'
 import id_shell from '@/locales/id/shell.json'
+import id_skills from '@/locales/id/skills.json'
 
 export const defaultNS = 'common'
 
@@ -44,6 +46,7 @@ export const resources = {
     admin: en_admin,
     contract: en_contract,
     agent: en_agent,
+    skills: en_skills,
   },
   id: {
     common: id_common,
@@ -58,5 +61,6 @@ export const resources = {
     admin: id_admin,
     contract: id_contract,
     agent: id_agent,
+    skills: id_skills,
   },
 } as const

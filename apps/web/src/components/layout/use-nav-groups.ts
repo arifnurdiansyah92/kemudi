@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
 import {
+  Blocks,
   FileSignature,
   Inbox,
   UserCog,
@@ -17,6 +18,7 @@ import {
   Palette,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useKemudiMe } from '@/lib/kemudi-ai/skills'
 import { projectQuery, useProjects } from '@/lib/taiga/queries'
 import { type NavGroup } from './types'
 
@@ -25,6 +27,7 @@ export function useNavGroups(): NavGroup[] {
   const { t } = useTranslation(['shell', 'common', 'contract'])
   const { slug } = useParams({ strict: false }) as { slug?: string }
   const { data: projects } = useProjects()
+  const { data: me } = useKemudiMe()
   const { data: project } = useQuery({
     ...projectQuery(slug ?? ''),
     enabled: !!slug,
@@ -42,6 +45,10 @@ export function useNavGroups(): NavGroup[] {
           // How many projects the user belongs to; none means no badge.
           badge: projects?.length ? String(projects.length) : undefined,
         },
+        // The skill library: Kemudi admins only (the API refuses others too).
+        ...(me?.kemudi_admin
+          ? [{ title: t('nav.skills'), url: '/skills', icon: Blocks }]
+          : []),
       ],
     },
   ]
