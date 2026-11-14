@@ -22,10 +22,13 @@ const pct = (
 export function BacktestReport({
   data,
   canReview,
+  showPrices = false,
   onVerdict,
 }: {
   data: Backtest
   canReview: boolean
+  /** Off: request rows show person-days only (the headline stays, marked indicative). */
+  showPrices?: boolean
   onVerdict: (resultId: number, verdict: 'right' | 'wrong' | null) => void
 }) {
   const { t } = useTranslation('contract')
@@ -131,7 +134,9 @@ export function BacktestReport({
                 {t('backtest.table.suggested')}
               </th>
               <th className='px-3 py-2 text-end font-medium'>
-                {t('backtest.table.price')}
+                {showPrices
+                  ? t('backtest.table.price')
+                  : t('backtest.table.effort')}
               </th>
               <th className='py-2 ps-3 text-end font-medium'>
                 {t('backtest.table.review')}
@@ -144,6 +149,7 @@ export function BacktestReport({
                 key={r.id}
                 r={r}
                 canReview={canReview}
+                showPrices={showPrices}
                 onVerdict={onVerdict}
               />
             ))}
@@ -177,16 +183,21 @@ function Metric({
 function ResultRow({
   r,
   canReview,
+  showPrices,
   onVerdict,
 }: {
   r: BacktestResult
   canReview: boolean
+  showPrices: boolean
   onVerdict: (resultId: number, verdict: 'right' | 'wrong' | null) => void
 }) {
   const { t } = useTranslation('contract')
   const format = useFormat()
   const p = isPrediction(r.predicted) ? r.predicted : null
   const agrees = p?.label === r.expected.label
+  const days = p
+    ? Object.values(p.effort_days).reduce((sum, d) => sum + d, 0)
+    : 0
   const effort = p
     ? Object.entries(p.effort_days)
         .map(
@@ -245,12 +256,20 @@ function ResultRow({
         )}
       </td>
       <td className='px-3 py-3 text-end whitespace-nowrap tabular-nums'>
-        {p && p.price_idr ? format.rupiah(p.price_idr) : '—'}
-        {r.expected.price_idr ? (
-          <p className='text-xs text-muted-foreground'>
-            {format.rupiah(r.expected.price_idr)}
-          </p>
-        ) : null}
+        {showPrices ? (
+          <>
+            {p && p.price_idr ? format.rupiah(p.price_idr) : '—'}
+            {r.expected.price_idr ? (
+              <p className='text-xs text-muted-foreground'>
+                {format.rupiah(r.expected.price_idr)}
+              </p>
+            ) : null}
+          </>
+        ) : days ? (
+          t('backtest.table.days', { days: format.number(days) })
+        ) : (
+          '—'
+        )}
       </td>
       <td className='py-3 ps-3 text-end whitespace-nowrap'>
         <div className='inline-flex gap-1'>

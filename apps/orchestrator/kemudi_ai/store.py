@@ -33,6 +33,7 @@ __all__ = [
     "BaselineVersion",
     "BacktestRun",
     "BacktestResult",
+    "CrCheck",
     "AiCall",
     "Decision",
     "AwakJob",
@@ -160,6 +161,9 @@ class Contract(Base):
     lang: Mapped[str] = mapped_column(String(5), default="id")
     rate_card: Mapped[dict[str, Any]] = mapped_column(default=dict)
     created_at: Mapped[datetime] = mapped_column(default=now)
+    # Rupiah figures are shown in CR check results only when the project
+    # opts in: the estimates are indicative (see the pilot backtest).
+    show_prices: Mapped[bool] = mapped_column(default=False)
 
 
 class BaselineVersion(Base):
@@ -199,6 +203,37 @@ class BacktestResult(Base):
     predicted: Mapped[dict[str, Any] | None] = mapped_column(JSON, default=None)
     status: Mapped[str] = mapped_column(String(10), default="ok")
     verdict: Mapped[str | None] = mapped_column(String(10), default=None)
+
+
+class CrCheck(Base):
+    """One on-demand "check against contract" of a Taiga story or issue.
+    The AI suggestion is kept as it was; the PM's verdict sits beside it."""
+
+    __tablename__ = "cr_checks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_slug: Mapped[str] = mapped_column(String(200), index=True)
+    ticket_kind: Mapped[str] = mapped_column(String(10))  # userstory | issue
+    ticket_ref: Mapped[int] = mapped_column()
+    subject: Mapped[str] = mapped_column(String(500), default="")
+    text: Mapped[str] = mapped_column(Text, default="")
+    baseline_version_id: Mapped[int] = mapped_column(ForeignKey("baseline_versions.id"))
+    baseline_number: Mapped[int] = mapped_column(default=0)
+    label: Mapped[str] = mapped_column(String(25))
+    reasoning: Mapped[str] = mapped_column(Text, default="")
+    clause: Mapped[str] = mapped_column(Text, default="")
+    # [{ref, title, clauses}] for the baseline items the reasoning cites
+    cited: Mapped[list[Any]] = mapped_column(default=list)
+    question: Mapped[str | None] = mapped_column(Text, default=None)
+    effort_days: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    price_idr: Mapped[int] = mapped_column(default=0)
+    model: Mapped[str] = mapped_column(String(100), default="")
+    checked_by: Mapped[str] = mapped_column(String(200))
+    checked_at: Mapped[datetime] = mapped_column(default=now)
+    verdict: Mapped[str | None] = mapped_column(String(10), default=None)  # agree | disagree
+    corrected_label: Mapped[str | None] = mapped_column(String(25), default=None)
+    verdict_note: Mapped[str] = mapped_column(Text, default="")
+    decided_by: Mapped[str | None] = mapped_column(String(200), default=None)
+    decided_at: Mapped[datetime | None] = mapped_column(default=None)
 
 
 class AiCall(Base):
@@ -714,7 +749,7 @@ def _set_qa_modes(engine, host_git: str | None) -> None:
 
 # Tables that existed before a column was added to them. `create_all` never
 # alters an existing table, so missing columns are added here.
-_MIGRATED_TABLES = ("awak_jobs", "awak_projects", "awak_roles", "ai_calls",
+_MIGRATED_TABLES = ("contracts", "awak_jobs", "awak_projects", "awak_roles", "ai_calls",
                     "awak_llm_aliases", "awak_setup_runs", "awak_skill_versions",
                     "awak_skills")
 

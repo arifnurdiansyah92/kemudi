@@ -61,6 +61,8 @@ export type ContractState = {
     rate_card: RateCard
     sections: Section[]
     created_at: string
+    /** Rupiah amounts appear in CR check results only when this is on. */
+    show_prices: boolean
   } | null
   baseline: {
     draft: BaselineVersion | null
@@ -277,4 +279,134 @@ export function useSetVerdict(slug: string, runId: number) {
     onError: onFail,
     onSettled: () => qc.invalidateQueries({ queryKey: runKey(slug, runId) }),
   })
+}
+
+export function useSetShowPrices(slug: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (showPrices: boolean) =>
+      (
+        await api.put<{ show_prices: boolean }>(
+          `/projects/${slug}/contract/settings`,
+          { show_prices: showPrices },
+          base
+        )
+      ).data,
+    onError: onFail,
+    onSettled: () => invalidate(qc, slug),
+  })
+}
+
+// --- CR check on one ticket ---------------------------------------------------
+
+export type TicketKind = 'userstory' | 'issue'
+
+export type CitedItem = { ref: string; title: string; clauses: string[] }
+
+export type CrCheck = {
+  id: number
+  ticket_kind: TicketKind
+  ticket_ref: number
+  subject: string
+  baseline_number: number
+  label: ScopeLabel
+  reasoning: string
+  clause: string
+  cited: CitedItem[]
+  question: string | null
+  effort_days: Record<string, number>
+  effort_total_days: number
+  /** null when the project hides prices */
+  price_idr: number | null
+  model: string
+  checked_by: string
+  checked_at: string
+  verdict: 'agree' | 'disagree' | null
+  corrected_label: ScopeLabel | null
+  verdict_note: string
+  decided_by: string | null
+  decided_at: string | null
+}
+
+export type TicketChecks = {
+  baseline: { number: number } | null
+  show_prices: boolean
+  checks: CrCheck[]
+}
+
+export type ProjectChecks = { show_prices: boolean; checks: CrCheck[] }
+
+export type CrVerdict = {
+  verdict: 'agree' | 'disagree'
+  corrected_label?: ScopeLabel | null
+  note?: string
+}
+
+const checksKey = (slug: string) => ['kemudi-ai', slug, 'cr-checks']
+
+export function useTicketChecks(slug: string, kind: TicketKind, ref: number) {
+  return useQuery({
+    queryKey: [...checksKey(slug), kind, ref],
+    queryFn: async () =>
+      (
+        await api.get<TicketChecks>(
+          `/projects/${slug}/cr-checks/${kind}/${ref}`,
+          base
+        )
+      ).data,
+    retry: false,
+  })
+}
+
+export function useProjectChecks(slug: string) {
+  return useQuery({
+    queryKey: checksKey(slug),
+    queryFn: async () =>
+      (await api.get<ProjectChecks>(`/projects/${slug}/cr-checks`, base)).data,
+  })
+}
+
+export function useRunCrCheck(slug: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { kind: TicketKind; ref: number }) =>
+      (
+        await api.post<CrCheck>(`/projects/${slug}/cr-check`, input, {
+          ...base,
+          timeout: 120_000,
+        })
+      ).data,
+    onError: onFail,
+    onSettled: () => qc.invalidateQueries({ queryKey: checksKey(slug) }),
+  })
+}
+
+export function useCrVerdict(slug: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, ...body }: { id: number } & CrVerdict) =>
+      (
+        await api.post<CrCheck>(
+          `/projects/${slug}/cr-checks/${id}/verdict`,
+          body,
+          base
+        )
+      ).data,
+    onError: onFail,
+    onSettled: () => qc.invalidateQueries({ queryKey: checksKey(slug) }),
+  })
+}
+
+/** The project's checks as CSV, saved through the browser. */
+export async function downloadChecksCsv(slug: string) {
+  const r = await api.get<Blob>(`/projects/${slug}/cr-checks/export`, {
+    ...base,
+    responseType: 'blob',
+  })
+  const url = URL.createObjectURL(r.data)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${slug}-cr-checks.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }

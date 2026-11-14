@@ -84,4 +84,26 @@ describe('BacktestReport', () => {
     await screen.getByRole('button', { name: 'Mark suggestion right' }).click()
     expect(onVerdict).toHaveBeenCalledWith(11, 'right')
   })
+
+  it('shows person-days, not Rupiah, in rows when prices are off', async () => {
+    const screen = await render(
+      <BacktestReport data={data()} canReview onVerdict={() => {}} />
+    )
+    await expect.element(screen.getByText('3 d', { exact: true })).toBeVisible()
+    await expect
+      .element(screen.getByText('Out-of-scope value (indicative)'))
+      .toBeVisible()
+    await expect
+      .element(screen.getByText('Effort', { exact: true }))
+      .toBeVisible()
+  })
+
+  it('shows Rupiah in rows when prices are on', async () => {
+    const screen = await render(
+      <BacktestReport data={data()} canReview showPrices onVerdict={() => {}} />
+    )
+    await expect
+      .element(screen.getByText('Price', { exact: true }))
+      .toBeVisible()
+  })
 })
