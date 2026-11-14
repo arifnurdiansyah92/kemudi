@@ -40,6 +40,10 @@ class TreeError(FetchError):
     """A path in the fetched tree is not a plain file or folder."""
 
 
+def _size(n: int) -> str:
+    return f"{n // 2**20} MB" if n >= 2**20 and n % 2**20 == 0 else f"{n} bytes"
+
+
 def _parts(path: str) -> list[str]:
     """`path` (posix, relative; '' = the root) as parts; refuses tricks."""
     if path in ("", "."):
@@ -147,7 +151,8 @@ class Tree:
                     if len(files) >= max_files:
                         raise TreeError(f"{path or '/'}: more than {max_files} files")
                     if total + st.st_size > max_bytes:
-                        raise TreeError(f"{path or '/'}: more than {max_bytes} bytes")
+                        raise TreeError(f"{path or '/'}: more than {_size(max_bytes)} of "
+                                        "files")
                     data = self.read("/".join([*base, *sub]), max_bytes - total)
                     if data is None:
                         raise TreeError(f"{'/'.join(sub)}: changed while being read")

@@ -33,7 +33,7 @@ def test_fetched_reads_and_cleans_up(fake, agent_settings):
             t.read("big.bin", 10)
         with pytest.raises(fetched.TreeError, match="more than 1 files"):
             t.read_folder("skills/demo", 1, 1000)
-        with pytest.raises(fetched.TreeError, match="more than 5 bytes"):
+        with pytest.raises(fetched.TreeError, match="more than 5 bytes of files"):
             t.read_folder("skills/demo", 10, 5)
         for bad in ("../x", "/etc/passwd", "a\\b", "skills/../../x"):
             with pytest.raises(fetched.TreeError):

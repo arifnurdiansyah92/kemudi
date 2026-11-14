@@ -553,3 +553,23 @@ def test_store_migrates_version_origin(tmp_path):
         v = db.query(AwakSkillVersion).one()
         assert v.origin is None
         assert db.query(AwakSkillMarketplace).count() == 0
+
+
+def test_license_pointing_at_a_file_and_oversized_skills(fake, agent_settings, monkeypatch):
+    lic = "license: Complete terms in LICENSE.txt\n"
+    fake.publish("x/a", SHA2, {
+        "skills/a/SKILL.md": skill_md(name="a", extra=lic),
+        "skills/a/LICENSE.txt": APACHE,
+        "skills/b/SKILL.md": skill_md(name="b", extra=lic),
+        "skills/b/LICENSE.txt": "Proprietary. All rights reserved.\n",
+        "skills/big/SKILL.md": skill_md(name="big", description="A big one.",
+                                        extra="license: MIT\n"),
+        "skills/big/assets/blob.bin": b"x" * 5000,
+    })
+    monkeypatch.setattr(skills, "MAX_TOTAL_BYTES", 1000)
+    listing, _ = listing_of(fake, agent_settings, SHA2, repo="a")
+    a, b, big = listing["plugins"][0]["skills"]
+    assert a["license"] == "Apache-2.0"
+    assert b["license"] == "Complete terms in LICENSE.txt"  # nothing better known
+    assert big["valid"] is False and "of files" in big["problems"][0]
+    assert big["description"] == "A big one." and big["license"] == "MIT"

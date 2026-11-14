@@ -150,10 +150,19 @@ def license_files(tree: Tree, *dirs: str) -> dict[str, bytes]:
 
 
 def detect_license(declared: str, files: dict[str, bytes]) -> str:
-    """The frontmatter `license` if any, else a guess from LICENSE / COPYING
-    text, else '' (unspecified)."""
+    """The frontmatter `license` if any (a known licence when it only points
+    at a LICENSE file, e.g. "Complete terms in LICENSE.txt"), else a guess
+    from LICENSE / COPYING text, else '' (unspecified)."""
     if declared:
+        if re.search(r"\b(LICEN[SC]E|COPYING)\b", declared):
+            guess = _guess_license(files)
+            if guess and not guess.startswith("see "):
+                return guess
         return declared[:100]
+    return _guess_license(files)
+
+
+def _guess_license(files: dict[str, bytes]) -> str:
     for name in ("LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING"):
         text = files.get(name, b"")[:4000].decode("utf-8", errors="ignore")
         if not text:
@@ -206,6 +215,15 @@ def _describe_skill(tree: Tree, skill_path: str, plugin_root: str, plugin_versio
         files = skill_files(tree, skill_path, plugin_root)
     except (TreeError, FetchError) as e:
         out["problems"] = [str(e)]
+        # still say what it is, from SKILL.md alone
+        try:
+            raw = tree.read(_join(skill_path, skills.SKILL_FILE), skills.MAX_TOTAL_BYTES)
+            meta, _, _ = skills.split_frontmatter((raw or b"").decode("utf-8"))
+        except (TreeError, skills.SkillError, UnicodeDecodeError):
+            return out
+        out["description"] = _text(meta.get("description"))
+        if isinstance(meta.get("license"), str):
+            out["license"] = meta["license"].strip()[:100]
         return out
     slug = skill_slug(skill_path, files, fallback)
     out["name"] = slug
