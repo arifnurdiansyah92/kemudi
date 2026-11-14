@@ -83,9 +83,11 @@ def test_gates_mode_clean_check_runs_after_gates(tmp_path, repo):
     w, taiga, sessions, runner = _worker(tmp_path, repo, "gates", agent=FakeAgent(code=code))
     taiga.add(1, 12, "Badge jumlah", DESC)
     w.tick()
-    fail = next(t for t in taiga.texts(1) if "tidak sama dengan commit" in t)
-    assert "local.env" in fail
-    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 2
+    # Only an ignored file is left: a human decides (runbook `generated`), the
+    # agent is not told to commit it (it would commit build artefacts).
+    stop = next(t for t in taiga.texts(1) if "Berhenti" in t)
+    assert "local.env" in stop and "generated" in stop
+    assert taiga.status_of(1) != "done" and job_of(sessions).state == "stopped"
     assert runner.calls[:4] == ["install", "commit", "gates", "clean_check"]
 
 

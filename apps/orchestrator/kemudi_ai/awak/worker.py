@@ -789,6 +789,15 @@ class Worker:
                                     generated)]
         if res.get("truncated"):
             out.append("(more paths not listed)")
+        if out and all(u.startswith("!! ") for u in out):
+            # Only ignored files, HEAD is the commit: almost always something the
+            # install or a check generates. Telling the agent to "commit
+            # everything" made it commit build artefacts, so a human decides.
+            paths = ", ".join(f"`{u[3:]}`" for u in out[:10])
+            raise Stop(f"setelah install dan pemeriksaan, workspace berisi berkas yang di-ignore "
+                       f"git dan tidak dikenal sebagai hasil build: {paths}. Jika itu dibuat oleh "
+                       f"install atau build, tambahkan ke `generated` app di runbook (Pengaturan "
+                       f"proyek → Agen), lalu kembalikan story ke In progress.")
         return out[:20]
 
     def _runner(self, op: str, **payload) -> dict:

@@ -445,7 +445,9 @@ def test_runbook_generated_globs_are_validated():
         assert any("generated" in p for p in problems), bad
 
 
-def test_ignored_file_during_qa_fails_the_attempt(tmp_path, repo):
+def test_ignored_file_during_qa_stops_for_a_human(tmp_path, repo):
+    """A QA pass with an unknown ignored file in the workspace is not used,
+    and a human decides (runbook `generated`) instead of the agent."""
     def code(d, n):
         if n == 1:
             commit_file(d, ".gitignore", "local.env\n")
@@ -456,9 +458,9 @@ def test_ignored_file_during_qa_fails_the_attempt(tmp_path, repo):
     w, taiga, sessions = make_worker(tmp_path, repo, FakeAgent(code=code), runner)
     taiga.add(1, 12, "Badge jumlah", DESC)
     w.tick()
-    fail = next(t for t in taiga.texts(1) if "tidak sama dengan commit" in t)
-    assert "local.env" in fail and "feature1.txt" not in fail
-    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 2
+    stop = next(t for t in taiga.texts(1) if "Berhenti" in t)
+    assert "local.env" in stop and "feature1.txt" not in stop
+    assert taiga.status_of(1) != "done" and job_of(sessions).state == "stopped"
 
 
 def test_head_moved_after_gates_fails_the_attempt(tmp_path, repo):
