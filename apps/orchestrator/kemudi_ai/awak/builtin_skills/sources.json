@@ -1,0 +1,14 @@
+{
+  "impeccable": {
+    "title": "Impeccable",
+    "license": "Apache-2.0",
+    "repo": "https://github.com/pbakaus/impeccable",
+    "commit": "1995764b4936f2bfbf4eb719cb37b384a45ceacb",
+    "plugin": "impeccable",
+    "plugin_version": "4.9.1",
+    "path": "plugin/skills/impeccable",
+    "extra_files": {"LICENSE": "LICENSE", "NOTICE.md": "NOTICE.md"},
+    "excluded": ["scripts/"],
+    "note": "scripts/ left out: its launcher downloads a binary on first run (Awak has no internet) and its data pushes the folder past the 2 MB limit; SKILL.md's 'Launcher unavailable' path applies."
+  }
+}

@@ -17,12 +17,21 @@ from fastapi import (
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session, sessionmaker
 
-from .auth import TaigaUser
+from .auth import TaigaUser, current_user
 from .awak import agent_api, llm_proxy
 from .backtest import metrics, run_backtest
 from .baseline import BaselineItem, draft_baseline
 from .config import Settings, get_settings
-from .deps import _sessions, actor, admin, get_db, get_llm, get_sessions, member
+from .deps import (
+    _sessions,
+    actor,
+    admin,
+    get_db,
+    get_llm,
+    get_sessions,
+    is_kemudi_admin,
+    member,
+)
 from .documents import extract_sections
 from .llm import LLM, LLMError
 from .pricing import RateCard
@@ -44,10 +53,11 @@ async def _lifespan(_app: FastAPI):
     # opens the real database file.
     override = _app.dependency_overrides.get(get_sessions)
     sessions = override() if override else _sessions(settings.ai_db_url)
-    from .awak import config_store
+    from .awak import config_store, skills
 
     with sessions() as db:
         config_store.seed_from_env(db, settings)
+        skills.seed_builtin(db)
         enabled = config_store.enabled_slugs(db)
     if settings.awak_project_slugs() or enabled:
         agent_api.start_worker_once(settings, sessions)
@@ -109,6 +119,13 @@ def _run(run: BacktestRun) -> dict:
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+@app.get("/me")
+def me(user: TaigaUser = Depends(current_user), settings: Settings = Depends(get_settings)):
+    """Who is calling, and whether they are a Kemudi instance admin
+    (KEMUDI_ADMIN_USERNAMES: the skill library)."""
+    return {"username": user.username, "kemudi_admin": is_kemudi_admin(user, settings)}
 
 
 @app.get("/projects/{slug}/contract")

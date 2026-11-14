@@ -49,5 +49,17 @@ def admin(slug: str, user: TaigaUser = Depends(current_user), settings: Settings
     return user
 
 
+def is_kemudi_admin(user: TaigaUser, settings: Settings) -> bool:
+    """A Kemudi instance admin (KEMUDI_ADMIN_USERNAMES): manages the skill library."""
+    return user.username in settings.admin_username_set()
+
+
+def kemudi_admin(user: TaigaUser = Depends(current_user),
+                 settings: Settings = Depends(get_settings)) -> TaigaUser:
+    if not is_kemudi_admin(user, settings):
+        raise HTTPException(403, "Kemudi admins only")
+    return user
+
+
 def actor(user: TaigaUser) -> str:
     return f"{user.username} ({user.id})"
