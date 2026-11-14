@@ -164,15 +164,55 @@ export type RoleIn = {
   denied_paths: string[]
   prompt_overlay: string
   enabled: boolean
+  /** Skill slugs, in order. Omitted on create: the template's defaults. */
+  skills?: string[]
 }
 
 export type Role = RoleIn & {
   id: number
   version: number
+  skills: string[]
+  /** The assigned skills for display, in order. */
+  skill_details: RoleSkill[]
+  /** What "Reset to defaults" gives this role's template now. */
+  skill_defaults: string[]
   prompt_version: string
   updated_by: string | null
   updated_at: string | null
 } & LlmEffective
+
+/* ---------- skills ---------- */
+
+/** builtin: vendored with Kemudi; local: uploaded or written in Kemudi;
+ * marketplace: installed from a marketplace repo. */
+export type SkillSource = 'builtin' | 'local' | 'marketplace'
+/** The current version's worst scan finding; '' is clean. */
+export type ScanLevel = '' | 'low' | 'medium' | 'high'
+
+type SkillSummary = {
+  slug: string
+  title: string
+  source: SkillSource
+  license: string
+  enabled: boolean
+  version: number | null
+  scan_level: ScanLevel
+}
+
+/** An enabled skill a role can get (the picker's list). */
+export type SkillOption = SkillSummary & { description: string }
+
+/** ok, or why runs skip it: disabled, missing (deleted) or no_version. */
+export type RoleSkillStatus = 'ok' | 'disabled' | 'missing' | 'no_version'
+export type RoleSkill = Omit<SkillSummary, 'source'> & {
+  source: SkillSource | ''
+  status: RoleSkillStatus
+}
+
+export type SkillCatalog = {
+  skills: SkillOption[]
+  template_defaults: Partial<Record<RoleTemplate, string[]>>
+}
 
 /* ---------- model connection (BYOK) ---------- */
 
@@ -991,6 +1031,7 @@ export function roleBody(r: Role): RoleIn {
     denied_paths: r.denied_paths,
     prompt_overlay: r.prompt_overlay,
     enabled: r.enabled,
+    skills: r.skills,
   }
 }
 
@@ -1005,6 +1046,15 @@ export function useRolePrompt(slug: string, roleId: number | null) {
           base
         )
       ).data,
+  })
+}
+
+/** Enabled skills, for the role editor's picker (any signed-in user). */
+export function useSkillCatalog() {
+  return useQuery({
+    queryKey: ['kemudi-ai', 'skills'],
+    queryFn: async () => (await api.get<SkillCatalog>('/skills', base)).data,
+    staleTime: 60_000,
   })
 }
 

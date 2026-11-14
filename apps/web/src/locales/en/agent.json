@@ -510,6 +510,9 @@
     "promptVersion": "Prompt version {{version}}",
     "repoCount_one": "{{count}} repo",
     "repoCount_other": "{{count}} repos",
+    "skillCount_one": "{{count}} skill",
+    "skillCount_other": "{{count}} skills",
+    "skillsWarning": "A skill is unavailable; Awak skips it",
     "templates": {
       "frontend": "Frontend",
       "backend": "Backend",
@@ -547,6 +550,41 @@
       "count": "{{used}} / {{max}} characters",
       "tooLong": "{{over}} characters over the limit",
       "loadingPrompt": "Loading the prompt…"
+    },
+    "skills": {
+      "title": "Skills",
+      "description": "Reference material Awak can open while it works, such as a design guide. Skills never override the Kemudi rules or your instructions.",
+      "none": "No skills. Awak works from the role prompt only.",
+      "noneInstalled": "No skills are installed yet. Ask your Kemudi admin to install skills.",
+      "add": "Add skill",
+      "search": "Search skills",
+      "noMatch": "No skills match “{{query}}”.",
+      "allAssigned": "Every enabled skill is already assigned.",
+      "loading": "Loading skills…",
+      "loadError": "Skills couldn't be loaded. Try again later.",
+      "remove": "Remove {{title}}",
+      "reset": "Reset to defaults",
+      "defaultsFor": "{{template}} defaults: {{skills}}",
+      "noDefaults": "The {{template}} template has no default skills.",
+      "limit": "At most {{max}} skills per role.",
+      "license": "Licence {{license}}",
+      "noLicense": "No licence stated",
+      "source": {
+        "builtin": "Built in",
+        "local": "Local",
+        "marketplace": "Marketplace"
+      },
+      "scan": {
+        "clean": "Scan clean",
+        "low": "Scan: low",
+        "medium": "Scan: medium",
+        "high": "Scan: high"
+      },
+      "status": {
+        "disabled": "Disabled by a Kemudi admin. Awak skips it until it is enabled again.",
+        "missing": "No longer installed. Awak skips it.",
+        "no_version": "Has no active version. Awak skips it."
+      }
     }
   },
   "jobs": {

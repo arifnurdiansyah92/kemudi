@@ -55,7 +55,7 @@ from sqlalchemy.orm import Session
 
 from ..config import Settings
 from ..store import SETUP_ACTIVE, AwakEnvVar, AwakSetupRun
-from . import checks, config_store, detect, runbook, secrets, vault
+from . import checks, config_store, detect, runbook, secrets, skills, vault
 from .agent import AgentError
 from .gitops import GitError
 from .prompts import RoleScope, render
@@ -498,9 +498,15 @@ class SetupRunner:
                           p.get("draft") or {}, sorted(have), p.get("feedback") or "",
                           p.get("previous"), self._programs())
         system = render("setup", "", RoleScope(repos=[r.name for r in cfg.repos]))
+        # No skills for setup: the empty set's profile (never Hermes' bundled ones).
+        with self.w.sessions() as db:
+            try:
+                kit = skills.prepare_set(self.s, db, [])
+            except (OSError, ValueError) as e:
+                raise SetupInfra(f"skill set could not be prepared: {e}") from e
         try:
             report, cost = self.w.agent.run(PURPOSE, self.s.awak_model, system, task,
-                                            slug=slug)
+                                            slug=slug, profile=kit.profile)
         except AgentError as e:
             # a turn that broke off was paid for all the same
             self._add_cost(run.id, getattr(e, "cost_idr", 0.0))

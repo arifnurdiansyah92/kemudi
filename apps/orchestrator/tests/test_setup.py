@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from kemudi_ai.awak import runbook, setup, vault
+from kemudi_ai.awak import runbook, setup, skills, vault
 from kemudi_ai.awak.runner import RunnerError
 from kemudi_ai.store import AwakProject, AwakRepo, AwakSetupRun, Decision
 
@@ -29,10 +29,11 @@ class SetupAgent:
         self.tasks: list[str] = []
         self.runs: list[dict] = []
 
-    def run(self, purpose, model, system, task, slug="", role_id=None):
+    def run(self, purpose, model, system, task, slug="", role_id=None, *, profile):
         assert purpose == "awak.setup"
         self.tasks.append(task)
-        self.runs.append({"model": model, "system": system, "slug": slug, "role_id": role_id})
+        self.runs.append({"model": model, "system": system, "slug": slug, "role_id": role_id,
+                          "profile": profile})
         root = Path(task.splitlines()[0].removeprefix("Workspace: ").strip())
         reply = self.replies.pop(0) if len(self.replies) > 1 else self.replies[0]
         if reply is not None:
@@ -155,6 +156,8 @@ def test_happy_path_reads_proposes_proves_and_is_ready(tmp_path, repo, project_h
     assert "docker-compose.yml" in task and "JWT_SECRET_KEY" in task
     assert not any(v in task for v in values.values())
     assert "devops engineer" in agent.runs[0]["system"] and agent.runs[0]["slug"] == "kemudi"
+    # no skills for setup: the empty set's profile, never Hermes' default one
+    assert agent.runs[0]["profile"] == skills.profile_name(skills.EMPTY_SETID)
     # the proof: install, checks, compose up (init first), health, the screenshot
     by = steps(run)
     for name in ("install web", "checks web", "start api", "init python scripts/init_qa.py",
@@ -727,13 +730,13 @@ def test_a_plain_vault_value_is_neither_refused_nor_redacted(tmp_path, repo, pro
 
 def test_a_runbook_json_folder_goes_back_to_the_agent(tmp_path, repo, project_host):
     class FolderAgent(SetupAgent):
-        def run(self, purpose, model, system, task, slug="", role_id=None):
+        def run(self, purpose, model, system, task, slug="", role_id=None, *, profile):
             if not self.tasks:
                 self.tasks.append(task)
                 root = Path(task.splitlines()[0].removeprefix("Workspace: ").strip())
                 (root / "runbook.json" / "x").mkdir(parents=True)
                 return "made a folder", 1.0
-            return super().run(purpose, model, system, task, slug, role_id)
+            return super().run(purpose, model, system, task, slug, role_id, profile=profile)
 
     w, sessions, _, _, _, run_id, _ = make(tmp_path, repo)
     agent = w.agent = FolderAgent([RB])

@@ -197,8 +197,9 @@ def _naive_now() -> datetime:
 
 
 def register_alias(db: Session, settings: Settings, slug: str, role_id: int | None,
-                   fallback_model: str, purpose: str) -> str:
-    """A fresh `awak-run-<hex>` model name for one run. Expired rows go."""
+                   fallback_model: str, purpose: str, profile: str = "") -> str:
+    """A fresh `awak-run-<hex>` model name for one run. Expired rows go.
+    `profile`: the run's Hermes profile (the skill-set sweep keeps it)."""
     now = _naive_now()
     # One job at a time (worker lease): any alias still here belongs to a run
     # that crashed or was cut off, and would make the active-run fallback in
@@ -207,7 +208,7 @@ def register_alias(db: Session, settings: Settings, slug: str, role_id: int | No
     alias = ALIAS_PREFIX + pysecrets.token_hex(16)
     ttl = settings.awak_timeout_s + 600
     db.add(AwakLlmAlias(alias=alias, project_slug=slug, role_id=role_id,
-                        fallback_model=fallback_model, purpose=purpose,
+                        fallback_model=fallback_model, purpose=purpose, profile=profile,
                         expires_at=now + timedelta(seconds=ttl)))
     db.commit()
     return alias
