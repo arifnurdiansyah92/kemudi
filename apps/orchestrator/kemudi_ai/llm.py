@@ -93,6 +93,7 @@ class HermesLLM:
                     completion_tokens=ct,
                     latency_ms=int((time.monotonic() - t0) * 1000),
                     cost_idr=(pt + ct) / 1000 * self.settings.token_price_idr_per_1k,
+                    log_prompts=self.settings.ai_log_prompts,
                     ok=ok,
                 )
 

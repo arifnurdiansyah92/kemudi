@@ -1,5 +1,7 @@
 """HTTP API for apps/web, served at /api/kemudi behind the gateway."""
 
+import asyncio
+import contextlib
 import json
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -18,10 +20,11 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .auth import TaigaUser, current_user
+from . import audit, retention
 from .awak import agent_api, llm_proxy, marketplace_api, skills_api
 from .backtest import metrics, run_backtest
 from .baseline import BaselineItem, draft_baseline
-from .config import Settings, get_settings
+from .config import Settings, check_production, get_settings
 from .deps import (
     _sessions,
     actor,
@@ -40,6 +43,7 @@ from .store import (
     BacktestRun,
     BaselineVersion,
     Contract,
+    ai_project,
     record_decision,
 )
 
@@ -49,6 +53,8 @@ __all__ = ["app", "_sessions", "get_sessions", "get_llm", "get_db", "member", "a
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     settings = get_settings()
+    # KEMUDI_ENV=production: no start with an empty or placeholder secret.
+    check_production(settings)
     # Respect a test override of the session factory, so a TestClient never
     # opens the real database file.
     override = _app.dependency_overrides.get(get_sessions)
@@ -62,7 +68,15 @@ async def _lifespan(_app: FastAPI):
         enabled = config_store.enabled_slugs(db)
     if settings.awak_project_slugs() or enabled:
         agent_api.start_worker_once(settings, sessions)
-    yield
+    # ai_calls retention: at start (before serving), then daily.
+    retention.purge_safely(sessions, settings)
+    purge = asyncio.create_task(retention.purge_loop(sessions, settings))
+    try:
+        yield
+    finally:
+        purge.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await purge
 
 
 # The gateway and the Vite proxy strip the /api/kemudi prefix.
@@ -73,6 +87,8 @@ app.include_router(skills_api.router)
 app.include_router(marketplace_api.router)
 # Internal only (kemudi-sandbox): the gateway does not route /llm/.
 app.include_router(llm_proxy.router)
+app.include_router(audit.router)
+app.include_router(retention.router)
 
 
 def _contract(db: Session, slug: str) -> Contract:
@@ -217,7 +233,8 @@ def generate_draft(
 
     c = _contract(db, slug)
     try:
-        items = draft_baseline(llm, [Section.model_validate(s) for s in c.sections], c.lang)
+        with ai_project(slug):
+            items = draft_baseline(llm, [Section.model_validate(s) for s in c.sections], c.lang)
     except LLMError as e:
         raise HTTPException(502, f"AI call failed: {e}") from e
     if not items:
