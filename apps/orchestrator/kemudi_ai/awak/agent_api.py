@@ -22,11 +22,11 @@ from ..config import Settings, get_settings
 from ..deps import access, actor, admin, get_db, get_llm, get_sessions, member
 from ..llm import LLM
 from ..store import AwakJob, AwakKey, AwakProject, AwakRepo, AwakRole, record_decision
-from . import config_store, crypto, gitops, llm_conn, prompts, secrets, ssh
+from . import config_store, crypto, detect, gitops, llm_conn, prompts, runbook, secrets, ssh
 from .bot_access import BotAccess, BotAccessError
 from .crypto import SecretKeyMissing
 from .detect import FIELDS as COMMAND_FIELDS
-from .detect import detect_commands
+from .detect import detect_apps, detect_commands
 from .ssh import CommandRunner
 
 log = logging.getLogger(__name__)
@@ -69,6 +69,8 @@ def get_worker_starter(
 class AgentSettings(BaseModel):
     enabled: bool
     merge_mode: Literal["manual", "approve", "auto"]
+    # Omitted: keep the stored mode (clients from before QA modes).
+    qa_mode: Literal["off", "gates", "browser"] | None = None
     deploy_command: str = Field("", max_length=2000)
     executor: Literal["local", "ssh"]
     ssh_host: str = Field("", max_length=255, pattern=r"^[A-Za-z0-9.\-:\[\]]*$")
@@ -156,6 +158,18 @@ def put_agent_settings(
         p = AwakProject(slug=slug, **config_store.DEFAULTS)
         db.add(p)
     new = body.model_dump()
+    if new["qa_mode"] is None:
+        new["qa_mode"] = p.qa_mode or config_store.DEFAULTS["qa_mode"]
+    # Checked when the modes change or Awak is turned on: a runbook edited
+    # since must not stop an admin from turning Awak off or saving the rest.
+    # (The worker lowers a browser mode it cannot run to gates.)
+    modes_changed = (new["qa_mode"] != p.qa_mode or new["merge_mode"] != p.merge_mode)
+    turning_on = new["enabled"] and not p.enabled
+    why = (_qa_mode_blocker(db, settings, slug, new["merge_mode"], new["qa_mode"])
+           if modes_changed or turning_on else None)
+    if why:
+        db.rollback()
+        raise HTTPException(422, why)
     changed = {k: new[k] for k in config_store.SETTING_FIELDS if getattr(p, k) != new[k]}
     if (p.ssh_host and ({"ssh_host", "ssh_port"} & set(changed))
             and p.ssh_host not in _hosts_in_use(db, slug, machine=False)):
@@ -187,6 +201,59 @@ def put_agent_settings(
     if grant_error and not status["ok"]:
         status = {**status, "error": grant_error}
     return _settings_out(db, slug, True, status)
+
+
+def _qa_mode_blocker(db: Session, settings: Settings, slug: str, merge_mode: str,
+                     qa_mode: str) -> str | None:
+    """Why this merge/QA mode pair cannot be saved."""
+    if merge_mode == "auto" and qa_mode != "browser":
+        # Auto-merging code that nothing exercised is the one case refused.
+        return "auto merge needs QA mode browser"
+    if qa_mode != "browser":
+        return None
+    rb = runbook.load(db, slug)
+    if rb is not None and rb.browser_qa_ready():
+        return None
+    if rb is not None and rb.qa_service() is not None:
+        return ("QA mode browser: the runbook's qa service (or a service it needs) is a "
+                "compose service, which "
+                "runs from stage 1b; use a process service or gates for now")
+    if db.query(AwakRepo).filter_by(project_slug=slug, url=settings.host_git).count():
+        return None  # Kemudi's own repo: iteration 1's vite path
+    # Browser QA starts the app from a runbook's QA section; without a runbook
+    # only Kemudi's own repo has a known way to run.
+    return ("QA mode browser needs a runbook with a qa section (or Kemudi's own repo); "
+            "use gates until the project has one")
+
+
+# --- runbook -------------------------------------------------------------------
+
+
+class RunbookIn(BaseModel):
+    runbook: dict
+
+
+@router.get("/runbook")
+def get_runbook(slug: str, acc: ProjectAccess = Depends(access), db: Session = Depends(get_db)):
+    """Env values may hold tokens or internal URLs: admins only; members see
+    the names."""
+    out = runbook.state(db, slug)
+    if not acc.is_admin:
+        out["runbook"] = runbook.masked(out["runbook"])
+    return out
+
+
+@router.put("/runbook")
+def put_runbook(slug: str, body: RunbookIn, user: TaigaUser = Depends(admin),
+                db: Session = Depends(get_db)):
+    """Saving is the approval: version +1, approved by the saver."""
+    names = {r.name for r in db.query(AwakRepo).filter_by(project_slug=slug)}
+    rb, problems = runbook.validate(body.runbook, names)
+    if rb is None:
+        raise HTTPException(422, problems)
+    row = runbook.save(db, slug, rb, actor(user))
+    record_decision(db, actor(user), "awak_runbook", slug, {"version": row.version})
+    return runbook.state(db, slug)
 
 
 def _hosts_in_use(db: Session, slug: str, skip_repo: int | None = None,
@@ -225,8 +292,7 @@ def get_agent_jobs(slug: str, _: TaigaUser = Depends(member), db: Session = Depe
 # --- repos -------------------------------------------------------------------
 
 # Mirrors infra/runner/runner.py ALLOWED_PROGRAMS (the runner enforces it).
-ALLOWED_PROGRAMS = {"pnpm", "npm", "npx", "yarn", "node", "python", "uv", "pytest", "make",
-                    "go", "cargo"}
+ALLOWED_PROGRAMS = runbook.ALLOWED_PROGRAMS
 ACCESS_CHECK_REF = "refs/heads/awak/kemudi-access-check"
 
 
@@ -239,7 +305,8 @@ def _no_secret_key(e: SecretKeyMissing) -> HTTPException:
 
 
 class RepoIn(BaseModel):
-    name: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,99}$")
+    # The checkout folder name in the workspace (the runner validates the same shape).
+    name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
     role: Literal["web", "api", "mobile", "other"]
     url: str = Field(max_length=500)
     default_branch: str = Field("main", pattern=r"^[A-Za-z0-9._/-]{1,100}$")
@@ -324,6 +391,15 @@ def _get_repo(db: Session, slug: str, repo_id: int) -> AwakRepo:
     return r
 
 
+def _refuse_if_in_runbook(db: Session, slug: str, name: str, what: str) -> None:
+    """The runbook names repos: renaming or deleting one would silently change
+    which gates and QA services run."""
+    refs = runbook.repo_refs(runbook.load(db, slug), name)
+    if refs:
+        raise HTTPException(422, f"repo {name!r} cannot be {what}: the runbook uses it in "
+                                 f"{', '.join(refs)}. Edit the runbook first.")
+
+
 def _name_taken(db: Session, slug: str, name: str, repo_id: int | None = None) -> bool:
     q = db.query(AwakRepo).filter_by(project_slug=slug, name=name)
     return any(r.id != repo_id for r in q)
@@ -360,6 +436,8 @@ def update_repo(slug: str, repo_id: int, body: RepoIn, user: TaigaUser = Depends
     _allowed_local(settings, body.url)
     if _name_taken(db, slug, body.name, repo_id):
         raise HTTPException(409, f"a repo named {body.name!r} already exists")
+    if body.name != r.name:
+        _refuse_if_in_runbook(db, slug, r.name, "renamed")
     old_host = ssh.url_host(r.url)
     new = body.model_dump()
     changed = sorted(k for k, v in new.items() if getattr(r, k) != v)
@@ -385,6 +463,7 @@ def delete_repo(slug: str, repo_id: int, user: TaigaUser = Depends(admin),
     r = _get_repo(db, slug, repo_id)
     if db.query(AwakJob).filter_by(repo_id=r.id, state="running").count():
         raise HTTPException(409, "a running job uses this repo; stop it first")
+    _refuse_if_in_runbook(db, slug, r.name, "deleted")
     key = config_store.key_row(db, r.key_id)
     name = r.name
     db.delete(r)
@@ -452,7 +531,7 @@ def check_repo(settings: Settings, slug: str, r: AwakRepo, key: AwakKey | None,
                run: CommandRunner) -> dict:
     """Can Kemudi clone and push? Nothing is created on the remote."""
     res = {"ok": False, "clone": False, "push": False, "default_branch_found": False,
-           "host_key": None, "detected": {}, "error": None}
+           "host_key": None, "detected": {}, "apps": [], "compose_files": [], "error": None}
     local = ssh.is_local_url(r.url)
     bare = bare_path(settings, r)
     branch = r.default_branch
@@ -490,16 +569,21 @@ def check_repo(settings: Settings, slug: str, r: AwakRepo, key: AwakKey | None,
         res["host_key"] = ssh.host_key_fingerprint(ssh.known_hosts_path(settings, slug),
                                                    ssh.url_host(r.url))
     if fetched:
-        prefix = f"{r.subdir}/" if r.subdir else ""
-
         def tree(path: str) -> str | None:
             try:
-                return gitops._git("show", f"refs/heads/{branch}:{prefix}{path}", git_dir=bare,
+                return gitops._git("show", f"refs/heads/{branch}:{path}", git_dir=bare,
                                    timeout=30)
             except gitops.GitError:
                 return None
 
-        res["detected"] = detect_commands(tree)
+        found = detect_apps(tree, lambda path: gitops.list_dirs(bare, branch, path))
+        res["apps"], res["compose_files"] = found["apps"], found["compose_files"]
+        if r.subdir:
+            # The admin chose the app's folder: detect there only.
+            res["detected"] = detect_commands(lambda p: tree(f"{r.subdir}/{p}"))
+        else:
+            # The root app, else the first subfolder app (with its `subdir`).
+            res["detected"] = detect.suggestion(found)
     res["ok"] = res["clone"] and res["push"] and res["default_branch_found"]
     return res
 
@@ -517,7 +601,12 @@ def check_repo_access(slug: str, repo_id: int, user: TaigaUser = Depends(admin),
         res = check_repo(settings, slug, r, key, run)
     except SecretKeyMissing as e:
         raise _no_secret_key(e) from e
-    filled = [f for f in COMMAND_FIELDS if not getattr(r, f) and res["detected"].get(f)]
+    detected = res["detected"]
+    if detected.get("subdir") and any(getattr(r, f) for f in COMMAND_FIELDS):
+        # Commands from another folder would mix with the ones typed for the root.
+        filled = []
+    else:
+        filled = [f for f in (*COMMAND_FIELDS, "subdir") if not getattr(r, f) and detected.get(f)]
     for f in filled:
         setattr(r, f, res["detected"][f])
     r.last_check = {**res, "checked_at": config_store.now().isoformat()}

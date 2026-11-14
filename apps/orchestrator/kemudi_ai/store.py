@@ -32,6 +32,7 @@ __all__ = [
     "AwakProject",
     "AwakRepo",
     "AwakRole",
+    "AwakRunbook",
     "AwakWorkerLease",
     "AwakLlmAlias",
     "record_event",
@@ -182,6 +183,11 @@ class AwakProject(Base):
     slug: Mapped[str] = mapped_column(String(200), primary_key=True)
     enabled: Mapped[bool] = mapped_column(default=False)
     merge_mode: Mapped[str] = mapped_column(String(10), default="approve")
+    # off | gates | browser: what runs after the commit is collected. Added to
+    # an old table without a default: NULL marks a row the one-time fix-up
+    # (`_set_qa_modes`) has not reached yet.
+    qa_mode: Mapped[str] = mapped_column(String(10), default="gates",
+                                         info={"migrate_default": False})
     deploy_command: Mapped[str] = mapped_column(Text, default="")
     executor: Mapped[str] = mapped_column(String(10), default="local")
     ssh_host: Mapped[str] = mapped_column(String(255), default="")
@@ -248,6 +254,19 @@ class AwakRole(Base):
     updated_at: Mapped[datetime] = mapped_column(default=now)
 
 
+class AwakRunbook(Base):
+    """A project's runbook (kemudi_ai/awak/runbook.py), as an admin approved it."""
+
+    __tablename__ = "awak_runbooks"
+    project_slug: Mapped[str] = mapped_column(String(200), primary_key=True)
+    spec: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    version: Mapped[int] = mapped_column(default=0)
+    approved_by: Mapped[str] = mapped_column(String(200), default="")
+    approved_at: Mapped[datetime | None] = mapped_column(default=None)
+    updated_by: Mapped[str] = mapped_column(String(200), default="")
+    updated_at: Mapped[datetime] = mapped_column(default=now)
+
+
 class AwakLlmAlias(Base):
     """A per-run model name Awak sends to the orchestrator's model proxy. It
     maps to a project/role, not to a key; rows are deleted when the run ends.
@@ -261,6 +280,11 @@ class AwakLlmAlias(Base):
     fallback_model: Mapped[str] = mapped_column(String(100), default="")
     purpose: Mapped[str] = mapped_column(String(50), default="")
     expires_at: Mapped[datetime] = mapped_column()
+    # What the proxy saw upstream during the run: a run whose every model call
+    # failed is the provider's fault, not the story's (an infra error).
+    upstream_ok: Mapped[int] = mapped_column(default=0)
+    upstream_errors: Mapped[int] = mapped_column(default=0)
+    upstream_error: Mapped[str] = mapped_column(Text, default="")
 
 
 class AwakWorkerLease(Base):
@@ -306,14 +330,43 @@ def make_session(db_url: str) -> sessionmaker[Session]:
     return sessionmaker(engine, expire_on_commit=False)
 
 
-def init_db(engine) -> None:
+def init_db(engine, host_git: str | None = None) -> None:
+    """`host_git`: the local Kemudi repo (settings.host_git), for one-time
+    data fix-ups; read from the settings when not given."""
     Base.metadata.create_all(engine)
     _migrate(engine)
+    _set_qa_modes(engine, host_git)
+
+
+def _set_qa_modes(engine, host_git: str | None) -> None:
+    """For projects from before `awak_projects.qa_mode` (NULL there): those
+    with the Kemudi repo keep browser QA (iteration 1-2 behaviour); the others
+    get `gates`, and `auto` merge, which needs browser QA, becomes `approve`.
+    Driven by the NULLs, in one transaction, so a crash in between is
+    finished on the next start and a fixed-up row is never touched again."""
+    with Session(engine) as db:
+        rows = db.query(AwakProject).filter(AwakProject.qa_mode.is_(None)).all()
+        if not rows:
+            return
+        if host_git is None:
+            from .config import get_settings
+
+            host_git = get_settings().host_git
+        kemudi = {r.project_slug for r in db.query(AwakRepo).filter_by(url=host_git)}
+        for p in rows:
+            p.qa_mode = "browser" if p.slug in kemudi else "gates"
+            if p.merge_mode == "auto" and p.qa_mode != "browser":
+                p.merge_mode = "approve"
+                db.add(Decision(actor="migration", action="awak_settings", subject=p.slug,
+                                detail={"changed": {"merge_mode": "approve"},
+                                        "reason": "auto merge needs QA mode browser"}))
+        db.commit()
 
 
 # Tables that existed before a column was added to them. `create_all` never
 # alters an existing table, so missing columns are added here.
-_MIGRATED_TABLES = ("awak_jobs", "awak_projects", "awak_roles", "ai_calls")
+_MIGRATED_TABLES = ("awak_jobs", "awak_projects", "awak_roles", "ai_calls",
+                    "awak_llm_aliases")
 
 
 def _sql_literal(value: Any) -> str:
@@ -324,22 +377,28 @@ def _sql_literal(value: Any) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def _migrate(engine) -> None:
+def _migrate(engine) -> dict[str, set[str]]:
+    """Adds missing columns; returns {table: names of the columns added}."""
+    added: dict[str, set[str]] = {}
     for name in _MIGRATED_TABLES:
         table = Base.metadata.tables[name]
         existing = {c["name"] for c in inspect(engine).get_columns(name)}
         missing = [c for c in table.columns if c.name not in existing]
         if not missing:
             continue
+        added[name] = {c.name for c in missing}
         with engine.begin() as conn:
             for col in missing:
                 ddl = f"ALTER TABLE {name} ADD COLUMN {col.name} {col.type.compile(dialect=engine.dialect)}"
                 default = col.default.arg if col.default is not None else None
+                if col.info.get("migrate_default") is False:
+                    default = None  # left NULL for a data fix-up to fill in
                 if default is not None and not callable(default):
                     ddl += f" DEFAULT {_sql_literal(default)}"
                     if not col.nullable:
                         ddl += " NOT NULL"
                 conn.execute(text(ddl))
+    return added
 
 
 def record_ai_call(session: Session, **fields: Any) -> AiCall:

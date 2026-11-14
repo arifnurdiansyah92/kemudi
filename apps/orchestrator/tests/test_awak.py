@@ -118,7 +118,8 @@ def host(tmp_path):
 
 @pytest.fixture
 def repo(tmp_path, host):
-    return Repo(str(tmp_path / "bare.git"), str(host / ".git"), str(tmp_path / "ws"), uid=0)
+    return Repo(str(tmp_path / "bare.git"), str(host / ".git"), str(tmp_path / "ws"), uid=0,
+                slug="kemudi", name="kemudi")
 
 
 def test_git_roundtrip_pushes_only_awak_branches(repo, host):
@@ -161,7 +162,8 @@ def test_rework_reuses_branch(repo):
 # --- the loop -------------------------------------------------------------------
 
 def make_worker(tmp_path, repo, agent, runner, taiga=None):
-    settings = Settings(awak_projects="kemudi", ai_db_url="sqlite:///:memory:")
+    settings = Settings(awak_projects="kemudi", ai_db_url="sqlite:///:memory:",
+                        workspace_dir=str(tmp_path / "ws"))
     sessions = make_session(settings.ai_db_url)
     taiga = taiga or FakeTaiga()
     w = Worker(settings, sessions, taiga, FakeTaiga("awak-qa"), agent, runner, repo,
@@ -331,8 +333,11 @@ def test_story_without_criteria_stops(tmp_path, repo):
     w, taiga, sessions = make_worker(tmp_path, repo, FakeAgent(), runner)
     taiga.add(1, 12, "Badge jumlah", "Tanpa kriteria.")
     w.tick()
-    assert job_of(sessions).state == "stopped"
+    assert job_of(sessions).state == "failed"
     assert "kriteria" in taiga.texts(1)[-1]
+    # Blocked for a human, so the next tick does not pick it again.
+    assert taiga.story(1)["is_blocked"] and ["needs-human", None] in taiga.story(1)["tags"]
+    assert not w.tick()
 
 
 def test_infra_error_after_coding_resumes_without_recoding(tmp_path, repo):
@@ -358,7 +363,8 @@ def test_infra_error_after_coding_resumes_without_recoding(tmp_path, repo):
 # --- iteration 2: projects come from the database -------------------------------
 
 def test_worker_serves_db_enabled_projects(tmp_path, repo):
-    settings = Settings(awak_projects="", ai_db_url="sqlite:///:memory:")
+    settings = Settings(awak_projects="", ai_db_url="sqlite:///:memory:",
+                        workspace_dir=str(tmp_path / "ws"))
     sessions = make_session(settings.ai_db_url)
     with sessions() as db:
         db.add(AwakProject(slug="kemudi", enabled=True, merge_mode="manual"))
@@ -412,9 +418,39 @@ def test_build_output_allowlist():
            ("!!", "src/generated.ts"), ("??", "dist"), ("D ", "README.md")]
     assert all(build_output(s, p, "apps/web") for s, p in ok)
     assert not any(build_output(s, p, "apps/web") for s, p in bad)
+    # runbook app dirs (Next.js leaves .next/ after QA's dev server)
+    assert build_output("!!", "frontend/.next/", ["", "frontend", "backend"])
+    assert build_output("!!", "backend/.pytest_cache/", ["frontend", "backend"])
+    assert not build_output("!!", "frontend/.next/", "apps/web")
+    # Ignored files an install writes: next-env.d.ts in an app dir, runbook globs.
+    assert build_output("!!", "frontend/next-env.d.ts", ["frontend"])
+    assert not build_output("??", "frontend/next-env.d.ts", ["frontend"])
+    assert not build_output("!!", "frontend/src/next-env.d.ts", ["frontend"])
+    gen = ["frontend/src/assets/iconify-icons/generated-*.css"]
+    assert build_output("!!", "frontend/src/assets/iconify-icons/generated-icons.css",
+                        ["frontend"], gen)
+    assert not build_output("??", "frontend/src/assets/iconify-icons/generated-icons.css",
+                            ["frontend"], gen)
+    assert not build_output("!!", "frontend/src/other.css", ["frontend"], gen)
 
 
-def test_ignored_file_during_qa_fails_the_attempt(tmp_path, repo):
+def test_runbook_generated_globs_are_validated():
+    from kemudi_ai.awak.runbook import validate
+
+    def app(generated):
+        return {"apps": [{"name": "web", "repo": "r", "dir": "frontend",
+                          "generated": generated}], "services": [], "env": []}
+
+    rb, problems = validate(app(["src/assets/generated-*.css", "next-env.d.ts"]), {"r"})
+    assert rb is not None and problems == []
+    for bad in (["../x"], ["/etc/x"], ["*"], ["src/**"], ["a b"]):
+        _, problems = validate(app(bad), {"r"})
+        assert any("generated" in p for p in problems), bad
+
+
+def test_ignored_file_during_qa_stops_for_a_human(tmp_path, repo):
+    """A QA pass with an unknown ignored file in the workspace is not used,
+    and a human decides (runbook `generated`) instead of the agent."""
     def code(d, n):
         if n == 1:
             commit_file(d, ".gitignore", "local.env\n")
@@ -425,9 +461,9 @@ def test_ignored_file_during_qa_fails_the_attempt(tmp_path, repo):
     w, taiga, sessions = make_worker(tmp_path, repo, FakeAgent(code=code), runner)
     taiga.add(1, 12, "Badge jumlah", DESC)
     w.tick()
-    fail = next(t for t in taiga.texts(1) if "tidak sama dengan commit" in t)
-    assert "local.env" in fail and "feature1.txt" not in fail
-    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 2
+    stop = next(t for t in taiga.texts(1) if "Berhenti" in t)
+    assert "local.env" in stop and "feature1.txt" not in stop
+    assert taiga.status_of(1) != "done" and job_of(sessions).state == "failed"
 
 
 def test_head_moved_after_gates_fails_the_attempt(tmp_path, repo):
@@ -476,3 +512,15 @@ def test_only_one_worker_holds_the_lease(tmp_path, repo):
     w2.run_forever(stop_flag=lambda: next(loops))
     assert taiga.status_of(1) == "done"
     assert w1.claim_lease()  # w2 released the lease when its loop ended
+
+
+def test_human_feedback_is_the_latest_human_comment(tmp_path, repo):
+    w, taiga, _ = make_worker(tmp_path, repo, FakeAgent(), FakeRunner(tmp_path / "ws"))
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    # Newest first, as Taiga's history endpoint returns it.
+    taiga.comments_by_id[1] = [
+        {"user": {"username": "awak"}, "comment": "bot", "created_at": "2026-11-14T02:05:00Z"},
+        {"user": {"username": "pm"}, "comment": "new", "created_at": "2026-11-14T02:01:00Z"},
+        {"user": {"username": "pm"}, "comment": "old", "created_at": "2026-11-13T09:00:00Z"},
+    ]
+    assert w._human_feedback(1) == "new"

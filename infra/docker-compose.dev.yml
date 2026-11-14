@@ -245,6 +245,9 @@ services:
       context: ./runner
     image: kemudi/kemudi-runner:dev
     profiles: [awak]
+    # tini as PID 1 reaps the grandchildren of stopped process services
+    # (a dev server's workers), which the Python server would leave defunct.
+    init: true
     environment:
       KEMUDI_RUNNER_KEY: "${KEMUDI_RUNNER_KEY:-}"
       KEMUDI_DEV_GATEWAY: "http://kemudi-gateway"
@@ -254,7 +257,7 @@ services:
     networks: [kemudi-sandbox, kemudi-egress]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    mem_limit: 3g
+    mem_limit: 4g
     pids_limit: 1024
     restart: unless-stopped
 

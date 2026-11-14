@@ -166,7 +166,7 @@ def test_no_role_for_area_stops(tmp_path, repo):
     w, taiga, sessions = make_worker(tmp_path, repo, FakeAgent(), FakeRunner(tmp_path / "ws"))
     taiga.add(1, 12, "API baru", DESC, tags=("agent-ready", "area-backend"))
     w.tick()  # the seeded backend role is disabled
-    assert job_of(sessions).state == "stopped"
+    assert job_of(sessions).state == "failed"
     assert "tidak ada peran agen aktif untuk area backend" in taiga.texts(1)[-1]
 
 

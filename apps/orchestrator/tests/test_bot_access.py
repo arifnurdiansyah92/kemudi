@@ -216,7 +216,8 @@ class PartlyBlindTaiga(FakeTaiga):
 
 
 def test_one_broken_project_does_not_stop_the_others(tmp_path, repo):
-    settings = Settings(awak_projects="", ai_db_url="sqlite:///:memory:")
+    settings = Settings(awak_projects="", ai_db_url="sqlite:///:memory:",
+                        workspace_dir=str(tmp_path / "ws"))
     sessions = make_session(settings.ai_db_url)
     with sessions() as db:
         for slug in ("aaa-playfast", "kemudi"):
@@ -292,7 +293,7 @@ def test_two_area_story_without_fullstack_role_stops_and_suggests_it(tmp_path, r
     w, taiga, sessions = make_worker(tmp_path, repo, FakeAgent(), FakeRunner(tmp_path / "ws"))
     taiga.add(1, 12, "Badge + API", DESC, tags=("agent-ready", "area-both"))
     w.tick()
-    assert job_of(sessions).state == "stopped"
+    assert job_of(sessions).state == "failed"
     last = taiga.texts(1)[-1]
     assert "lebih dari satu tag area" in last and "Fullstack" in last
 

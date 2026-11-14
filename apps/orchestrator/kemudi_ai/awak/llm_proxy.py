@@ -50,6 +50,14 @@ def _error(status: int, message: str) -> JSONResponse:
                         status_code=status)
 
 
+def _note(sessions: sessionmaker[Session], alias: str, ok: bool, error: str = "") -> None:
+    try:
+        with sessions() as db:
+            llm_conn.note_upstream(db, alias, ok, error)
+    except Exception:  # noqa: BLE001 - bookkeeping must never break a model call
+        log.exception("could not record the upstream result")
+
+
 @router.get("/models")
 def models(request: Request, settings: Settings = Depends(get_settings)):
     """Aliases are not listed: they are capabilities."""
@@ -79,6 +87,7 @@ async def chat_completions(
                or llm_conn.active_alias(db))
         if row is None:
             return _error(403, "unknown or expired model alias")
+        alias = row.alias
         try:
             conn = llm_conn.resolve(db, settings, row.project_slug, row.role_id,
                                     row.fallback_model)
@@ -98,14 +107,17 @@ async def chat_completions(
         upstream = await client.send(req, stream=True)
     except httpx.HTTPError as e:
         await client.aclose()
-        return _error(502, llm_conn.scrub(f"provider unreachable: {type(e).__name__}: {e}",
-                                          conn)[:300])
+        message = llm_conn.scrub(f"provider unreachable: {type(e).__name__}: {e}", conn)[:300]
+        _note(sessions, alias, False, message)
+        return _error(502, message)
     if upstream.is_redirect:
         await upstream.aclose()
         await client.aclose()
         return _error(502, f"the provider answered with a redirect ({upstream.status_code}); "
                            "redirects are not followed")
     headers = {k: v for k, v in upstream.headers.items() if k.lower() not in _HOP}
+    ok = 200 <= upstream.status_code < 300
+    _note(sessions, alias, ok, "" if ok else f"provider answered HTTP {upstream.status_code}")
 
     async def close() -> None:
         await upstream.aclose()

@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..store import AwakJob
-from . import config_store, secrets, ssh
+from . import config_store, runbook, secrets, ssh
+from . import checks as gate_checks
 from .agent import AgentError
 from .crypto import SecretKeyMissing
 from .gitops import GitError, MergeConflict, PushRejected, Repo, _chown
@@ -92,6 +93,8 @@ def save_spec(settings, job_id: int, workdir: Path) -> bool:
 class Merger:
     def __init__(self, worker: Worker):
         self.w = worker
+        self._runbook: runbook.Runbook | None = None
+        self._cfg: config_store.ProjectConfig | None = None
 
     # ----------------------------------------------------------------- entry
     def merge(self, job: AwakJob, project: Project, story: dict,
@@ -107,7 +110,7 @@ class Merger:
             cfg, rc, repo = self._repo(job)
             target, checks, workdir = self._merge(job, story, rc, repo, require_qa_rerun)
         except (MergeFailed, Stop, Infra, GitError, RunnerError, AgentError, TaigaError,
-                SecretKeyMissing) as e:
+                SecretKeyMissing, gate_checks.Unsupported) as e:
             return self.fail(job.id, story["id"], str(e))
 
         w._set(job.id, merge_state="merged", merged_sha=target, merge_error="")
@@ -127,7 +130,7 @@ class Merger:
 
     def fail(self, job_id: int, story_id: int, reason: str) -> MergeResult:
         w = self.w
-        reason = secrets.redact(reason, w.secret_values)[:500]
+        reason = secrets.redact(reason, w.redact_values)[:500]
         w._set(job_id, merge_state="failed", merge_error=reason)
         w._event(job_id, "merge_failed", {"error": reason})
         try:
@@ -163,12 +166,12 @@ class Merger:
                     f"`{rc.url}` @ `{rc.default_branch}`); pindahkan story ke Ready untuk "
                     f"menjalankannya ulang.")
             key = config_store.key_row(db, rc.key_id)
+            self._runbook = runbook.load(db, job.project_slug)
+        self._cfg = cfg
         return cfg, rc, self.w._repo_of(cfg, rc, key)
 
     def _merge(self, job: AwakJob, story: dict, rc, repo: Repo,
                require_qa_rerun: bool) -> tuple[str, list[str], Path | None]:
-        from .worker import _commands
-
         w = self.w
         job = w._job(job.id)
         if not job.last_sha:
@@ -195,9 +198,13 @@ class Merger:
                                       f"selesaikan manual. ({e})") from e
                 w._event(job.id, "merge_commit", {"sha": target, "onto": default_sha})
                 workdir = repo.prepare_at(job.branch, ref, target)
-                w._runner("install", job=workdir.name, **_commands(rc, "install"))
-                gates = (w._runner("gates", job=workdir.name, **_commands(rc, "gates"))
-                         .get("gates") or [])
+                # The same gate selection as the story's: the branch's changed files.
+                rb = self._runbook
+                gate_checks.run_install(w._runner, w._path(workdir),
+                                        gate_checks.install_payloads(rc, rb), workdir, rc.name)
+                gates = gate_checks.run_gates(
+                    w._runner, w._path(workdir),
+                    gate_checks.gate_payloads(rc, rb, repo.changed_files(job.branch), workdir))
                 failed = [g["name"] for g in gates if not g.get("ok")]
                 if failed:
                     raise MergeFailed("pemeriksaan otomatis gagal pada hasil merge "
@@ -226,14 +233,20 @@ class Merger:
         if not saved.exists():
             raise MergeFailed("spec QA yang lulus tidak tersimpan; QA ulang tidak bisa jalan.")
         texts = criteria(story.get("description") or "")
-        w._runner("qa_reset", job=workdir.name)
+        w._runner("qa_reset", path=w._path(workdir))
         spec_dir = workdir / ".qa" / "spec"
         spec_dir.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(saved, spec_dir / SPEC_NAME)
         _chown(workdir / ".qa", repo.uid)
-        token = w.qa_taiga.login()
-        report = w._runner("qa", job=workdir.name, token=token, user=w.qa_taiga.me,
-                           project=w.s.qa_project, subdir=rc.subdir)
+        from .worker import runbook_qa
+
+        plan = runbook_qa(self._runbook)
+        if plan is not None:
+            # The story's QA ran its siblings at their default branch then;
+            # this one gets them fresh at the default branch now.
+            w.qa_siblings(self._cfg, rc, self._runbook, job.branch)
+        token = w.qa_taiga.login() if plan is None else ""
+        report = w._runner("qa", path=w._path(workdir), **w.qa_payload(plan, token, rc))
         verdict = evaluate(report, texts)
         w._event(job.id, "qa_rerun", {"outcome": verdict.outcome, "reason": verdict.reason})
         return verdict
@@ -251,14 +264,14 @@ class Merger:
                     job_now = w._job(job.id)
                     workdir = repo.prepare_at(job_now.branch, f"refs/heads/{job_now.branch}",
                                               target)
-                res = w.runner.call("deploy", job=workdir.name, command=command)
+                res = w.runner.call("deploy", path=w._path(workdir), command=command)
                 if res.get("infra_error"):
                     ok, out = False, str(res["infra_error"])
                 else:
                     ok, out = bool(res.get("ok")), str(res.get("output") or "")
         except (GitError, RunnerError, SecretKeyMissing, OSError) as e:
             ok, out = False, f"{type(e).__name__}: {e}"
-        tail = (secrets.redact(out, [*w.secret_values, *deploy_secrets(command)])[-1500:]
+        tail = (secrets.redact(out, [*w.redact_values, *deploy_secrets(command)])[-1500:]
                 .strip() or "(tanpa output)")
         w._event(job.id, "deploy", {"ok": ok})
         if ok:

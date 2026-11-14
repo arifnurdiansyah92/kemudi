@@ -1,19 +1,33 @@
 """kemudi-runner: a tiny HTTP service that runs a fixed set of commands in an
 Awak job workspace. Python stdlib only.
 
-POST /install    {job, subdir?, commands?}  pnpm install (frozen, no scripts), or the commands
-POST /commit     {job, message}             commit anything the agent left
-POST /gates      {job, subdir?, commands?}  tsc, eslint, vitest, vite build, or the commands
-POST /qa_reset   {job}                      empty .qa/ for a fresh spec
-POST /qa         {job, token, user, project, subdir?}  run .qa/spec twice against a dev
-                                            server started in subdir (default apps/web)
-POST /clean_check {job}                     HEAD sha and `git status --ignored` entries
-POST /deploy     {job, command}             the project's post-merge deploy command (sh -c)
-                                            in the job workspace at the merged commit
+POST /install    {path, subdir?, commands?, env?}  pnpm install (frozen, no scripts), or
+                                             the commands
+POST /commit     {path, message}             commit anything the agent left
+POST /gates      {path, subdir?, commands?, env?}  tsc, eslint, vitest, vite build, or the
+                                             commands
+POST /qa_reset   {path}                      empty .qa/ for a fresh spec
+POST /qa         {path, token, user, project, subdir?}  run .qa/spec twice against a dev
+                                             server started in subdir (default apps/web)
+                 {path, services, base_service, warm?}  the same against the runbook's
+                                             process services (see op_qa)
+POST /clean_check {path}                     HEAD sha and `git status --ignored` entries
+POST /deploy     {path, command}             the project's post-merge deploy command (sh -c)
+                                             in the job workspace at the merged commit
+
+`path` names one checkout under WORKSPACE: `<slug>/us-<ref>/<repo>` for a
+story, `<slug>/setup/<repo>` for setup runs.
 
 `commands` is [{name, argv, timeout}], run without a shell in `subdir` of the
 job workspace; argv[0] must be in ALLOWED_PROGRAMS. Without `commands`, the
 iteration 1 apps/web steps run.
+
+Children (branch code) are started with a clean environment from
+`child_env`: the runner's key and other KEMUDI_* variables are not passed
+to them. That is not a boundary yet: children run as the runner's own uid,
+so one can still read the key from the server's /proc/<pid>/environ.
+Running children as a separate uid (and the server keeping only
+SETUID/SETGID) is planned for stage 1b.
 
 Every reply is JSON. `infra_error` is set when the step could not run at all
 (as opposed to the code failing a check).
@@ -27,6 +41,8 @@ import signal
 import subprocess
 import tempfile
 import time
+import socket
+import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -36,7 +52,9 @@ KEY = os.environ.get("KEMUDI_RUNNER_KEY", "")
 GATEWAY = os.environ.get("KEMUDI_DEV_GATEWAY", "http://kemudi-gateway")
 CONFIG = "/opt/runner/playwright.config.cjs"
 QA_PORT = 5199
-JOB_RE = re.compile(r"^awak-us-\d+$")
+# <project slug>/<us-<ref> | setup>/<repo name>
+PATH_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,99}/(us-\d+|setup)/"
+                     r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
 GIT_SAFE = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false",
             "-c", "safe.directory=*"]
 
@@ -51,11 +69,53 @@ def tail(text: str, n: int = 6000) -> str:
     return ANSI.sub("", text)[-n:]
 
 
+# What a child keeps from the runner's own environment: the toolchain's
+# locations and the locale, nothing else (no key, no gateway settings in its
+# environment; same uid as the server until stage 1b, see the module doc).
+KEEP_ENV = {"PATH", "HOME", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "TZ", "TERM", "USER",
+            "LOGNAME", "SHELL", "TMPDIR", "PLAYWRIGHT_BROWSERS_PATH", "PNPM_HOME", "NODE_PATH",
+            "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "COREPACK_HOME",
+            # Windows (local tests)
+            "SYSTEMROOT", "COMSPEC", "PATHEXT", "TEMP", "TMP", "APPDATA", "LOCALAPPDATA",
+            "USERPROFILE", "PROGRAMDATA", "WINDIR"}
+KEEP_ENV_PREFIXES = ("NPM_CONFIG_", "XDG_")
+
+
+def child_env(extra: dict | None = None) -> dict[str, str]:
+    env = {k: v for k, v in os.environ.items()
+           if (k.upper() in KEEP_ENV or k.upper().startswith(KEEP_ENV_PREFIXES))
+           and not k.upper().startswith("KEMUDI_")}
+    env.update({"CI": "1", "FORCE_COLOR": "0", "NO_COLOR": "1",
+                "npm_config_store_dir": "/pnpm-store"})
+    env.update(extra or {})
+    return env
+
+
+# Env names a request may not set (same lists as the orchestrator's runbook.py).
+BLOCKED_ENV_PREFIXES = ("KEMUDI_", "DOCKER_", "COMPOSE_", "GIT_")
+BLOCKED_ENV_NAMES = frozenset({"PATH", "LD_PRELOAD", "LD_LIBRARY_PATH", "NODE_OPTIONS",
+                               "PYTHONPATH", "HOME"})
+ENV_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,99}")
+
+
+def request_env(raw) -> dict[str, str]:
+    """A request's `env`: string -> string, names not reserved."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("env must be an object")
+    for k, v in raw.items():
+        if not (isinstance(k, str) and ENV_NAME_RE.fullmatch(k) and isinstance(v, str)):
+            raise ValueError(f"bad env entry {k!r}")
+        if k.upper() in BLOCKED_ENV_NAMES or k.upper().startswith(BLOCKED_ENV_PREFIXES):
+            raise ValueError(f"env name {k!r} is reserved")
+    return dict(raw)
+
+
 def run(cmd: list[str], cwd: Path, timeout: int, env: dict | None = None) -> tuple[int, str]:
     try:
         p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
-                           env={**os.environ, "CI": "1", "FORCE_COLOR": "0", "NO_COLOR": "1",
-                                **(env or {})})
+                           env=child_env(env))
         return p.returncode, tail(p.stdout + p.stderr)
     except subprocess.TimeoutExpired as e:
         out = (e.stdout or b"").decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
@@ -63,12 +123,16 @@ def run(cmd: list[str], cwd: Path, timeout: int, env: dict | None = None) -> tup
 
 
 def job_dir(body: dict) -> Path:
-    job = str(body.get("job", ""))
-    if not JOB_RE.match(job):
-        raise ValueError(f"bad job name {job!r}")
-    d = WORKSPACE / job
-    if not d.is_dir():
-        raise ValueError(f"no workspace for {job}")
+    """The checkout named by `path` (`<slug>/us-<ref>/<repo>` or
+    `<slug>/setup/<repo>`), relative to WORKSPACE. A symlink anywhere on the
+    way could point outside, so the resolved directory must stay inside."""
+    rel = str(body.get("path", ""))
+    if not PATH_RE.fullmatch(rel):
+        raise ValueError(f"bad workspace path {rel!r}")
+    d = WORKSPACE.joinpath(*rel.split("/"))
+    if (d.is_symlink() or not d.is_dir()
+            or not d.resolve().is_relative_to(WORKSPACE.resolve())):
+        raise ValueError(f"no workspace at {rel}")
     return d
 
 
@@ -76,14 +140,14 @@ def job_dir(body: dict) -> Path:
 
 # Programs a repo's configured commands may start (argv[0], a bare name looked
 # up on PATH). No shell is involved, so `;`, `&&` or `$(...)` are plain text.
-ALLOWED_PROGRAMS = {"pnpm", "npm", "npx", "yarn", "node", "python", "uv", "pytest", "make",
-                    "go", "cargo"}
+ALLOWED_PROGRAMS = frozenset({"pnpm", "npm", "npx", "yarn", "node", "python", "uv", "pytest",
+                              "make", "go", "cargo"})
 MAX_TIMEOUT = 1800
 
 
-def work_dir(body: dict) -> Path:
-    """The job dir, or `subdir` inside it: relative, no `..`, must exist."""
-    d = job_dir(body)
+def work_dir(body: dict, d: Path | None = None) -> Path:
+    """The job dir (or `d`), or `subdir` inside it: relative, no `..`, must exist."""
+    d = job_dir(body) if d is None else d
     sub = str(body.get("subdir") or "")
     if not sub:
         return d
@@ -119,6 +183,7 @@ def commands(body: dict, default_timeout: int) -> list[tuple[str, list[str], int
 
 def op_install(body: dict) -> dict:
     cmds = commands(body, 900)
+    env = request_env(body.get("env"))
     if cmds is None:
         web = job_dir(body) / "apps" / "web"
         code, out = run(["pnpm", "install", "--frozen-lockfile", "--ignore-scripts",
@@ -128,7 +193,7 @@ def op_install(body: dict) -> dict:
         return {"ok": True}
     cwd = work_dir(body)
     for name, argv, timeout in cmds:
-        code, out = run(argv, cwd, timeout)
+        code, out = run(argv, cwd, timeout, env)
         if code != 0:
             return {"ok": False, "infra_error": f"{name} failed: " + out[-800:]}
     return {"ok": True}
@@ -155,13 +220,14 @@ GATES = [
 
 def op_gates(body: dict) -> dict:
     cmds = commands(body, 900)
+    env = request_env(body.get("env"))
     if cmds is None:
         cwd, cmds = job_dir(body) / "apps" / "web", GATES
     else:
         cwd = work_dir(body)
     results = []
     for i, (name, cmd, timeout) in enumerate(cmds):
-        code, out = run(cmd, cwd, timeout)
+        code, out = run(cmd, cwd, timeout, env)
         if code == 124:
             return {"infra_error": f"{name} timed out"}
         results.append({"name": name, "ok": code == 0, "output": out})
@@ -178,13 +244,17 @@ def op_qa_reset(body: dict) -> dict:
     return {"ok": True}
 
 
-def _wait_http(url: str, seconds: int) -> bool:
+def _wait_http(url: str, seconds: float, ok=lambda status: status < 500,
+               alive=lambda: True) -> bool:
     deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
+    while time.monotonic() < deadline and alive():
         try:
             with urllib.request.urlopen(url, timeout=5) as r:
-                if r.status < 500:
+                if ok(r.status):
                     return True
+        except urllib.error.HTTPError as e:
+            if ok(e.code):
+                return True
         except Exception:  # noqa: BLE001 - keep polling until the deadline
             pass
         time.sleep(1)
@@ -217,17 +287,198 @@ def _parse_report(path: Path) -> tuple[list[dict], str]:
     return tests, "\n".join(errors)
 
 
+# The whole `qa` op stays under the orchestrator's 1800 s client timeout.
+QA_DEADLINE = 1700
+SERVICE_PORT = 5200
+SERVICE_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
+SERVICE_URL_RE = re.compile(r"\{services\.([a-z0-9-]+)\.url\}")
+MAX_WARM = 10
+WARM_TIMEOUT = 180
+LOG_TAIL_LINES = 60
+
+
+def _spawn(argv: list[str], cwd: Path, env: dict, log) -> subprocess.Popen:
+    """A process in its own group (session), so stopping it stops its children."""
+    kw = {"start_new_session": True} if os.name == "posix" else {
+        "creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=log,
+                            stderr=subprocess.STDOUT, **kw)
+
+
+def _stop(proc: subprocess.Popen) -> None:
+    """SIGTERM to the process group, SIGKILL after 10 s."""
+    if os.name != "posix":
+        if proc.poll() is None:
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                           capture_output=True)
+        proc.wait(timeout=10)
+        return
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)  # children may outlive the leader
+    except ProcessLookupError:
+        pass
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def _free_port(start: int, taken: set[int]) -> int:
+    for port in range(start, start + 200):
+        if port in taken:
+            continue
+        with socket.socket() as sock:
+            try:
+                sock.bind(("0.0.0.0", port))
+            except OSError:
+                continue
+        return port
+    raise RuntimeError("no free port for a QA service")
+
+
+def _log_tail(path: Path, n: int = LOG_TAIL_LINES) -> str:
+    try:
+        lines = path.read_text(errors="replace").splitlines()
+    except OSError:
+        return "(no log)"
+    return ANSI.sub("", "\n".join(lines[-n:]))
+
+
+def _services(body: dict, d: Path) -> list[dict]:
+    """Validated process services: cwd in the story folder (the story's repo or
+    a sibling checkout), argv allowlisted, env names not reserved."""
+    raw = body.get("services")
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("services must be a non-empty list")
+    out, names = [], set()
+    for s in raw:
+        if not isinstance(s, dict):
+            raise ValueError("each service must be an object")
+        name = str(s.get("name") or "")
+        if not SERVICE_RE.fullmatch(name) or name in names:
+            raise ValueError(f"bad or duplicate service name {name!r}")
+        names.add(name)
+        argv = s.get("argv")
+        if not (isinstance(argv, list) and argv and all(isinstance(a, str) for a in argv)):
+            raise ValueError(f"service {name}: argv must be a non-empty list of strings")
+        if argv[0] not in ALLOWED_PROGRAMS:
+            raise ValueError(f"service {name}: program {argv[0]!r} is not allowed")
+        repo = str(s.get("repo") or d.name)
+        root = d if repo == d.name else job_dir({"path": f"{d.parent.parent.name}/"
+                                                         f"{d.parent.name}/{repo}"})
+        health = str(s.get("health") or "/")
+        if not health.startswith("/") or any(c.isspace() for c in health):
+            raise ValueError(f"service {name}: bad health path {health!r}")
+        out.append({"name": name, "cwd": work_dir(s, root), "argv": argv,
+                    "env": request_env(s.get("env")), "health": health,
+                    "ready_timeout": max(1, min(int(s.get("ready_timeout") or 120), 600))})
+    return out
+
+
+def _warm_paths(body: dict, d: Path) -> list[str]:
+    paths = [str(p) for p in body.get("warm") or []]
+    routes = d / ".qa" / "routes.txt"
+    if routes.is_file() and not routes.is_symlink():
+        paths += routes.read_text(errors="replace").splitlines()[:50]
+    out: list[str] = []
+    for p in (x.strip() for x in paths):
+        if p.startswith("/") and not p.startswith("//") and not any(c.isspace() for c in p) \
+                and p not in out:
+            out.append(p)
+    return out[:MAX_WARM]
+
+
+def _start_services(services: list[dict], d: Path, deadline: float,
+                    procs: list[subprocess.Popen]) -> dict[str, str] | str:
+    """Start each service in order and wait for its health; returns name -> base
+    URL, or an error text with the log tail."""
+    logs = d / ".qa" / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    urls: dict[str, str] = {}
+    taken: set[int] = set()
+    for s in services:
+        port = _free_port(SERVICE_PORT, taken)
+        taken.add(port)
+        env = {}
+        for k, v in s["env"].items():
+            for ref in SERVICE_URL_RE.findall(v):
+                if ref not in urls:
+                    return f"service {s['name']}: {k} refers to service {ref!r}, not started"
+            env[k] = SERVICE_URL_RE.sub(lambda m: urls[m.group(1)], v)
+        env.update({"PORT": str(port), "NEXT_TELEMETRY_DISABLED": "1",
+                    "NODE_OPTIONS": "--max-old-space-size=2048"})
+        argv = [a.replace("{port}", str(port)) for a in s["argv"]]
+        log_path = logs / f"{s['name']}.log"
+        with open(log_path, "wb") as log:
+            proc = _spawn(argv, s["cwd"], child_env(env), log)
+        procs.append(proc)
+        base = f"http://localhost:{port}"
+        wait = min(s["ready_timeout"], max(0.0, deadline - time.monotonic()))
+        if not _wait_http(base + s["health"], wait, ok=lambda st: 200 <= st < 400,
+                          alive=lambda: proc.poll() is None):
+            why = (f"exited with {proc.returncode}" if proc.poll() is not None
+                   else f"not healthy at {s['health']} after {int(wait)}s")
+            return (f"service {s['name']} did not start ({why}). Last lines of "
+                    f".qa/logs/{s['name']}.log:\n{_log_tail(log_path)}")
+        urls[s["name"]] = base
+    return urls
+
+
+def _warm(base: str, paths: list[str], deadline: float) -> None:
+    """Load each path once: dev servers compile a page on its first request."""
+    for p in paths:
+        left = deadline - time.monotonic()
+        if left < 60:
+            return
+        try:
+            with urllib.request.urlopen(base + p, timeout=min(WARM_TIMEOUT, left - 30)) as r:
+                r.read(1)
+        except Exception:  # noqa: BLE001 - a 404 or a slow page is the spec's business
+            pass
+
+
 def op_qa(body: dict) -> dict:
+    """Run .qa/spec twice against the app. With `services` (a runbook): start
+    them as processes in the story's checkouts, base URL = `base_service`, no
+    login. Without: iteration 1's vite dev server for Kemudi with the QA token."""
     d = job_dir(body)
     spec_dir = d / ".qa" / "spec"
     if not any(spec_dir.glob("*.spec.ts")):
         return {"spec_error": "no spec file in .qa/spec"}
+    deadline = time.monotonic() + QA_DEADLINE
+    if "services" in body:
+        services = _services(body, d)
+        base_name = str(body.get("base_service") or "")
+        if base_name not in {s["name"] for s in services}:
+            raise ValueError(f"base_service {base_name!r} is not one of the services")
+        procs: list[subprocess.Popen] = []
+        try:
+            urls = _start_services(services, d, deadline, procs)
+            if isinstance(urls, str):
+                return {"infra_error": urls}
+            base = urls[base_name]
+            _warm(base, _warm_paths(body, d), deadline)
+            return _run_specs(d, spec_dir, base, None, {}, deadline)
+        finally:
+            for proc in reversed(procs):
+                try:
+                    _stop(proc)
+                except Exception:  # noqa: BLE001 - stop the others too
+                    pass
+
     # The repo's web app directory; iteration 1 callers send none (apps/web).
     web = work_dir(body) if "subdir" in body else d / "apps" / "web"
-    vite = subprocess.Popen(
-        ["pnpm", "exec", "vite", "--port", str(QA_PORT), "--strictPort", "--host", "127.0.0.1"],
-        cwd=web, env={**os.environ, "KEMUDI_DEV_GATEWAY": GATEWAY},
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    vite = _spawn(["pnpm", "exec", "vite", "--port", str(QA_PORT), "--strictPort", "--host",
+                   "127.0.0.1"], web, child_env({"KEMUDI_DEV_GATEWAY": GATEWAY}),
+                  subprocess.DEVNULL)
     tmp = Path(tempfile.mkdtemp(prefix="qa-"))
     base = f"http://127.0.0.1:{QA_PORT}"
     try:
@@ -239,22 +490,37 @@ def op_qa(body: dict) -> dict:
             "localStorage": [{"name": "kemudi.auth", "value": json.dumps(session)},
                              {"name": "kemudi.lang", "value": "en"}],
         }]}))
-        npm_root = subprocess.run(["npm", "root", "-g"], capture_output=True,
-                                  text=True).stdout.strip()
+        return _run_specs(d, spec_dir, base, tmp / "state.json",
+                          {"KEMUDI_QA_TOKEN": body["token"],
+                           "KEMUDI_QA_PROJECT": str(body.get("project", ""))}, deadline)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        _stop(vite)
+
+
+def _run_specs(d: Path, spec_dir: Path, base: str, state: Path | None, extra: dict,
+               deadline: float) -> dict:
+    tmp = Path(tempfile.mkdtemp(prefix="qa-report-"))
+    try:
+        npm_root = subprocess.run(["npm", "root", "-g"], capture_output=True, text=True,
+                                  env=child_env()).stdout.strip()
         runs = []
         for k in (1, 2):
             out_dir = d / ".qa" / "results" / f"run{k}"
             report = tmp / f"report{k}.json"
+            left = int(deadline - time.monotonic())
+            if left < 30:
+                return {"infra_error": "QA ran out of time before the spec runs"}
+            env = {"QA_SPEC_DIR": str(spec_dir), "QA_OUTPUT_DIR": str(out_dir),
+                   "QA_REPORT": str(report), "QA_BASE_URL": base, "NODE_PATH": npm_root,
+                   **extra}
+            if state is not None:
+                env["QA_STATE"] = str(state)
             # The global @playwright/test, run from .qa/ so the spec, the config
-            # and the runner all load the same copy (not apps/web's playwright).
+            # and the runner all load the same copy (not the app's playwright).
             code, out = run(
                 ["node", f"{npm_root}/@playwright/test/cli.js", "test", "--config", CONFIG],
-                d / ".qa", 900,
-                env={"QA_SPEC_DIR": str(spec_dir), "QA_OUTPUT_DIR": str(out_dir),
-                     "QA_REPORT": str(report), "QA_BASE_URL": base,
-                     "QA_STATE": str(tmp / "state.json"), "NODE_PATH": npm_root,
-                     "KEMUDI_QA_TOKEN": body["token"],
-                     "KEMUDI_QA_PROJECT": str(body.get("project", ""))})
+                d / ".qa", min(900, left), env=env)
             if code == 124:
                 return {"infra_error": "QA run timed out"}
             tests, load_error = _parse_report(report)
@@ -264,11 +530,6 @@ def op_qa(body: dict) -> dict:
         return {"ok": True, "runs": runs}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-        try:
-            os.killpg(vite.pid, signal.SIGTERM)
-            vite.wait(timeout=10)
-        except Exception:  # noqa: BLE001
-            os.killpg(vite.pid, signal.SIGKILL)
 
 
 MAX_CLEAN_ENTRIES = 200

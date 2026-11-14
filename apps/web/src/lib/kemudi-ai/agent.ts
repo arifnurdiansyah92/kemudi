@@ -14,6 +14,10 @@ const base = { baseURL: import.meta.env.VITE_KEMUDI_AI_URL ?? '/api/kemudi' }
 export type MergeMode = 'manual' | 'approve' | 'auto'
 export const mergeModes: MergeMode[] = ['manual', 'approve', 'auto']
 export type Executor = 'local' | 'ssh'
+/** How much Awak checks before a story is Done: nothing, the repo's gates,
+ * or gates plus browser QA. Auto merge needs `browser`. */
+export type QaMode = 'off' | 'gates' | 'browser'
+export const qaModes: QaMode[] = ['off', 'gates', 'browser']
 
 export type Preflight = {
   ok: boolean
@@ -35,6 +39,7 @@ export type Preflight = {
 export type AgentSettingsIn = {
   enabled: boolean
   merge_mode: MergeMode
+  qa_mode: QaMode
   deploy_command: string
   executor: Executor
   ssh_host: string
@@ -93,6 +98,14 @@ export type RepoIn = {
   subdir: string
 } & Record<CommandField, string>
 
+/** An app Check access found in the repo or one of its subfolders. */
+export type DetectedApp = {
+  /** Relative to the repo root; `''` is the root. */
+  dir: string
+  kind: string
+  commands: Partial<Record<CommandField, string>>
+}
+
 export type RepoCheck = {
   ok: boolean
   clone: boolean
@@ -100,6 +113,8 @@ export type RepoCheck = {
   default_branch_found: boolean
   host_key: string | null
   detected: Partial<Record<CommandField, string>>
+  /** Older checks have none. */
+  apps?: DetectedApp[]
   error: string | null
   checked_at?: string
 }
@@ -352,6 +367,7 @@ export function settingsBody(s: AgentSettings): AgentSettingsIn {
   return {
     enabled: s.enabled,
     merge_mode: s.merge_mode,
+    qa_mode: s.qa_mode,
     deploy_command: s.deploy_command ?? '',
     executor: s.executor,
     ssh_host: s.ssh_host,
@@ -488,6 +504,120 @@ export function useCheckRepo(slug: string) {
       ).data,
     onError: onFail,
     onSettled: invalidate,
+  })
+}
+
+/* ---------- runbook ---------- */
+
+/*
+ * How to install, check, run and QA the project's apps. Typed loosely: the
+ * server validates, and Edit JSON must round-trip fields this client does
+ * not know yet.
+ */
+export type RunbookApp = {
+  name: string
+  repo: string
+  dir: string
+  install?: string[]
+  checks?: string[]
+  build?: string[]
+  env?: Record<string, string>
+  run_in?: string
+  [key: string]: unknown
+}
+
+export type RunbookService = {
+  name: string
+  kind: 'process' | 'compose' | (string & {})
+  app?: string
+  command?: string
+  repo?: string
+  file?: string
+  compose_services?: string[]
+  expose?: string
+  /** Left out when the runbook does not set it: the server uses '/'. */
+  health?: string
+  /** Left out when the runbook does not set it: the server uses 120. */
+  ready_timeout?: number
+  env?: string[] | Record<string, string>
+  [key: string]: unknown
+}
+
+export type RunbookEnv = {
+  name: string
+  secret?: boolean
+  required?: boolean
+  description?: string
+  [key: string]: unknown
+}
+
+export type Runbook = {
+  apps?: RunbookApp[]
+  services?: RunbookService[]
+  env?: RunbookEnv[]
+  seed?: { service: string; command: string } | null
+  qa?: { service: string; env?: string[] } | null
+  [key: string]: unknown
+}
+
+export type RunbookState = {
+  runbook: Runbook | null
+  version: number
+  approved_by: string
+  approved_at: string | null
+}
+
+/**
+ * The runbook PUT answers 422 with `{detail: string | string[]}` (or
+ * FastAPI's `[{loc, msg}]`); every problem is listed, not just the first.
+ */
+export function runbookErrors(error: unknown): string[] {
+  if (error instanceof AxiosError && error.response?.status === 422) {
+    const detail = (error.response.data as { detail?: unknown } | undefined)
+      ?.detail
+    if (typeof detail === 'string') return [detail]
+    if (Array.isArray(detail)) {
+      const lines = detail
+        .map((d) => {
+          if (typeof d === 'string') return d
+          const { msg, loc } = (d ?? {}) as { msg?: string; loc?: unknown[] }
+          if (!msg) return ''
+          const path = (loc ?? []).filter((p) => p !== 'body').join('.')
+          return path ? `${path}: ${msg}` : msg
+        })
+        .filter(Boolean)
+      if (lines.length) return lines
+    }
+  }
+  return [agentError(error)]
+}
+
+export function useRunbook(slug: string) {
+  return useQuery({
+    queryKey: agentKey(slug, 'runbook'),
+    queryFn: async () =>
+      (await api.get<RunbookState>(`/projects/${slug}/agent/runbook`, base))
+        .data,
+  })
+}
+
+/** Errors are listed by the editor, so no toast here. Settings are
+ * refetched too: whether Browser QA is allowed depends on the runbook. */
+export function useSaveRunbook(slug: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (runbook: Runbook) =>
+      (
+        await api.put<RunbookState>(
+          `/projects/${slug}/agent/runbook`,
+          { runbook },
+          base
+        )
+      ).data,
+    onSuccess: (data) => {
+      qc.setQueryData(agentKey(slug, 'runbook'), data)
+      return qc.invalidateQueries({ queryKey: agentKey(slug, 'settings') })
+    },
   })
 }
 

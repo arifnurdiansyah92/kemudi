@@ -216,6 +216,28 @@ def active_alias(db: Session) -> AwakLlmAlias | None:
     return rows[0] if len(rows) == 1 else None
 
 
+def note_upstream(db: Session, alias: str, ok: bool, error: str = "") -> None:
+    """Count one upstream answer for the run (proxy side)."""
+    row = db.get(AwakLlmAlias, alias)
+    if row is None:
+        return
+    if ok:
+        row.upstream_ok = (row.upstream_ok or 0) + 1
+    else:
+        row.upstream_errors = (row.upstream_errors or 0) + 1
+        row.upstream_error = error[:300]
+    db.commit()
+
+
+def provider_failure(db: Session, alias: str) -> str | None:
+    """Why the run's provider failed, when no model call of the run succeeded
+    and at least one failed; else None."""
+    row = db.get(AwakLlmAlias, alias)
+    if row is None or row.upstream_ok or not row.upstream_errors:
+        return None
+    return row.upstream_error or "the model provider failed"
+
+
 def drop_alias(db: Session, alias: str) -> None:
     db.query(AwakLlmAlias).filter_by(alias=alias).delete(synchronize_session=False)
     db.commit()

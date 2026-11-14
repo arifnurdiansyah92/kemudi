@@ -4,9 +4,10 @@ One story at a time. Taiga is the source of truth for where a story is; the
 job row only remembers attempts, feedback and cost between ticks.
 """
 
+import fnmatch
 import logging
 import os
-import shlex
+import shutil
 import socket
 import threading
 import time
@@ -23,15 +24,16 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import Settings
 from ..store import AwakJob, AwakKey, AwakProject, AwakWorkerLease, record_event
-from . import config_store, llm_conn, secrets, ssh
-from .config_store import ProjectConfig, RepoConfig, RoleConfig
+from . import checks, config_store, llm_conn, runbook, secrets, ssh
+from .config_store import QA_MODES, ProjectConfig, RepoConfig, RoleConfig
 from .crypto import SecretKeyMissing
 from .agent import Agent, AgentError
-from .gitops import GitError, Repo, branch_for
+from .gitops import GitError, Repo, _force_remove, branch_for
 from .intake import TAG, story_areas
 from .merge import DONE_TAG, HUMAN_TAG, Merger, effective_mode, save_spec
+from .runbook import Runbook
 from .prompts import RoleScope, out_of_scope, prompt_version, render, render_role
-from .runner import Runner, RunnerError
+from .runner import Runner, RunnerError, RunnerRejected
 from .stories import code_task, criteria, qa_task
 from .taiga import Project, Taiga, TaigaError, tag_names
 from .verdict import Verdict, evaluate, safe_screenshot
@@ -42,6 +44,11 @@ log = logging.getLogger(__name__)
 
 class Stop(Exception):
     """A human took the story over; stop quietly (with one comment)."""
+
+
+class NeedsHuman(Stop):
+    """Awak cannot go on until a human fixes settings or the story: the card
+    is blocked (a stopped In progress card would just be picked again)."""
 
 
 class Infra(Exception):
@@ -62,6 +69,7 @@ class Route:
     role: RoleConfig
     rc: RepoConfig
     repo: Repo
+    runbook: Runbook | None = None
 
 
 def now() -> datetime:
@@ -102,6 +110,7 @@ class Worker:
         self.sleep = sleep
         self.command_runner = command_runner  # deploy over SSH
         self._seeded = False
+        self._swept = False
         self.holder = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 
     @property
@@ -110,6 +119,14 @@ class Worker:
         saved after the worker started is scanned too)."""
         with self.sessions() as db:
             return [*self._secret_values, *llm_conn.stored_keys(db, self.s)]
+
+    @property
+    def redact_values(self) -> list[str]:
+        """What comments and errors never show: the secrets plus the runbooks'
+        env values (tokens or internal URLs an admin put there). Not used to
+        scan diffs: an ordinary value would refuse ordinary code."""
+        with self.sessions() as db:
+            return [*self.secret_values, *runbook.all_env_values(db)]
 
     # ------------------------------------------------------------------ loop
     def _seed(self) -> None:
@@ -122,6 +139,8 @@ class Worker:
         """A job left running by a crash becomes queued again (infra error)."""
         self._seed()
         with self.sessions() as db:
+            if not self._swept and not db.query(AwakJob).filter_by(state="running").count():
+                self._sweep_old_workspaces()
             for job in db.query(AwakJob).filter_by(state="running"):
                 job.state = "queued"
                 job.infra_errors += 1
@@ -133,6 +152,22 @@ class Worker:
                 job.merge_state = "requested"
                 db.commit()
                 record_event(db, job.id, "recovered", {"merge": True})
+
+    def _sweep_old_workspaces(self) -> None:
+        """Delete the pre-stage-1 `<workspace>/awak-us-<n>` folders, once: they
+        were shared between projects, so nothing in them is trusted. Stories
+        that used one start again from the coding step (branches survive in the
+        bare repos)."""
+        self._swept = True
+        root = Path(self.s.workspace_dir)
+        for d in sorted(root.glob("awak-us-*")) if root.is_dir() else []:
+            try:
+                if d.is_symlink() or d.is_file():
+                    d.unlink()
+                elif d.is_dir():
+                    shutil.rmtree(d, onerror=_force_remove)
+            except OSError as e:
+                log.warning("awak: could not delete old workspace %s: %s", d, e)
 
     def tick(self) -> bool:
         """Process at most one story. Returns True if it did any work.
@@ -186,7 +221,7 @@ class Worker:
     def _project_failed(self, slug: str, error: Exception) -> None:
         log.warning("awak: project %s failed: %s", slug, error,
                     exc_info=not isinstance(error, TaigaError))
-        text = secrets.redact(str(error) or type(error).__name__, self.secret_values)[:1000]
+        text = secrets.redact(str(error) or type(error).__name__, self.redact_values)[:1000]
         with self.sessions() as db:
             p = db.get(AwakProject, slug)
             if p is not None:
@@ -336,7 +371,12 @@ class Worker:
 
     def _human_feedback(self, story_id: int) -> str:
         bot = {self.taiga.username, self.s.qa_username}
-        for h in reversed(self.taiga.comments(story_id)):
+        history = self.taiga.comments(story_id)
+        # Taiga lists history newest first; order by time so the latest human
+        # comment wins (the oldest one used to, e.g. a stale infra note).
+        if history and all(h.get("created_at") for h in history):
+            history = sorted(history, key=lambda h: h["created_at"])
+        for h in reversed(history):
             user = (h.get("user") or {}).get("username")
             if user not in bot:
                 return h["comment"]
@@ -351,6 +391,9 @@ class Worker:
                 return
             try:
                 result = self._attempt(project, job, story)
+            except (NeedsHuman, checks.Unsupported) as e:
+                self._block(project, story, job_id, f"Berhenti: {e}")
+                return
             except Stop as e:
                 self._set(job_id, state="stopped")
                 self._say(story["id"], job_id, f"Berhenti: {e}")
@@ -403,19 +446,23 @@ class Worker:
             base_sha = (repo.sha(job.branch) if repo.has_branch(job.branch)
                         else main_sha)
             workdir = repo.prepare(job.branch)
+            siblings, unavailable = self._siblings(route, job)
             self._event(job.id, "prepared", {"base": base_sha})
-            self._runner("install", job=workdir.name, **_commands(rc, "install"))
+            self._check_qa_repos(route)
+            checks.run_install(self._runner, self._path(workdir),
+                               checks.install_payloads(rc, route.runbook), workdir, rc.name)
 
             # code
             self._set(job.id, phase="code")
             task = code_task(str(workdir), job.story_ref, story["subject"],
-                             story.get("description") or "", job.feedback)
+                             story.get("description") or "", job.feedback,
+                             siblings=[str(d) for d in siblings], unavailable=unavailable)
             system = render_role(role, route.config.repos)
             report, cost = self.agent.run("awak.code", role.model, system, task,
                                           slug=route.config.slug, role_id=role.id)
             self._add_cost(job.id, cost)
             self._set(job.id, phase="collect")
-            self._runner("commit", job=workdir.name,
+            self._runner("commit", path=self._path(workdir),
                          message=f"awak: uncommitted changes from attempt {n} "
                                  f"(US #{job.story_ref})")
         self._ours(story["id"], {"in-progress"}, project)
@@ -423,7 +470,14 @@ class Worker:
         # collect
         self._set(job.id, phase="collect")
         sha = repo.collect(job.branch)
-        if sha == base_sha:
+        # A card put back in Ready keeps its branch. With no human feedback and
+        # work already on the branch, "nothing to add" is a fair answer: check
+        # the existing tip instead of failing the attempt.
+        recheck = (sha == base_sha and not self._job(job.id).feedback
+                   and bool(repo.changed_files(job.branch)))
+        if recheck:
+            self._event(job.id, "recheck", {"sha": sha})
+        if sha == base_sha and not recheck:
             return Fail("You made no commit. Implement the story and commit it.",
                         "Awak tidak menghasilkan commit. Laporan Awak:\n\n"
                         + _quote(report))
@@ -450,9 +504,12 @@ class Worker:
         self._set(job.id, last_sha=sha)
 
         # gates
-        self._set(job.id, phase="gates")
-        gates = (self._runner("gates", job=workdir.name, **_commands(rc, "gates"))
-                 .get("gates") or [])
+        qa_mode, qa_note = self._qa_mode(route)
+        gates: list[dict] = []
+        if qa_mode != "off":
+            self._set(job.id, phase="gates")
+            gates = checks.run_gates(self._runner, self._path(workdir),
+                                     checks.gate_payloads(rc, route.runbook, files, workdir))
         failed = [g for g in gates if not g.get("ok")]
         table = "\n".join(f"- {'✅' if g.get('ok') else '❌'} {g['name']}" for g in gates)
         if failed:
@@ -462,6 +519,9 @@ class Worker:
                         f"{table}\n\n" + "\n\n".join(
                             f"**{g['name']}**\n```\n{g.get('output', '')[-1200:]}\n```"
                             for g in failed))
+        if qa_mode != "browser":
+            return self._done_without_qa(project, job, story, workdir, sha, route, n,
+                                         qa_mode, qa_note, gates)
         story = self._ours(story["id"], {"in-progress"}, project)
         self._move(story["id"], project.status("ready-for-test"), story["version"])
         self._say(story["id"], job.id,
@@ -476,12 +536,9 @@ class Worker:
         if verdict.outcome == "pass":
             # The checks ran in Awak's workspace; only `sha` gets merged. A pass
             # counts only if the workspace was exactly that commit.
-            unclean = self._unclean(workdir, sha, rc)
+            unclean = self._unclean(workdir, sha, rc, route.runbook)
             if unclean:
-                return Fail("The checks and QA ran with files that are not in your commit "
-                            "(or HEAD was not your commit): " + "; ".join(unclean)
-                            + ". Commit everything the story needs and leave no other "
-                              "files (ignored ones included) in the workspace.",
+                return Fail(_unclean_feedback(unclean),
                             f"QA lulus, tetapi workspace tidak sama dengan commit `{sha[:8]}` "
                             "yang akan di-merge, jadi hasilnya tidak dipakai: "
                             + "; ".join(f"`{u}`" for u in unclean)
@@ -496,16 +553,7 @@ class Worker:
                                     status=project.status("done"), tags=tags)
             self._set(job.id, state="passed", phase="", attempts=n)
             head = f"QA lulus untuk `{sha[:8]}`:\n{_table(verdict, evidence)}\n\n"
-            if mode == "manual":
-                tail = (f"Pindah ke Done dengan tag `{DONE_TAG}`: branch `{job.branch}` "
-                        f"belum di-merge dan perlu direview manusia.")
-            elif mode == "approve":
-                tail = (f"Pindah ke Done dengan tag `{DONE_TAG}`: branch `{job.branch}` "
-                        f"menunggu Merge di Kemudi.")
-            else:
-                tail = (f"Pindah ke Done dengan tag `{DONE_TAG}`; merge otomatis ke "
-                        f"`{repo.default_branch}` berjalan.")
-            self._say(story["id"], job.id, head + tail, n)
+            self._say(story["id"], job.id, head + _done_tail(mode, job.branch, repo), n)
             if mode == "auto":
                 Merger(self).merge(self._job(job.id), project, story, require_qa_rerun=True)
             return None
@@ -513,11 +561,66 @@ class Worker:
                     f"QA gagal untuk `{sha[:8]}`:\n{_table(verdict, evidence)}\n\n"
                     f"Kembali ke In progress; Awak akan memperbaiki.")
 
+    def _qa_mode(self, route: Route) -> tuple[str, str]:
+        return qa_mode_for(route.config, route.rc, route.runbook, self.s.host_git)
+
+    def _done_without_qa(self, project: Project, job: AwakJob, story: dict, workdir: Path,
+                         sha: str, route: Route, n: int, qa_mode: str, note: str,
+                         gates: list[dict]) -> Fail | None:
+        """QA mode off or gates: Done + awaiting-merge, without browser QA. The
+        clean check runs last, so Done is tied to the commit that gets merged."""
+        unclean = self._unclean(workdir, sha, route.rc, route.runbook)
+        if unclean:
+            return Fail(_unclean_feedback(unclean),
+                        f"Pemeriksaan selesai, tetapi workspace tidak sama dengan commit "
+                        f"`{sha[:8]}` yang akan di-merge, jadi hasilnya tidak dipakai: "
+                        + "; ".join(f"`{u}`" for u in unclean)
+                        + "\n\nKembali ke In progress; Awak akan memperbaiki.")
+        story = self._ours(story["id"], {"in-progress"}, project)
+        with self.sessions() as db:
+            current = config_store.load(db, project.slug).merge_mode
+        mode = effective_mode(self._job(job.id).merge_mode, current)
+        if mode == "auto":
+            # Auto merge only follows browser QA. Saved on the job, so the
+            # Merge button (which needs approve) works for this story.
+            mode = "approve"
+            self._set(job.id, merge_mode="approve")
+            self._event(job.id, "merge_mode", {"merge_mode": "approve",
+                                               "reason": "done without browser QA"})
+        tags = sorted(set(tag_names(story)) | {DONE_TAG})
+        self.taiga.update_story(story["id"], version=story["version"],
+                                status=project.status("done"), tags=tags)
+        self._set(job.id, state="passed", phase="", attempts=n)
+
+        checked = ["cakupan berkas peran", "secret di diff"]
+        if gates:
+            checked.append("pemeriksaan otomatis di atas")
+        checked.append("workspace sama persis dengan commit")
+        if qa_mode == "off":
+            label = "Off"
+            skipped = ["pemeriksaan otomatis (tipe, lint, tes, build)",
+                       "QA browser terhadap kriteria penerimaan"]
+            head = f"Commit `{sha[:8]}` di branch `{job.branch}`."
+        else:
+            label = "Gates only"
+            skipped = [] if gates else [
+                "pemeriksaan otomatis (repo ini belum punya perintah check/build)"]
+            skipped.append("QA browser terhadap kriteria penerimaan (tanpa bukti screenshot)")
+            table = "\n".join(f"- ✅ {g['name']}" for g in gates)
+            head = (f"Commit `{sha[:8]}` di branch `{job.branch}`. Pemeriksaan otomatis:\n"
+                    f"{table}" if gates else f"Commit `{sha[:8]}` di branch `{job.branch}`.")
+        text = (f"{head}\n\n" + (f"{note}\n\n" if note else "")
+                + f"Mode QA proyek: {label}. Diperiksa: " + ", ".join(checked) + ". "
+                + "Tidak diperiksa: " + "; ".join(skipped) + ".\n\n"
+                + _done_tail(mode, job.branch, route.repo))
+        self._say(story["id"], job.id, text, n)
+        return None
+
     def _qa(self, project: Project, job: AwakJob, story: dict, workdir: Path,
             route: Route) -> Verdict:
         texts = criteria(story.get("description") or "")
         if not texts:
-            raise Stop("story tidak punya kriteria penerimaan; tambahkan bagian "
+            raise NeedsHuman("story tidak punya kriteria penerimaan; tambahkan bagian "
                        "'Acceptance criteria' berisi daftar poin.")
         qa_role = route.config.qa_role()
         if qa_role is not None:
@@ -526,18 +629,24 @@ class Worker:
         else:
             model = self.s.qa_model
             system = render("qa", "", RoleScope(repos=[route.rc.name]))
-        token = self.qa_taiga.login()
+        plan = runbook_qa(route.runbook)
+        token = self.qa_taiga.login() if plan is None else ""
         spec_feedback = ""
         for _ in range(2):
-            self._runner("qa_reset", job=workdir.name)
-            task = qa_task(str(workdir), job.story_ref, story["subject"], texts,
-                           self.s.qa_project, spec_feedback, app_dir=route.rc.subdir)
+            self._runner("qa_reset", path=self._path(workdir))
+            if plan is None:
+                task = qa_task(str(workdir), job.story_ref, story["subject"], texts,
+                               self.s.qa_project, spec_feedback, app_dir=route.rc.subdir)
+            else:
+                task = qa_task(str(workdir), job.story_ref, story["subject"], texts, "",
+                               spec_feedback, app_dirs=plan["app_dirs"])
             _, cost = self.agent.run("awak.qa", model, system, task, slug=route.config.slug,
                                      role_id=qa_role.id if qa_role else None)
             self._add_cost(job.id, cost)
-            report = self._runner("qa", job=workdir.name, token=token,
-                                  user=self.qa_taiga.me, project=self.s.qa_project,
-                                  subdir=route.rc.subdir)
+            if plan is not None:
+                self.qa_siblings(route.config, route.rc, route.runbook, job.branch)
+            report = self._runner("qa", path=self._path(workdir),
+                                  **self.qa_payload(plan, token, route.rc))
             verdict = evaluate(report, texts)
             self._event(job.id, "qa", {"outcome": verdict.outcome, "reason": verdict.reason})
             if verdict.outcome != "spec":
@@ -546,6 +655,14 @@ class Worker:
         if verdict.outcome in ("spec", "infra"):
             raise Infra(f"QA tidak dapat berjalan: {verdict.reason}")
         return verdict
+
+    def qa_payload(self, plan: dict | None, token: str, rc: RepoConfig) -> dict:
+        """The runner's `qa` body: the runbook's services, or Kemudi's vite path."""
+        if plan is None:
+            return {"token": token, "user": self.qa_taiga.me, "project": self.s.qa_project,
+                    "subdir": rc.subdir}
+        return {"services": plan["services"], "base_service": plan["base_service"],
+                "warm": plan["warm"]}
 
     # ------------------------------------------------------------- helpers
     def _route(self, job: AwakJob, story: dict, slug: str) -> Route:
@@ -558,25 +675,25 @@ class Worker:
                 areas = story_areas(tag_names(story))
                 role = cfg.role_for_story(areas)
                 if role is None and len(areas) > 1:
-                    raise Stop("story punya lebih dari satu tag area ("
+                    raise NeedsHuman("story punya lebih dari satu tag area ("
                                + ", ".join(f"area-{a}" for a in areas) + "); sisakan satu, "
                                "atau tambahkan peran Fullstack (area Frontend + backend) di "
                                "Pengaturan proyek → Agen.")
                 if role is None:
-                    raise Stop(f"tidak ada peran agen aktif untuk area {areas[0]}; aktifkan "
+                    raise NeedsHuman(f"tidak ada peran agen aktif untuk area {areas[0]}; aktifkan "
                                f"di Pengaturan proyek → Agen.")
                 rc = cfg.repo(role.repo_ids[0]) if role.repo_ids else None
                 if rc is None:
-                    raise Stop(f"peran {role.name} belum punya repo; pilih di Pengaturan "
+                    raise NeedsHuman(f"peran {role.name} belum punya repo; pilih di Pengaturan "
                                f"proyek → Agen.")
                 row.role_id, row.repo_id = role.id, rc.id
             else:
                 role = cfg.role(row.role_id)
                 if role is None or not role.enabled:
-                    raise Stop("peran agen untuk story ini sudah dihapus atau dimatikan.")
+                    raise NeedsHuman("peran agen untuk story ini sudah dihapus atau dimatikan.")
                 rc = cfg.repo(row.repo_id)
                 if rc is None:
-                    raise Stop("repo untuk story ini sudah dihapus dari pengaturan Agen.")
+                    raise NeedsHuman("repo untuk story ini sudah dihapus dari pengaturan Agen.")
             # What this attempt runs against; Merge checks it is still the same.
             row.repo_url, row.repo_branch = rc.url, rc.default_branch
             version = prompt_version(role, cfg.repos)
@@ -584,44 +701,134 @@ class Worker:
             row.prompt_version = version
             db.commit()
             key = config_store.key_row(db, rc.key_id)
+            rb = runbook.load(db, slug)
         if changed:
             self._event(job.id, "routed", {"role_id": role.id, "repo_id": rc.id,
                                            "prompt_version": version})
-        return Route(cfg, role, rc, self._repo_of(cfg, rc, key))
+        return Route(cfg, role, rc, self._repo_of(cfg, rc, key), rb)
 
     def _repo_of(self, cfg: ProjectConfig, rc: RepoConfig, key: AwakKey | None) -> Repo:
         if self.repo is not None and rc.url == self.s.host_git:
-            return self.repo  # the injected Kemudi repo (iteration 1 wiring, tests)
+            # The injected Kemudi repo (tests); placed like a configured one.
+            self.repo.slug, self.repo.name = cfg.slug, rc.name
+            return self.repo
         return repo_for(cfg, rc, self.s, key)
+
+    def _siblings(self, route: Route, job: AwakJob) -> tuple[list[Path], list[str]]:
+        """The project's other repos checked out at their default branch beside
+        the story's (read-only context), and the names of those that could not
+        be fetched (no key, unreachable...): left out, so one broken repo does
+        not hold up every story. Never the injected repo: that one is the
+        story's own."""
+        with self.sessions() as db:
+            rows = [(r, config_store.key_row(db, r.key_id))
+                    for r in route.config.repos if r.id != route.rc.id]
+        out, unavailable = [], []
+        for r, key in rows:
+            try:
+                sib = repo_for(route.config, r, self.s, key)
+                sib.sync_default()
+                out.append(sib.checkout_default(job.branch))
+            except GitError as e:
+                log.warning("awak: sibling repo %s of %s unavailable: %s",
+                            r.name, route.config.slug, e)
+                self._event(job.id, "sibling_unavailable",
+                            {"repo": r.name, "error": str(e)[:300]})
+                unavailable.append(r.name)
+        return out, unavailable
+
+    def _check_qa_repos(self, route: Route) -> None:
+        """Before paying for a coding run: every repo browser QA starts a
+        service from must still be one of the project's repos."""
+        if route.runbook is None or self._qa_mode(route)[0] != "browser" \
+                or runbook_qa(route.runbook) is None:
+            return
+        names = {r.name for r in route.config.repos}
+        for name in checks.qa_repos(route.runbook):
+            if name not in names:
+                raise checks.Unsupported(_gone_repo(name))
+
+    def qa_siblings(self, cfg: ProjectConfig, rc: RepoConfig, rb: Runbook, branch: str) -> None:
+        """Right before a QA run: the other repos the QA services start from,
+        checked out again at their default branch and installed. Whatever the
+        agents did to their read-only copies, or an older checkout (the merge
+        re-run), never reaches QA."""
+        for name in checks.qa_repos(rb):
+            if name == rc.name:
+                continue
+            r = next((x for x in cfg.repos if x.name == name), None)
+            if r is None:
+                raise checks.Unsupported(_gone_repo(name))
+            with self.sessions() as db:
+                key = config_store.key_row(db, r.key_id)
+            sib = repo_for(cfg, r, self.s, key)
+            try:
+                sib.sync_default()
+            except GitError as e:
+                raise Infra(f"repo {name} yang dibutuhkan service QA tidak bisa diambil "
+                            f"({e}).") from e
+            d = sib.checkout_default(branch)
+            checks.run_install(self._runner, self._path(d), checks.qa_install_payloads(rb, name),
+                               d, name)
+
+    def _path(self, workdir: Path) -> str:
+        return runner_path(self.s.workspace_dir, workdir)
 
     def _requested_merge(self, project: Project, job: AwakJob) -> None:
         """A human clicked Merge (approve mode). Re-checks the mode first."""
         with self.sessions() as db:
-            current = config_store.load(db, project.slug).merge_mode
-        mode = effective_mode(job.merge_mode, current)
+            cfg = config_store.load(db, project.slug)
+            rb = runbook.load(db, project.slug)
+        mode = effective_mode(job.merge_mode, cfg.merge_mode)
         merger = Merger(self)
         if mode == "manual":
             merger.fail(job.id, job.story_id,
                         "mode merge proyek sekarang manual; merge dibatalkan.")
             return
-        merger.merge(job, project, {"id": job.story_id}, require_qa_rerun=mode == "auto")
+        # The QA re-run needs a spec, which only browser QA writes.
+        rc = cfg.repo(job.repo_id)
+        qa_mode = qa_mode_for(cfg, rc, rb, self.s.host_git)[0] if rc else "gates"
+        merger.merge(job, project, {"id": job.story_id},
+                     require_qa_rerun=mode == "auto" and qa_mode == "browser")
 
-    def _unclean(self, workdir: Path, sha: str, rc: RepoConfig) -> list[str]:
-        """What in the workspace differs from `sha`, besides build output."""
-        res = self._runner("clean_check", job=workdir.name)
+    def _unclean(self, workdir: Path, sha: str, rc: RepoConfig,
+                 rb: Runbook | None = None) -> list[str]:
+        """What in the workspace differs from `sha`, besides build output (in the
+        repo's subdir and in the runbook's app dirs of the repo)."""
+        apps = rb.apps_of(rc.name) if rb else []
+        dirs = [rc.subdir, *(a.dir for a in apps)]
+        generated = [f"{a.dir}/{g}" if a.dir else g for a in apps for g in a.generated]
+        res = self._runner("clean_check", path=self._path(workdir))
         out = []
         head = str(res.get("head") or "")
         if head != sha:
             out.append(f"HEAD {head[:8] or '?'} != {sha[:8]}")
         entries = res.get("entries") or []
         out += [f"{e.get('status', '')} {e.get('path', '')}".strip() for e in entries
-                if not build_output(str(e.get("status", "")), str(e.get("path", "")), rc.subdir)]
+                if not build_output(str(e.get("status", "")), str(e.get("path", "")), dirs,
+                                    generated)]
         if res.get("truncated"):
             out.append("(more paths not listed)")
+        if out and all(u.startswith("!! ") for u in out):
+            # Only ignored files, HEAD is the commit: almost always something the
+            # install or a check generates. Telling the agent to "commit
+            # everything" made it commit build artefacts, so a human decides.
+            paths = ", ".join(f"`{u[3:]}`" for u in out[:10])
+            raise NeedsHuman(f"setelah install dan pemeriksaan, workspace berisi berkas yang di-ignore "
+                       f"git dan tidak dikenal sebagai hasil build: {paths}. Jika itu dibuat oleh "
+                       f"install atau build, tambahkan ke `generated` app di runbook (Pengaturan "
+                       f"proyek → Agen), lalu buka blokir story.")
         return out[:20]
 
     def _runner(self, op: str, **payload) -> dict:
-        res = self.runner.call(op, **payload)
+        try:
+            res = self.runner.call(op, **payload)
+        except RunnerRejected as e:
+            # The same request is refused again: a folder, command or env from
+            # the runbook or the repo settings the runner cannot accept.
+            raise checks.Unsupported(
+                f"runner menolak langkah {op}: {e}. Periksa runbook (repo, folder, perintah, "
+                "env) dan pengaturan repo di Pengaturan proyek → Agen.") from e
         if res.get("infra_error"):
             raise Infra(f"{op}: {res['infra_error']}")
         return res
@@ -697,7 +904,7 @@ class Worker:
         head = f"**Awak** · percobaan {max(n, 1)}/{self.s.max_attempts} · {mins} mnt"
         if job.cost_idr:
             head += f" · biaya model Rp{job.cost_idr:,.0f}".replace(",", ".")
-        body = secrets.redact(f"{head}\n\n{text}", self.secret_values)
+        body = secrets.redact(f"{head}\n\n{text}", self.redact_values)
         self.taiga.comment(story_id, body)
         self._event(job_id, "comment", {"text": body[:500]})
 
@@ -744,17 +951,40 @@ def repo_for(config: ProjectConfig, repo_row: RepoConfig, settings: Settings,
 
     return Repo(bare, repo_row.url, settings.workspace_dir, settings.awak_uid,
                 default_branch=repo_row.default_branch, subdir=repo_row.subdir, git_env=env,
-                scratch_dir=str(Path(settings.repos_dir) / "scratch"))
+                scratch_dir=str(Path(settings.repos_dir) / "scratch"), slug=config.slug,
+                name=repo_row.name)
 
 
-def command_lines(text: str) -> list[list[str]]:
-    """Newline-separated command lines -> argv lists (no shell)."""
-    out = []
-    for line in (text or "").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#"):
-            out.append(shlex.split(line))
-    return out
+def qa_mode_for(cfg: ProjectConfig, rc: RepoConfig, rb: Runbook | None,
+                host_git: str) -> tuple[str, str]:
+    """The project's QA mode for a story of `rc`, and why it was lowered (if).
+    Browser QA runs from the runbook's qa section, or, without one, only for
+    Kemudi's own repo (iteration 1's vite path)."""
+    mode = cfg.qa_mode if cfg.qa_mode in QA_MODES else "gates"
+    if mode != "browser" or (rb is not None and rb.browser_qa_ready()):
+        return mode, ""
+    if rb is not None and rb.qa_service() is not None:
+        return "gates", ("Mode QA proyek Browser, tetapi service QA di runbook (atau service yang "
+                         "dibutuhkannya) bertipe compose "
+                         "(baru tersedia di tahap 1b); diperlakukan sebagai Gates only.")
+    if rc.url == host_git:
+        return mode, ""
+    return "gates", ("Mode QA proyek Browser, tetapi QA browser belum bisa berjalan "
+                     f"untuk repo {rc.name} (perlu runbook dengan bagian QA); "
+                     "diperlakukan sebagai Gates only.")
+
+
+def runbook_qa(rb: Runbook | None) -> dict | None:
+    """The runbook's QA plan when browser QA runs from it; None: Kemudi's path."""
+    if rb is None or not rb.browser_qa_ready():
+        return None
+    return checks.qa_plan(rb)
+
+
+def runner_path(workspace_dir: str, workdir: Path) -> str:
+    """A checkout as the runner names it: relative to the workspace, `/`-joined
+    (`<slug>/us-<ref>/<repo>`); the runner validates its shape."""
+    return Path(workdir).relative_to(Path(workspace_dir)).as_posix()
 
 
 # What the install, the gates and QA themselves leave in a workspace. Only
@@ -762,16 +992,29 @@ def command_lines(text: str) -> list[list[str]]:
 QA_DIR = ".qa"                                   # repo root only
 ANYWHERE_DIRS = {"node_modules", "__pycache__"}  # at any depth
 BUILD_DIRS = {"dist", ".vite", ".turbo", "coverage", ".pytest_cache", ".ruff_cache",
-              ".mypy_cache", ".venv", "target"}  # at the repo root or the repo's subdir
+              ".mypy_cache", ".venv", "target", ".next"}  # at the repo root or an app dir
 BUILD_SUFFIXES = (".tsbuildinfo",)               # at any depth
+BUILD_FILES = {"next-env.d.ts"}                  # ignored, at the root or an app dir
 
 
-def build_output(status: str, path: str, subdir: str = "") -> bool:
+def build_output(status: str, path: str, subdir: str | list[str] = "",
+                 generated: list[str] | tuple[str, ...] = ()) -> bool:
+    """Whether a `git status` entry is something install/gates/QA produce.
+    `generated`: repo-relative globs from the runbook's apps; like
+    BUILD_FILES they only excuse *ignored* paths (an untracked, unignored
+    file is something the commit is missing)."""
     if status not in ("??", "!!"):
         return False
     parts = path.strip("/").split("/")
     if not parts or any(p in ("", ".", "..") for p in parts):
         return False
+    dirs = [subdir] if isinstance(subdir, str) else subdir
+    app_dirs = {"", *(d.strip("/") for d in dirs)}
+    if status == "!!" and not path.endswith("/"):
+        if parts[-1] in BUILD_FILES and "/".join(parts[:-1]) in app_dirs:
+            return True
+        if any(fnmatch.fnmatchcase(path, g) for g in generated):
+            return True
     if any(p in ANYWHERE_DIRS for p in parts[:-1]) or (
             path.endswith("/") and parts[-1] in ANYWHERE_DIRS):
         return True
@@ -782,24 +1025,31 @@ def build_output(status: str, path: str, subdir: str = "") -> bool:
         return False
     if name == QA_DIR and parent == "":
         return True
-    return name in BUILD_DIRS and parent in {"", subdir.strip("/")}
+    return name in BUILD_DIRS and parent in app_dirs
 
 
-_TIMEOUTS = {"install_cmd": 900, "check_cmd": 900, "build_cmd": 600}
+def _gone_repo(name: str) -> str:
+    return (f"service QA di runbook berjalan dari repo {name}, yang tidak ada lagi di "
+            "pengaturan Agen; perbaiki runbook di Pengaturan proyek → Agen.")
 
 
-def _commands(rc: RepoConfig, op: str) -> dict:
-    """Runner payload: the repo's subdir and command list for `install`/`gates`."""
-    fields = ("install_cmd",) if op == "install" else ("check_cmd", "build_cmd")
-    cmds = []
-    try:
-        for f in fields:
-            for argv in command_lines(getattr(rc, f)):
-                cmds.append({"name": shlex.join(argv), "argv": argv, "timeout": _TIMEOUTS[f]})
-    except ValueError as e:
-        raise Stop(f"perintah repo {rc.name} tidak valid ({e}); perbaiki di "
-                   f"Pengaturan proyek → Agen.") from e
-    return {"subdir": rc.subdir, "commands": cmds}
+def _unclean_feedback(unclean: list[str]) -> str:
+    return ("The checks and QA ran with files that are not in your commit "
+            "(or HEAD was not your commit): " + "; ".join(unclean)
+            + ". Commit everything the story needs and leave no other "
+              "files (ignored ones included) in the workspace.")
+
+
+def _done_tail(mode: str, branch: str, repo: Repo) -> str:
+    """What happens next with a Done card, by merge mode."""
+    if mode == "manual":
+        return (f"Pindah ke Done dengan tag `{DONE_TAG}`: branch `{branch}` "
+                f"belum di-merge dan perlu direview manusia.")
+    if mode == "approve":
+        return (f"Pindah ke Done dengan tag `{DONE_TAG}`: branch `{branch}` "
+                f"menunggu Merge di Kemudi.")
+    return (f"Pindah ke Done dengan tag `{DONE_TAG}`; merge otomatis ke "
+            f"`{repo.default_branch}` berjalan.")
 
 
 def _quote(text: str) -> str:

@@ -36,7 +36,8 @@ def remote(tmp_path) -> Path:
 
 @pytest.fixture
 def repo(tmp_path, remote) -> Repo:
-    return Repo(str(tmp_path / "bare.git"), str(remote), str(tmp_path / "ws"), uid=0)
+    return Repo(str(tmp_path / "bare.git"), str(remote), str(tmp_path / "ws"), uid=0,
+                slug="kemudi", name="kemudi")
 
 
 def rev(remote: Path, ref: str = "main") -> str:
@@ -191,7 +192,7 @@ def test_auto_mode_non_ff_reruns_qa(tmp_path, repo, remote):
     job = job_of(sessions)
     assert runner.calls.count("qa") == 2
     assert runner.calls[-4:] == ["install", "gates", "qa_reset", "qa"]
-    spec = tmp_path / "ws" / "awak-us-12" / ".qa" / "spec" / "story.spec.ts"
+    spec = tmp_path / "ws" / "kemudi" / "us-12" / "kemudi" / ".qa" / "spec" / "story.spec.ts"
     assert spec.read_text().startswith("test(")  # the spec that passed QA, restored
     assert rev(remote) == other and parents(remote) != [other, job.last_sha]
     assert job.merge_state == "failed" and "QA ulang" in job.merge_error
@@ -371,7 +372,7 @@ def test_deploy_output_is_redacted_and_posted(tmp_path, repo, remote):
     request(sessions)
     w.tick()
     payload = next(p for op, p in runner.payloads if op == "deploy")
-    assert payload["command"] == "make deploy" and payload["job"] == "awak-us-12"
+    assert payload["command"] == "make deploy" and payload["path"] == "kemudi/us-12/kemudi"
     text = taiga.texts(1)[-1]
     assert "Deploy selesai" in text and "pulled" in text
     assert SECRET not in text and "sk-aaaa" not in text

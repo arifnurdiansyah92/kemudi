@@ -14,7 +14,8 @@ module.exports = defineConfig({
   reporter: [['json', { outputFile: env.QA_REPORT }]],
   use: {
     baseURL: env.QA_BASE_URL,
-    storageState: env.QA_STATE,
+    // Kemudi's QA login; runbook QA starts logged out.
+    ...(env.QA_STATE ? { storageState: env.QA_STATE } : {}),
     screenshot: { mode: 'on', fullPage: true },
     viewport: { width: 1440, height: 900 },
     locale: 'en-US',

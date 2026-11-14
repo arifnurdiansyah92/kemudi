@@ -70,6 +70,12 @@ class HermesAgent:
             data = r.json()
             content = data["choices"][0]["message"].get("content") or ""
             usage = data.get("usage") or {}
+            # Hermes turns a dead provider into a chatty final message; without
+            # this the story would lose an attempt to an outage.
+            with self.sessions() as s:
+                failure = llm_conn.provider_failure(s, alias)
+            if failure:
+                raise AgentError(f"model provider failed for the whole run: {failure}")
             ok = True
             return content, self._cost(usage)
         except (httpx.HTTPError, KeyError, ValueError) as e:

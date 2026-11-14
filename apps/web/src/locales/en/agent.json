@@ -23,7 +23,8 @@
   },
   "merge": {
     "title": "Merge policy",
-    "description": "What happens after a story passes QA on its branch. Any failure leaves {{branch}} untouched and tags the story needs-human.",
+    "description": "What happens after Awak finishes a story on its branch. Any failure leaves {{branch}} untouched and tags the story needs-human.",
+    "label": "Merge into {{branch}}",
     "anyBranch": "the default branch",
     "default": "Default",
     "saved": "Merge policy saved",
@@ -38,7 +39,8 @@
       },
       "auto": {
         "label": "Auto",
-        "risk": "Merges into {{branch}} and runs the deploy command with no human check, right after checks and QA pass on the exact commit. For small or throwaway projects."
+        "risk": "Merges into {{branch}} and runs the deploy command with no human check, right after checks and QA pass on the exact commit. For small or throwaway projects.",
+        "needsBrowser": "Needs QA set to Browser. Kemudi auto-merges only code that was run and checked in a browser."
       }
     },
     "confirm": {
@@ -53,6 +55,25 @@
       "saved": "Deploy command saved",
       "set": "A deploy command is set. Only project admins can see it.",
       "notSet": "No deploy command is set; merges do not deploy."
+    },
+    "qa": {
+      "label": "QA before a story is Done",
+      "saved": "QA mode saved",
+      "lockedByAuto": "Auto merge needs Browser. Choose Approve or Manual below to lower QA.",
+      "modes": {
+        "off": {
+          "label": "Off",
+          "help": "No checks. The commit is pushed and the story goes to Done for review."
+        },
+        "gates": {
+          "label": "Gates only",
+          "help": "Runs the repo's install, lint, type and test commands. Nothing is opened in a browser."
+        },
+        "browser": {
+          "label": "Browser",
+          "help": "Gates, then Awak starts the app and checks each acceptance criterion in a browser."
+        }
+      }
     }
   },
   "llm": {
@@ -220,7 +241,18 @@
       "branch": "Branch {{branch}} found",
       "yes": "Yes",
       "no": "No",
-      "detected": "Commands found in the repo: {{fields}}. Empty fields were filled from them."
+      "detected": "Commands found in the repo: {{fields}}. Empty fields were filled from them.",
+      "apps": {
+        "title_one": "{{count}} app found",
+        "title_other": "{{count}} apps found",
+        "root": "Repository root",
+        "install_cmd": "Install",
+        "check_cmd": "Checks",
+        "build_cmd": "Build",
+        "run_cmd": "Run",
+        "noCommands": "No commands found.",
+        "hint": "A runbook can run each of these apps with its own commands."
+      }
     },
     "form": {
       "name": "Name",
@@ -252,6 +284,63 @@
       "api": "API",
       "mobile": "Mobile",
       "other": "Other"
+    }
+  },
+  "runbook": {
+    "title": "Runbook",
+    "description": "How Awak installs, checks, starts and QA-tests this project's apps. Saving a runbook approves it.",
+    "unavailable": "The runbook isn't reachable. Check that the Kemudi AI orchestrator is running.",
+    "empty": {
+      "title": "No runbook yet",
+      "body": "Without one, Awak runs each repository's own commands, and Browser QA works only for Kemudi's own repository.",
+      "admin": "Configure automatically arrives in a later update. Until then, you can paste a runbook as JSON.",
+      "member": "Configure automatically arrives in a later update. Until then, a project admin can paste one."
+    },
+    "paste": "Paste runbook JSON",
+    "editJson": "Edit JSON",
+    "approved": "Version {{version}} · approved by {{who}}, {{when}}",
+    "version": "Version {{version}}",
+    "none": "None",
+    "saved": "Runbook saved as version {{version}}",
+    "apps": {
+      "title": "Apps",
+      "root": "(root)",
+      "runIn": "runs in {{target}}",
+      "install": "Install",
+      "checks": "Checks",
+      "build": "Build",
+      "env": "Env",
+      "noCommands": "No commands."
+    },
+    "services": {
+      "title": "Services",
+      "kinds": {
+        "process": "Process",
+        "compose": "Compose"
+      },
+      "qaTarget": "QA opens this",
+      "ofApp": "app {{app}}",
+      "command": "Command",
+      "expose": "Expose",
+      "health": "Health",
+      "healthWithin": "{{path}} within {{seconds}} s",
+      "seed": "Seed",
+      "qaEnv": "QA env"
+    },
+    "env": {
+      "title": "Environment variables",
+      "secret": "secret",
+      "required": "required"
+    },
+    "editor": {
+      "title": "Edit runbook JSON",
+      "description": "Kemudi checks every app, service and command before saving. Saving approves this version as you.",
+      "label": "Runbook JSON",
+      "invalidJson": "This isn't valid JSON: {{message}}",
+      "notObject": "The runbook must be a JSON object, starting with {.",
+      "rejected_one": "Not saved: {{count}} problem",
+      "rejected_other": "Not saved: {{count}} problems",
+      "save": "Save and approve"
     }
   },
   "roles": {

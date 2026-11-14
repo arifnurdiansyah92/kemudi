@@ -20,6 +20,10 @@ from pathlib import Path
 from typing import Callable, Iterator
 
 BRANCH_RE = re.compile(r"^awak/us-\d+$")
+# Path parts of a story checkout, <workspace>/<slug>/us-<ref>/<repo name>; the
+# runner validates the same shapes (infra/runner/runner.py PATH_RE).
+SLUG_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,99}")
+REPO_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
 # Passed as GIT_CONFIG_* environment ("command line" scope), so every git
 # process inherits it, including the upload-pack a local fetch spawns. The
 # workspace belongs to another uid (Awak), hence safe.directory.
@@ -83,11 +87,30 @@ def _git(*args: str, git_dir: str | None = None, cwd: str | None = None, timeout
     return p.stdout.strip()
 
 
+def list_dirs(bare: str, branch: str, path: str = "") -> list[str]:
+    """Directory names under `path` on `branch` of a bare repo (`ls-tree`, no
+    checkout); [] when the path or branch does not exist."""
+    spec = f"refs/heads/{branch}:{path}" if path else f"refs/heads/{branch}"
+    try:
+        out = _git("ls-tree", "-z", spec, git_dir=bare, timeout=30)
+    except GitError:
+        return []
+    names = []
+    for entry in out.split("\0"):
+        meta, _, name = entry.partition("\t")
+        if name and meta.split(" ")[1:2] == ["tree"]:
+            names.append(name)
+    return sorted(names)
+
+
 class Repo:
     def __init__(self, bare: str, remote: str, workspace: str, uid: int,
                  default_branch: str = "main", subdir: str = "", git_env: GitEnv = None,
-                 scratch_dir: str | None = None):
+                 scratch_dir: str | None = None, slug: str = "", name: str = ""):
         self.scratch_dir = scratch_dir
+        # The project and the repo's name: they place its checkouts.
+        self.slug = slug
+        self.name = name
         self.bare = bare
         self.remote = remote
         self.workspace = workspace
@@ -134,17 +157,29 @@ class Repo:
     def sha(self, branch: str) -> str:
         return _git("rev-parse", f"refs/heads/{branch}", git_dir=self.bare)
 
+    def root(self, branch: str) -> Path:
+        """The story's folder, `<workspace>/<slug>/us-<ref>`: the story's repo and
+        the project's other repos sit side by side in it. Per project, so two
+        projects' US #1 never share a folder."""
+        if not BRANCH_RE.match(branch):
+            raise GitError(f"refusing branch {branch!r}")
+        if not SLUG_RE.fullmatch(self.slug) or not REPO_NAME_RE.fullmatch(self.name):
+            raise GitError(f"no workspace for repo {self.name!r} of project {self.slug!r}")
+        return Path(self.workspace) / self.slug / f"us-{branch.rsplit('-', 1)[1]}"
+
     def job_dir(self, branch: str) -> Path:
-        return Path(self.workspace) / branch.replace("/", "-")
+        return self.root(branch) / self.name
 
     def prepare(self, branch: str) -> Path:
         """A fresh clone for the attempt, on the branch (new from the default
-        branch, or the previous attempt's tip for rework)."""
+        branch, or the previous attempt's tip for rework). The whole story
+        folder starts empty: siblings are cloned again by `checkout_default`."""
         if not BRANCH_RE.match(branch):
             raise GitError(f"refusing branch {branch!r}")
-        d = self.job_dir(branch)
-        if d.exists():
-            shutil.rmtree(d, onerror=_force_remove)
+        root, d = self.root(branch), self.job_dir(branch)
+        if root.exists():
+            shutil.rmtree(root, onerror=_force_remove)
+        root.mkdir(parents=True)
         start = branch if self.has_branch(branch) else self.default_branch
         _git("clone", "--no-tags", "--branch", start, self.bare, str(d))
         if start != branch:
@@ -158,6 +193,19 @@ class Repo:
         exclude.parent.mkdir(parents=True, exist_ok=True)
         with exclude.open("a") as fh:
             fh.write("\n.qa/\nnode_modules/\n")
+        _chown(d, self.uid)
+        return d
+
+    def checkout_default(self, branch: str) -> Path:
+        """This repo at its default branch in story `branch`'s folder: read-only
+        context for a story of another repo of the project. Nothing in it is
+        ever collected; no remote, like prepare()."""
+        d = self.job_dir(branch)
+        if d.exists():
+            shutil.rmtree(d, onerror=_force_remove)
+        d.parent.mkdir(parents=True, exist_ok=True)
+        _git("clone", "--no-tags", "--quiet", "--branch", self.default_branch, self.bare, str(d))
+        _git("remote", "remove", "origin", cwd=str(d))
         _chown(d, self.uid)
         return d
 

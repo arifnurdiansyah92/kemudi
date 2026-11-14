@@ -16,6 +16,7 @@ from .prompts import KEMUDI_QA_OVERLAY, KEMUDI_WEB_OVERLAY  # noqa: F401 (re-exp
 DEFAULTS = {
     "enabled": False,
     "merge_mode": "approve",
+    "qa_mode": "gates",
     "deploy_command": "",
     "executor": "local",
     "ssh_host": "",
@@ -23,6 +24,8 @@ DEFAULTS = {
     "ssh_user": "",
 }
 SETTING_FIELDS = tuple(DEFAULTS)
+# off: no gates, no QA; gates: gates only; browser: gates, then browser QA.
+QA_MODES = ("off", "gates", "browser")
 
 # Iteration 1's hard-coded apps/web commands (infra/runner/runner.py).
 KEMUDI_WEB_COMMANDS = {
@@ -69,6 +72,7 @@ class ProjectConfig:
     slug: str
     enabled: bool = False
     merge_mode: str = "approve"
+    qa_mode: str = "gates"
     deploy_command: str = ""
     executor: str = "local"
     ssh_host: str = ""
@@ -107,7 +111,9 @@ def seed_from_env(db: Session, settings: Settings) -> None:
     for slug in settings.awak_project_slugs():
         if db.get(AwakProject, slug) is not None:
             continue
-        db.add(AwakProject(slug=slug, enabled=True, merge_mode="manual", updated_by="seed"))
+        # The Kemudi repo has iteration 1's browser QA (vite + gateway).
+        db.add(AwakProject(slug=slug, enabled=True, merge_mode="manual", qa_mode="browser",
+                           updated_by="seed"))
         repo = AwakRepo(project_slug=slug, name="kemudi", role="web", url=settings.host_git,
                         default_branch="main", subdir="apps/web", position=0,
                         updated_by="seed", **KEMUDI_WEB_COMMANDS)
