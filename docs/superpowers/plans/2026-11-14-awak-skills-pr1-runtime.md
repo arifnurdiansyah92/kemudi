@@ -77,4 +77,56 @@ not work, stop and report (fallback: skill text in the system prompt).
 
 ## Spike notes
 
-(filled by Task 0)
+Run 2026-11-14 on the dev stack (Hermes image `kemudi/kemudi-hermes:dev`),
+throwaway profiles `sk-test*` and set `/opt/skills/sets/test` (one skill
+`spike-hello`), written from the orchestrator container as root; removed
+afterwards. Profiles work; the design holds with the changes below.
+
+- `GATEWAY_MULTIPLEX_PROFILES=true` on kemudi-awak: `/p/<id>/v1/models`
+  answers for a profile created after boot. **But a new profile is only
+  served (turns run) after the reconcile watcher picks it up, every 30 s**
+  (or a control-socket rescan, which the orchestrator cannot reach). Before
+  that a chat completion gets `409 profile_mismatch` while `/v1/models`
+  already says 200. Served = Hermes created `gateway.lock` (and `state.db`)
+  in the profile dir. The orchestrator therefore waits (polls the shared
+  volume for `gateway.lock`, ≤ 90 s) after creating a profile, and retries a
+  `409 profile_mismatch` a few times.
+- **The profile `.env` needs `API_SERVER_KEY`** (the gateway checks the
+  profile-scoped key on `/p/<id>/`; without it every request is 401), plus
+  `KEMUDI_LLM_PROXY_TOKEN` and `KEMUDI_AWAK_MODEL` (the managed overlay's
+  `${...}` expand from the profile's scope). With these a chat completion
+  through `/p/sk-test3/` reached Kemudi's proxy (`awak_llm_aliases`
+  `upstream_ok` 2-3, no errors) and the model answered from the skill.
+- **The profile dir must be owned by uid 10000 (hermes)**: a root-owned dir
+  is parked at the first serve attempt (`gateway.lock: No such file`) and a
+  parked profile is never retried by the watcher (then `503
+  runtime_draining`). The orchestrator builds `profiles/.tmp-<id>`, chowns
+  it to 10000 and renames it into place. Also Hermes' boot hook runs `chown
+  -R hermes` over `/opt/data/profiles` on every start, so **root-owned
+  read-only config files are not possible**: accepted limit, the
+  orchestrator re-hashes `config.yaml` + `.env` before every run and
+  rewrites on mismatch (the container stays the boundary, as for
+  `/workspace`). Hermes itself never rewrote them during runs.
+- Runtime files Hermes writes into a served profile: `gateway.lock`,
+  `state.db*` (~1.5 MB), `SOUL.md`, `.skills_prompt_snapshot.json`,
+  `sessions/`, `logs/`, `cache/`, `cron/`, `skills/.hub/` (no bundled
+  skills), `pending/skills/` (staged `skill_manage` writes), `memories/`,
+  `platforms/`, `plugins/`, `hooks/`, `backups/`, `runtime/`.
+- Overlay (skills toolset on for `api_server`, removed from
+  `disabled_toolsets`, `auto_load` removed, `write_approval: true`): the
+  profile lists only the set's skill (`hermes -p sk-test skills list` →
+  `spike-hello`, source external; the default profile lists 39 bundled
+  ones, irrelevant). `skill_view spike-hello` loads from
+  `/opt/skills/sets/test`; `skill_manage create` is staged under
+  `pending/skills/<id>.json`, never applied.
+- **`GET /v1/skills` (and `/p/<id>/v1/skills`) is broken in this Hermes
+  build**: 500, `find_all_skills() got an unexpected keyword argument
+  'include_editorial'` (api_server.py calls it with an argument
+  `tools/skills_tool.py` does not take). Verification uses
+  `docker exec -u hermes kemudi-dev-kemudi-awak-1 hermes -p sk-<setid>
+  skills list` instead (same `find_all_skills` catalog, profile-scoped).
+- `HERMES_WRITE_SAFE_ROOT=/workspace` (without `/opt/data`): a run still
+  works (`write_file` to `/workspace/...` ok, `skill_view` ok, Hermes'
+  own state writes are not file-tool writes). Dropped `/opt/data`.
+- Deleting a served profile dir is safe (the watcher unserves it;
+  `/p/<id>/v1/models` → 404). The default profile keeps serving `/health`.
