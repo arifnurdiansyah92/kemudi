@@ -58,6 +58,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -78,6 +79,9 @@ CHILD_UID = int(os.environ.get("SVC_CHILD_UID", "10000"))
 BUILD_TIMEOUT = 900
 UP_TIMEOUT = 300
 CONFIG_TIMEOUT = 60
+# Network trouble worth one more build: DNS, timeouts, resets talking to a registry.
+TRANSIENT_RE = re.compile(r"server misbehaving|i/o timeout|TLS handshake timeout|"
+                          r"connection reset by peer|temporary failure in name resolution", re.I)
 EXEC_MAX_TIMEOUT = 1500
 LOG_TAIL_LINES = 200
 TAIL_CHARS = 8000
@@ -213,6 +217,7 @@ def op_svc_up(body: dict) -> dict:
     selected = sanitize.service_names(body.get("services"))
     expose = sanitize.parse_expose(body.get("expose"))
     env = sanitize.request_env(body.get("env"))
+    environment = sanitize.request_environment(body.get("environment"))
     raw_up = body.get("up")
     up_only = (None if raw_up is None else [] if raw_up == []
                else sanitize.service_names(raw_up, "up"))
@@ -264,7 +269,7 @@ def op_svc_up(body: dict) -> dict:
         raise Refused(f"docker compose config failed: {tail(redact(err or out, hide), 2000)}")
 
     # 4. rewrite
-    final = sanitize.rewrite(json.loads(out), project, expose)
+    final = sanitize.rewrite(json.loads(out), project, expose, environment)
     write_private(compose_json(project), json.dumps(final, indent=1))
     built = [n for n, s in final["services"].items() if "build" in s]
     base = compose_base(project)
@@ -272,6 +277,10 @@ def op_svc_up(body: dict) -> dict:
     # 5. build, start
     if built:
         code, out, err = docker([*base, "build", *built], BUILD_TIMEOUT)
+        if code not in (0, 124) and TRANSIENT_RE.search(out + err):
+            # A registry lookup through the nested DNS fails now and then.
+            time.sleep(5)
+            code, out, err = docker([*base, "build", *built], BUILD_TIMEOUT)
         if code != 0:
             return {"ok": False, "stage": "build", "error": f"build failed (exit {code})",
                     "logs_tail": tail(redact(out + err, hide))}

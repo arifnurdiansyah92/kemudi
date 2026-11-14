@@ -330,11 +330,30 @@ def image_name(project: str, service: str) -> str:
     return re.sub(r"[^a-z0-9._-]", "-", f"kemudi-{project}-{service}".lower())
 
 
-def rewrite(doc: dict, project: str, expose: tuple[str, int] | None) -> dict:
+def request_environment(raw) -> dict[str, dict[str, str]]:
+    """A request's `environment`: compose service -> {NAME: literal value}, which
+    replaces those entries of the service's environment (after interpolation)."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise Refused("environment must be an object")
+    out = {}
+    for svc, over in raw.items():
+        if not (isinstance(svc, str) and SERVICE_NAME_RE.fullmatch(svc)):
+            raise Refused(f"environment: bad service name {svc!r}")
+        out[svc] = request_env(over)
+    return out
+
+
+def rewrite(doc: dict, project: str, expose: tuple[str, int] | None,
+            environment: dict[str, dict[str, str]] | None = None) -> dict:
     """Step 5, on the interpolated reduced file: the compose file svc runs."""
     services = doc.get("services") or {}
     if expose and expose[0] not in services:
         raise Refused(f"expose: no service {expose[0]!r} among the started services")
+    for name in environment or {}:
+        if name not in services:
+            raise Refused(f"environment: no service {name!r} among the started services")
     out_services = {}
     for name, svc in services.items():
         s = {k: v for k, v in svc.items()
@@ -350,6 +369,13 @@ def rewrite(doc: dict, project: str, expose: tuple[str, int] | None) -> dict:
         s.pop("ports", None)
         if expose and expose[0] == name:
             s["ports"] = [f"0.0.0.0::{expose[1]}"]
+        over = (environment or {}).get(name)
+        if over:
+            env = s.get("environment") or {}
+            if isinstance(env, list):  # compose config gives a map; be safe
+                env = dict(e.split("=", 1) if "=" in e else (e, None) for e in env)
+            # The final file is read by compose again: keep '$' literal.
+            s["environment"] = {**env, **{k: v.replace("$", "$$") for k, v in over.items()}}
         s["labels"] = {LABEL: project}
         out_services[name] = s
     out: dict = {"name": project, "services": out_services}

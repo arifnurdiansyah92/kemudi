@@ -495,3 +495,19 @@ def test_unparseable_runbook_command_stops_the_story(tmp_path, repo):
     w.tick()
     assert job_of(sessions).state == "failed"
     assert any("tidak valid" in t for t in taiga.texts(1))
+
+
+def test_compose_environment_overrides():
+    rb = copy.deepcopy(PLAYFAST)
+    rb["services"][0] = {"name": "api", "kind": "compose", "repo": "pf-web",
+                         "file": "docker-compose.yml", "compose_services": ["postgres", "backend"],
+                         "expose": "backend:5000",
+                         "environment": {"backend": {"FLASK_ENV": "development"}}}
+    parsed, errs = runbook.validate(rb, REPOS)
+    assert errs == []
+    rb["services"][0]["environment"] = {"redis": {"A": "b"}, "backend": {"PATH": "/x",
+                                                                         "B": "two\nlines"}}
+    _, errs = runbook.validate(rb, REPOS)
+    assert any("'redis' is not in compose_services" in e for e in errs)
+    assert any("reserved" in e for e in errs)
+    assert any("one line" in e for e in errs)

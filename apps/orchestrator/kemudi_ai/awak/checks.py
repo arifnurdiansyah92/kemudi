@@ -374,6 +374,8 @@ class Compose:
                       "env": vault_env(self.rb, s.env if isinstance(s.env, list) else [],
                                        self.vault, f"services.{s.name}"),
                       "redact": self.redact}
+        if s.environment:
+            body["environment"] = {c: dict(v) for c, v in s.environment.items()}
         if s.expose and expose:
             body["expose"] = s.expose
         if up is not None:

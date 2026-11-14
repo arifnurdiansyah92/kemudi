@@ -143,6 +143,10 @@ class Service(_Strict):
     ready_timeout: int = Field(120, ge=1, le=600)
     # vault names (compose), or name -> value for a process service
     env: list[str] | dict[str, str] = Field(default_factory=dict)
+    # compose: literal values that replace a compose service's environment
+    # entries (a production compose run for QA: DATABASE_URL, FLASK_ENV...).
+    # Not for secrets: those are vault names in `env`, interpolated by compose.
+    environment: dict[str, dict[str, str]] = Field(default_factory=dict)
 
     def expose_service(self) -> str:
         return self.expose.split(":", 1)[0] if self.expose else ""
@@ -389,7 +393,7 @@ def _problems(rb: Runbook, repo_names: set[str]) -> list[str]:
                 if p:
                     out.append(f"{w}.command: {p}")
                 no_env_refs(f"{w}.command", s.command)
-            for field in ("repo", "file", "compose_services", "expose"):
+            for field in ("repo", "file", "compose_services", "expose", "environment"):
                 if getattr(s, field):
                     out.append(f"{w}: {field} is only for a compose service")
             if isinstance(s.env, list) and s.env:
@@ -429,6 +433,17 @@ def _problems(rb: Runbook, repo_names: set[str]) -> list[str]:
                 elif m.group(1) not in s.compose_services:
                     out.append(f"{w}: expose names {m.group(1)!r}, which is not in "
                                "compose_services")
+            for c, over in s.environment.items():
+                if c not in s.compose_services:
+                    out.append(f"{w}.environment: {c!r} is not in compose_services")
+                if len(over) > 50:
+                    out.append(f"{w}.environment.{c}: at most 50 entries")
+                for k, v in over.items():
+                    p = env_name_problem(k)
+                    if p:
+                        out.append(f"{w}.environment.{c}: {p}")
+                    if len(v) > 2000 or any(chr(o) in v for o in (0, 10, 13)):
+                        out.append(f"{w}.environment.{c}.{k}: one line, at most 2000 characters")
             if isinstance(s.env, list):
                 vault_names(f"{w}.env", s.env)
             elif s.env:

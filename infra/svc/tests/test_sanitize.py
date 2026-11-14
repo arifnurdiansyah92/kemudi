@@ -310,3 +310,28 @@ def test_parse_bytes():
     assert sanitize.parse_bytes(None) is None
     with pytest.raises(Refused):
         sanitize.parse_bytes("lots")
+
+
+def test_rewrite_environment_overrides(doc, checkout):
+    reduced = sanitize.reduce(doc, ["backend"], checkout)
+    over = sanitize.request_environment(
+        {"backend": {"DATABASE_URL": "postgresql+psycopg2://pg/db", "PRICE": "$5"}})
+    out = sanitize.rewrite(reduced, "playfast-us1", ("backend", 5000), over)
+    env = out["services"]["backend"]["environment"]
+    assert env["DATABASE_URL"] == "postgresql+psycopg2://pg/db"
+    assert env["PRICE"] == "$$5"  # compose reads the final file again
+    assert "JWT_SECRET_KEY" in env  # the rest of the service's environment stays
+    assert "DATABASE_URL" not in (out["services"]["postgres"].get("environment") or {})
+
+
+@pytest.mark.parametrize("raw", [[], {"backend": []}, {"bad name!": {}},
+                                 {"backend": {"DOCKER_HOST": "x"}}, {"backend": {"A": 1}}])
+def test_request_environment_refuses(raw):
+    with pytest.raises(sanitize.Refused):
+        sanitize.request_environment(raw)
+
+
+def test_rewrite_environment_unknown_service(doc, checkout):
+    reduced = sanitize.reduce(doc, ["backend"], checkout)
+    with pytest.raises(sanitize.Refused):
+        sanitize.rewrite(reduced, "p", None, {"inbox-backend": {"A": "b"}})

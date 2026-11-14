@@ -245,3 +245,14 @@ def test_svc_sweep(svc, fake):
     assert any(c["args"][:2] == ["builder", "prune"] for c in fake.calls)
     with pytest.raises(svc.Refused):
         svc.op_svc_sweep({"keep": ["../x"]})
+
+
+def test_svc_up_retries_a_build_once_on_network_trouble(svc, fake, monkeypatch):
+    monkeypatch.setattr(svc.time, "sleep", lambda s: None)
+    fake.fail["build"] = (1, "", "lookup auth.docker.io on 127.0.0.11:53: server misbehaving")
+    res = up(svc)
+    assert res["ok"] is False and fake.verbs().count("build") == 2
+    fake.calls.clear()
+    fake.fail["build"] = (1, "", "step 3: pip failed")
+    up(svc)
+    assert fake.verbs().count("build") == 1
