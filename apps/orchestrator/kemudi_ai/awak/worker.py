@@ -559,7 +559,12 @@ class Worker:
             current = config_store.load(db, project.slug).merge_mode
         mode = effective_mode(self._job(job.id).merge_mode, current)
         if mode == "auto":
-            mode = "approve"  # auto merge only follows browser QA
+            # Auto merge only follows browser QA. Saved on the job, so the
+            # Merge button (which needs approve) works for this story.
+            mode = "approve"
+            self._set(job.id, merge_mode="approve")
+            self._event(job.id, "merge_mode", {"merge_mode": "approve",
+                                               "reason": "done without browser QA"})
         tags = sorted(set(tag_names(story)) | {DONE_TAG})
         self.taiga.update_story(story["id"], version=story["version"],
                                 status=project.status("done"), tags=tags)

@@ -89,6 +89,23 @@ def test_gates_mode_clean_check_runs_after_gates(tmp_path, repo):
     assert runner.calls[:4] == ["install", "commit", "gates", "clean_check"]
 
 
+def test_auto_merge_without_browser_qa_waits_for_the_merge_button(tmp_path, repo):
+    """Auto merge only follows browser QA. A story done without it is an
+    approve story for good: the Merge button works and nothing auto-merges."""
+    from kemudi_ai.awak.agent_api import _merge_blocker
+
+    w, taiga, sessions, runner = _worker(tmp_path, repo, "gates")
+    set_mode(sessions, merge_mode="auto")
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    job = job_of(sessions)
+    assert job.state == "passed" and job.merge_mode == "approve" and job.merge_state == ""
+    assert "menunggu Merge di Kemudi" in taiga.texts(1)[-1]
+    assert "qa" not in runner.calls
+    with sessions() as db:
+        assert _merge_blocker(db, "kemudi", db.get(AwakJob, job.id)) is None
+
+
 def test_off_mode_runs_no_gates(tmp_path, repo):
     w, taiga, sessions, runner = _worker(tmp_path, repo, "off")
     set_mode(sessions, merge_mode="manual")
