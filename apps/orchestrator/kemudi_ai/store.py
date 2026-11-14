@@ -183,8 +183,11 @@ class AwakProject(Base):
     slug: Mapped[str] = mapped_column(String(200), primary_key=True)
     enabled: Mapped[bool] = mapped_column(default=False)
     merge_mode: Mapped[str] = mapped_column(String(10), default="approve")
-    # off | gates | browser: what runs after the commit is collected.
-    qa_mode: Mapped[str] = mapped_column(String(10), default="gates")
+    # off | gates | browser: what runs after the commit is collected. Added to
+    # an old table without a default: NULL marks a row the one-time fix-up
+    # (`_set_qa_modes`) has not reached yet.
+    qa_mode: Mapped[str] = mapped_column(String(10), default="gates",
+                                         info={"migrate_default": False})
     deploy_command: Mapped[str] = mapped_column(Text, default="")
     executor: Mapped[str] = mapped_column(String(10), default="local")
     ssh_host: Mapped[str] = mapped_column(String(255), default="")
@@ -331,22 +334,26 @@ def init_db(engine, host_git: str | None = None) -> None:
     """`host_git`: the local Kemudi repo (settings.host_git), for one-time
     data fix-ups; read from the settings when not given."""
     Base.metadata.create_all(engine)
-    added = _migrate(engine)
-    if "qa_mode" in added.get("awak_projects", set()):
+    _migrate(engine)
+    _set_qa_modes(engine, host_git)
+
+
+def _set_qa_modes(engine, host_git: str | None) -> None:
+    """For projects from before `awak_projects.qa_mode` (NULL there): those
+    with the Kemudi repo keep browser QA (iteration 1-2 behaviour); the others
+    get `gates`, and `auto` merge, which needs browser QA, becomes `approve`.
+    Driven by the NULLs, in one transaction, so a crash in between is
+    finished on the next start and a fixed-up row is never touched again."""
+    with Session(engine) as db:
+        rows = db.query(AwakProject).filter(AwakProject.qa_mode.is_(None)).all()
+        if not rows:
+            return
         if host_git is None:
             from .config import get_settings
 
             host_git = get_settings().host_git
-        _set_qa_modes(engine, host_git)
-
-
-def _set_qa_modes(engine, host_git: str) -> None:
-    """Runs once, when `awak_projects.qa_mode` is added: projects with the
-    Kemudi repo keep browser QA (iteration 1-2 behaviour); the others get
-    `gates`, and `auto` merge, which needs browser QA, becomes `approve`."""
-    with Session(engine) as db:
         kemudi = {r.project_slug for r in db.query(AwakRepo).filter_by(url=host_git)}
-        for p in db.query(AwakProject):
+        for p in rows:
             p.qa_mode = "browser" if p.slug in kemudi else "gates"
             if p.merge_mode == "auto" and p.qa_mode != "browser":
                 p.merge_mode = "approve"
@@ -384,6 +391,8 @@ def _migrate(engine) -> dict[str, set[str]]:
             for col in missing:
                 ddl = f"ALTER TABLE {name} ADD COLUMN {col.name} {col.type.compile(dialect=engine.dialect)}"
                 default = col.default.arg if col.default is not None else None
+                if col.info.get("migrate_default") is False:
+                    default = None  # left NULL for a data fix-up to fill in
                 if default is not None and not callable(default):
                     ddl += f" DEFAULT {_sql_literal(default)}"
                     if not col.nullable:

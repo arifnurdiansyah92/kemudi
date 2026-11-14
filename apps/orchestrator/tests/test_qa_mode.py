@@ -220,6 +220,32 @@ def test_migration_sets_qa_mode_once(tmp_path):
         assert d.subject == "playfast" and d.detail["changed"] == {"merge_mode": "approve"}
         db.get(AwakProject, "playfast").merge_mode = "auto"
         db.commit()
-    init_db(engine, host_git="/host-git")  # the column exists: no second fix-up
+    init_db(engine, host_git="/host-git")  # every row has a mode: no second fix-up
     with S() as db:
         assert db.get(AwakProject, "playfast").merge_mode == "auto"
+
+
+def test_migration_fix_up_resumes_after_a_crash(tmp_path):
+    """The column was added but the process died before the fix-up: the next
+    start still sets the modes (NULL marks a project not yet fixed up)."""
+    engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}")
+    Base.metadata.create_all(engine)
+    with engine.begin() as c:
+        c.execute(text("ALTER TABLE awak_projects DROP COLUMN qa_mode"))
+        c.execute(text(
+            "INSERT INTO awak_projects (slug, enabled, merge_mode, deploy_command, executor,"
+            " ssh_host, ssh_port, ssh_user, preflight, llm_base_url, llm_model,"
+            " llm_api_key_enc, llm_key_last4, last_error, updated_by, updated_at) VALUES"
+            " ('playfast', 1, 'auto', '', 'local', '', 22, '', '{}', '', '', '', '', '',"
+            " '', '2026-11-14 10:00:00')"))
+        c.execute(text("ALTER TABLE awak_projects ADD COLUMN qa_mode VARCHAR(10)"))  # crash
+    init_db(engine, host_git="/host-git")
+    S = make_session(f"sqlite:///{tmp_path / 'old.db'}")
+    with S() as db:
+        p = db.get(AwakProject, "playfast")
+        assert (p.qa_mode, p.merge_mode) == ("gates", "approve")
+        db.add(AwakProject(slug="new", enabled=False, merge_mode="auto", qa_mode="browser"))
+        db.commit()
+    init_db(engine, host_git="/host-git")
+    with S() as db:
+        assert db.get(AwakProject, "new").qa_mode == "browser"
