@@ -1,6 +1,17 @@
 {
   "unavailable": "Pengaturan Awak tidak dapat dijangkau. Pastikan orchestrator Kemudi AI sedang berjalan.",
   "lastChange": "Terakhir diubah oleh {{who}}, {{when}}",
+  "botAccess": {
+    "title": "Awak tidak dapat membuka proyek ini",
+    "notMember": "Awak belum menjadi anggota proyek ini di Taiga, jadi Awak tidak bisa melihat board dan tidak ada story yang dikerjakan.",
+    "give": "Beri Awak akses",
+    "given": "Awak sekarang dapat membuka proyek ini",
+    "askAdmin": "Minta admin proyek memberi Awak akses."
+  },
+  "lastError": {
+    "label": "Masalah terakhir:",
+    "at": "Masalah terakhir, {{when}}:"
+  },
   "status": {
     "title": "Awak",
     "description": "Saat Awak aktif, Awak mengambil story berstatus Ready yang memiliki tag area, menulis kodenya di branch tersendiri, menjalankan pemeriksaan dan QA, lalu mengikuti kebijakan merge di bawah.",
@@ -133,17 +144,18 @@
       "needsKey": "Buat kunci dan tambahkan ke mesin sebelum memeriksa.",
       "never": "Belum diperiksa.",
       "checkedAt": "Diperiksa {{when}}",
-      "passed_other": "Memenuhi kebutuhan minimum untuk {{count}} job sekaligus",
-      "failed": "Di bawah kebutuhan minimum untuk satu job",
+      "passed_other": "Cukup untuk {{count}} story sekaligus",
+      "oneAtATime": "Saat ini Awak mengerjakan satu story dalam satu waktu.",
+      "failed": "Di bawah kebutuhan minimum untuk satu story",
       "fact": "Pemeriksaan",
       "found": "Ditemukan",
-      "minimum": "Minimum per job",
+      "minimum": "Minimum per story",
       "cpu": "CPU",
       "ram": "Memori",
       "disk": "Disk kosong",
       "docker": "Docker",
       "arch": "Arsitektur",
-      "slots": "Slot job",
+      "slots": "Story sekaligus",
       "cpuValue": "{{count}} vCPU",
       "gbValue": "{{value}} GB",
       "unknown": "Tidak diketahui",
@@ -257,11 +269,13 @@
     "templates": {
       "frontend": "Frontend",
       "backend": "Backend",
+      "fullstack": "Fullstack",
       "qa": "QA"
     },
     "areas": {
       "web": "web",
       "backend": "backend",
+      "both": "Frontend + backend",
       "qa": "qa"
     },
     "editor": {
@@ -269,6 +283,7 @@
       "template": "Template",
       "area": "Tag area",
       "areaHint": "Story dengan tag area:{{area}} diberikan ke peran ini.",
+      "areaHintBoth": "Story dengan tag area:both, atau dengan tag area:web dan area:backend sekaligus, diberikan ke peran ini. Peran ini juga mengambil story satu area jika tidak ada peran lain untuk area tersebut.",
       "model": "Model",
       "modelHint": "Biarkan default koneksi, atau pilih model lain dari penyedia yang sama.",
       "repos": "Repositori",

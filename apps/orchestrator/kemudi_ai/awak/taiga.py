@@ -103,8 +103,12 @@ class Taiga:
         return r
 
     # --- reads ----------------------------------------------------------
+    def project_detail(self, slug: str) -> dict:
+        """The raw project, with `members` (usernames) and `roles`."""
+        return self._req("GET", "/projects/by_slug", params={"slug": slug}).json()
+
     def project(self, slug: str) -> Project:
-        p = self._req("GET", "/projects/by_slug", params={"slug": slug}).json()
+        p = self.project_detail(slug)
         statuses = {s["slug"]: s["id"] for s in p.get("us_statuses", [])}
         names = {s["id"]: s["name"] for s in p.get("us_statuses", [])}
         return Project(id=p["id"], slug=slug, statuses=statuses, status_names=names)
@@ -144,6 +148,12 @@ class Taiga:
             return self._req(
                 "PATCH", f"/userstories/{story_id}", json={**fields, "version": fresh}
             ).json()
+
+    def add_membership(self, project_id: int, role_id: int, username: str) -> dict:
+        """Taiga links an existing user by username directly (no invitation)."""
+        return self._req("POST", "/memberships",
+                         json={"project": project_id, "role": role_id,
+                               "username": username}).json()
 
     def comment(self, story_id: int, text: str) -> dict:
         return self.update_story(story_id, comment=text)

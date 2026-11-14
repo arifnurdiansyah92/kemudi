@@ -279,7 +279,7 @@ export function Machine({
   )
 }
 
-function PreflightSummary({ result }: { result: Preflight | null }) {
+export function PreflightSummary({ result }: { result: Preflight | null }) {
   const { t } = useTranslation('agent')
   const f = useFormat()
   if (!result)
@@ -307,6 +307,11 @@ function PreflightSummary({ result }: { result: Preflight | null }) {
           ? t('machine.check.passed', { count: result.slots })
           : t('machine.check.failed')}
       </p>
+      {result.ok && (
+        <p className='text-xs text-muted-foreground'>
+          {t('machine.check.oneAtATime')}
+        </p>
+      )}
       <p className='text-xs text-muted-foreground'>
         {t('machine.check.checkedAt', {
           when: f.date(result.checked_at, 'dateTime'),

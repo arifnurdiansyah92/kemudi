@@ -51,8 +51,26 @@ export type AgentSettings = Omit<AgentSettingsIn, 'deploy_command'> & {
   /** `{}` until the first check. */
   preflight: Preflight | Record<string, never>
   remote_execution: boolean
+  /** Whether the Awak bot user can open the project in Taiga. */
+  bot_access: BotAccess
+  /** The worker's last failure for this project; cleared on its next good pass. */
+  last_error: string | null
+  last_error_at: string | null
   updated_by: string | null
   updated_at: string | null
+}
+
+/** `member` is null when it could not be told (bot not configured, Taiga down). */
+export type BotAccess = {
+  ok: boolean
+  member: boolean | null
+  error: string | null
+}
+
+export type BotAccessGrant = {
+  added: boolean
+  role: string | null
+  bot_access: BotAccess
 }
 
 export type KeyPair = { public_key: string; fingerprint: string }
@@ -108,10 +126,17 @@ export type Repo = RepoIn & {
   last_check: RepoCheck | Record<string, never>
 }
 
-export type RoleTemplate = 'frontend' | 'backend' | 'qa'
-export const roleTemplates: RoleTemplate[] = ['frontend', 'backend', 'qa']
-export type RoleArea = 'web' | 'backend' | 'qa'
-export const roleAreas: RoleArea[] = ['web', 'backend', 'qa']
+export type RoleTemplate = 'frontend' | 'backend' | 'fullstack' | 'qa'
+export const roleTemplates: RoleTemplate[] = [
+  'frontend',
+  'backend',
+  'fullstack',
+  'qa',
+]
+/** `both`: stories touching web and backend, and single-area stories no
+ * other role covers. */
+export type RoleArea = 'web' | 'backend' | 'both' | 'qa'
+export const roleAreas: RoleArea[] = ['web', 'backend', 'both', 'qa']
 export const OVERLAY_MAX = 8000
 
 export type RoleIn = {
@@ -333,6 +358,24 @@ export function settingsBody(s: AgentSettings): AgentSettingsIn {
     ssh_port: s.ssh_port,
     ssh_user: s.ssh_user,
   }
+}
+
+/** Make the Awak bot user a member of the Taiga project (admin's token). */
+export function useGiveBotAccess(slug: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () =>
+      (
+        await api.post<BotAccessGrant>(
+          `/projects/${slug}/agent/bot-access`,
+          null,
+          base
+        )
+      ).data,
+    onError: onFail,
+    onSettled: () =>
+      qc.invalidateQueries({ queryKey: agentKey(slug, 'settings') }),
+  })
 }
 
 /* ---------- machine ---------- */

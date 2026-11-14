@@ -23,6 +23,7 @@ from ..deps import access, actor, admin, get_db, get_llm, get_sessions, member
 from ..llm import LLM
 from ..store import AwakJob, AwakKey, AwakProject, AwakRepo, AwakRole, record_decision
 from . import config_store, crypto, gitops, llm_conn, prompts, secrets, ssh
+from .bot_access import BotAccess, BotAccessError
 from .crypto import SecretKeyMissing
 from .detect import FIELDS as COMMAND_FIELDS
 from .detect import detect_commands
@@ -83,11 +84,21 @@ class AgentSettings(BaseModel):
         return self
 
 
-def _settings_out(db: Session, slug: str, is_admin: bool) -> dict:
+def get_bot_access(settings: Settings = Depends(get_settings)) -> BotAccess:
+    """Overridden in tests."""
+    return BotAccess(settings)
+
+
+def _settings_out(db: Session, slug: str, is_admin: bool, bot_access: dict) -> dict:
     p = db.get(AwakProject, slug)
     cfg = config_store.load(db, slug)
     key = config_store.key_row(db, p.ssh_key_id) if p else None
     return {
+        # Whether the Awak bot user can open the project (Taiga 404s otherwise).
+        "bot_access": bot_access,
+        # The worker's last failure for this project, cleared on its next good pass.
+        "last_error": (p.last_error or None) if p else None,
+        "last_error_at": p.last_error_at if p else None,
         **{k: getattr(cfg, k) for k in config_store.SETTING_FIELDS},
         # The deploy command may hold a token: admins only; members see whether
         # one is set.
@@ -105,8 +116,29 @@ def _settings_out(db: Session, slug: str, is_admin: bool) -> dict:
 
 @router.get("/settings")
 def get_agent_settings(slug: str, acc: ProjectAccess = Depends(access),
-                       db: Session = Depends(get_db)):
-    return _settings_out(db, slug, acc.is_admin)
+                       db: Session = Depends(get_db),
+                       bot: BotAccess = Depends(get_bot_access)):
+    return _settings_out(db, slug, acc.is_admin, bot.check(slug))
+
+
+def _grant_bot(db: Session, bot: BotAccess, user: TaigaUser, slug: str) -> dict:
+    """Add the bot as a member with the admin's token; a decision when added."""
+    res = bot.grant(slug, user.token)
+    if res["added"]:
+        record_decision(db, actor(user), "awak_bot_access", slug,
+                        {"username": bot.username, "role": res["role"]})
+    return res
+
+
+@router.post("/bot-access")
+def give_bot_access(slug: str, user: TaigaUser = Depends(admin), db: Session = Depends(get_db),
+                    bot: BotAccess = Depends(get_bot_access)):
+    """Make the Awak bot user a member of the Taiga project (caller's token)."""
+    try:
+        res = _grant_bot(db, bot, user, slug)
+    except BotAccessError as e:
+        raise HTTPException(e.status, str(e)) from e
+    return {**res, "bot_access": bot.check(slug, fresh=True)}
 
 
 @router.put("/settings")
@@ -117,6 +149,7 @@ def put_agent_settings(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
     start_worker: Callable[[], None] = Depends(get_worker_starter),
+    bot: BotAccess = Depends(get_bot_access),
 ):
     p = db.get(AwakProject, slug)
     if p is None:
@@ -141,9 +174,19 @@ def put_agent_settings(
         # changed, not what it is.
         detail = {k: ("(changed)" if k == "deploy_command" else v) for k, v in changed.items()}
         record_decision(db, actor(user), "awak_settings", slug, {"changed": detail})
+    grant_error = None
     if p.enabled:
+        # Without membership Taiga 404s the project for the bot and nothing is
+        # picked up; a failure here does not undo the save, it is reported.
+        try:
+            _grant_bot(db, bot, user, slug)
+        except BotAccessError as e:
+            grant_error = str(e)
         start_worker()
-    return _settings_out(db, slug, True)
+    status = bot.check(slug, fresh=True)
+    if grant_error and not status["ok"]:
+        status = {**status, "error": grant_error}
+    return _settings_out(db, slug, True, status)
 
 
 def _hosts_in_use(db: Session, slug: str, skip_repo: int | None = None,
@@ -607,8 +650,10 @@ def _clean_paths(paths: list[str]) -> list[str]:
 
 class RoleIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    template: Literal["frontend", "backend", "qa"]
-    area: Literal["web", "backend", "qa"]
+    template: Literal["frontend", "backend", "fullstack", "qa"]
+    # `both`: stories touching web and backend (and single-area ones when no
+    # role covers that area alone).
+    area: Literal["web", "backend", "both", "qa"]
     # Empty: use the model of the connection the role resolves to.
     model: str = Field("", pattern=r"^[A-Za-z0-9._:/-]{0,100}$")
     repo_ids: list[int] = Field(default_factory=list, max_length=20)
@@ -998,9 +1043,10 @@ def get_taiga_for_user(user: TaigaUser = Depends(member),
 
 
 def _enabled_areas(db: Session, slug: str) -> set[str]:
-    from .intake import AREAS
+    from .intake import AREAS, BOTH
 
-    return {r.area for r in config_store.load(db, slug).roles if r.enabled and r.area in AREAS}
+    return {r.area for r in config_store.load(db, slug).roles
+            if r.enabled and r.area in (*AREAS, BOTH)}
 
 
 class IntakeDraft(BaseModel):

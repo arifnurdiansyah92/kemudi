@@ -447,6 +447,9 @@ def test_hermes_agent_sends_alias_and_logs_real_model():
     def hermes(req: httpx.Request) -> httpx.Response:
         body = json.loads(req.content)
         sent.append(body)
+        # One Hermes session per run, never the prompt-derived one (a retry of
+        # the same prompt would hit the cut-off run's still-active session).
+        assert req.headers["X-Hermes-Session-Id"] == body["model"]
         with S() as db:  # the alias is live during the run
             assert llm_conn.lookup_alias(db, body["model"]) is not None
         return httpx.Response(200, json={"choices": [{"message": {"content": "done"}}],

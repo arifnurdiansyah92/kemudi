@@ -106,6 +106,19 @@ def test_create_adds_area_tag(intake):
     assert tags[2] == ["area-both"] and out[2]["ready"] is False
 
 
+def test_both_story_ready_with_an_enabled_fullstack_role(intake):
+    roles(intake, web=False)
+    with intake.S() as db:
+        db.add(AwakRole(project_slug="demo", template="fullstack", name="FS", area="both",
+                        model="m", enabled=True))
+        db.commit()
+    body = {"drafts": [{"subject": "Both", "criteria": ["a"], "area": "both"},
+                       {"subject": "Api", "criteria": ["a"], "area": "backend"}]}
+    out = intake.post("/projects/demo/intake/create", headers=MEMBER, json=body).json()["stories"]
+    assert [s["ready"] for s in out] == [True, True]  # the Fullstack role serves both
+    assert tag_names(intake.taiga.stories_by_id[out[0]["id"]]) == ["agent-ready", "area-both"]
+
+
 def test_create_uses_caller_token(intake):
     roles(intake)
     body = {"drafts": [{"subject": "Web", "criteria": ["a"], "area": "web"}]}

@@ -216,6 +216,10 @@ services:
       KEMUDI_AWAK_MODEL: "${KEMUDI_AWAK_MODEL:-deepseek-flash}"
       # Only admits Awak to the orchestrator's model proxy; not a provider key.
       KEMUDI_LLM_PROXY_TOKEN: "${KEMUDI_LLM_PROXY_TOKEN:-unset}"
+      # The image limits Hermes' file tools to /opt/data; Awak's checkouts live
+      # in /workspace. Without this, models that respect the tool limit (e.g.
+      # Claude) cannot edit any file and every attempt ends without a commit.
+      HERMES_WRITE_SAFE_ROOT: "/workspace:/opt/data"
     volumes:
       - ./awak/config.yaml:/etc/hermes/config.yaml:ro
       - kemudi-awak-data:/opt/data

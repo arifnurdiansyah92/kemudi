@@ -40,19 +40,47 @@ def agent_settings(tmp_path):
     )
 
 
+class FakeBotAccess:
+    """Stands in for bot_access.BotAccess: the bot is a member once granted."""
+
+    username = "awak"
+
+    def __init__(self, member: bool = True):
+        self.member = member
+        self.grants: list[tuple[str, str]] = []
+        self.fail: Exception | None = None
+
+    def check(self, slug: str, fresh: bool = False) -> dict:
+        if self.member:
+            return {"ok": True, "member": True, "error": None}
+        return {"ok": False, "member": False, "error": "Awak (user awak) is not a member"}
+
+    def grant(self, slug: str, token: str) -> dict:
+        self.grants.append((slug, token))
+        if self.fail is not None:
+            raise self.fail
+        if self.member:
+            return {"added": False, "role": None}
+        self.member = True
+        return {"added": True, "role": "Back"}
+
+
 @pytest.fixture
 def agent_client(agent_settings):
     """A TestClient for the agent router, with an in-memory DB and fake Taiga auth."""
     S = make_session("sqlite:///:memory:")
     auth._transport = httpx.MockTransport(taiga_auth)
     started: list[bool] = []
+    bot = FakeBotAccess()
     app.dependency_overrides[get_sessions] = lambda: S
     app.dependency_overrides[get_settings] = lambda: agent_settings
     app.dependency_overrides[agent_api.get_worker_starter] = lambda: lambda: started.append(True)
+    app.dependency_overrides[agent_api.get_bot_access] = lambda: bot
     with TestClient(app) as c:
         c.S = S
         c.settings = agent_settings
         c.started = started
+        c.bot = bot
         yield c
     app.dependency_overrides.clear()
     auth._transport = None
