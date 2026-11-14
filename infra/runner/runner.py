@@ -24,6 +24,9 @@ POST /reap       {}                          stop every process service left run
 POST /clean_check {path}                     HEAD sha and `git status --ignored` entries
 POST /deploy     {path, command}             the project's post-merge deploy command (sh -c)
                                              in the job workspace at the merged commit
+POST /fetch_repo {owner, repo, ref?}         a GitHub repo at a full commit sha, extracted
+                                             by a child into .skills-fetch/<hex> (fetch.py)
+POST /fetch_cleanup {dir}                    remove that tree
 
 `path` names one checkout under WORKSPACE: `<slug>/us-<ref>/<repo>` for a
 story, `<slug>/setup/<repo>` for setup runs.
@@ -1035,10 +1038,81 @@ def op_programs(body: dict) -> dict:
     return {"ok": True, "programs": sorted(p for p in ALLOWED_PROGRAMS if shutil.which(p))}
 
 
+# --- marketplace fetch (skills) ----------------------------------------------------
+# A GitHub repo at a full commit sha, extracted into /workspace/.skills-fetch/<hex>
+# by a child running fetch.py (see its doc). The orchestrator reads the tree
+# through the shared volume and removes it with `fetch_cleanup`.
+
+FETCH_SCRIPT = Path(__file__).with_name("fetch.py")
+FETCH_BASE = ".skills-fetch"
+FETCH_DIR_RE = re.compile(r"\.skills-fetch/[0-9a-f]{32}")
+FETCH_TIMEOUT = 300
+
+
+def _fetch_module():
+    """fetch.py, for its argument checks (the fetch itself runs in a child)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("kemudi_runner_fetch", FETCH_SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _run_fetch_child(args: dict) -> dict:
+    """fetch.py as the child uid with a clean environment; its JSON line."""
+    import sys
+
+    try:
+        p = subprocess.run([sys.executable, "-I", str(FETCH_SCRIPT), json.dumps(args)],
+                           capture_output=True, text=True, timeout=FETCH_TIMEOUT, cwd="/",
+                           env=child_env(), **child_kw())
+    except subprocess.TimeoutExpired:
+        return {"error": f"the fetch took longer than {FETCH_TIMEOUT} s"}
+    lines = [ln for ln in p.stdout.splitlines() if ln.strip()]
+    try:
+        out = json.loads(lines[-1]) if lines else None
+    except ValueError:
+        out = None
+    if not isinstance(out, dict):
+        return {"error": "the fetch failed: " + tail(p.stderr or p.stdout, 500)}
+    return out
+
+
+def op_fetch_repo(body: dict) -> dict:
+    """{owner, repo, ref?} -> {ok, sha, dir, files, bytes, skipped} or {ok: False, error}.
+    `dir` is relative to the workspace."""
+    import secrets as pysecrets
+
+    owner = body.get("owner")
+    repo = body.get("repo")
+    ref = body.get("ref") or ""
+    _fetch_module().check_args(owner, repo, ref)  # ValueError -> 400
+    name = pysecrets.token_hex(16)
+    rel = f"{FETCH_BASE}/{name}"
+    out = _run_fetch_child({"owner": owner, "repo": repo, "ref": ref,
+                            "dest": str(WORKSPACE / FETCH_BASE / name)})
+    if out.get("error") or not out.get("sha"):
+        return {"ok": False, "error": str(out.get("error") or "the fetch failed")[:1000]}
+    return {"ok": True, "sha": out["sha"], "dir": rel, "files": out.get("files", 0),
+            "bytes": out.get("bytes", 0), "skipped": out.get("skipped") or []}
+
+
+def op_fetch_cleanup(body: dict) -> dict:
+    """{dir}: remove a `fetch_repo` tree (as the child)."""
+    rel = str(body.get("dir") or "")
+    if not FETCH_DIR_RE.fullmatch(rel):
+        raise ValueError(f"bad fetch dir {rel!r}")
+    target = WORKSPACE / FETCH_BASE / rel.split("/")[1]
+    remove_child_tmpdir(target)
+    return {"ok": True, "removed": not os.path.lexists(target)}
+
+
 OPS = {"install": op_install, "commit": op_commit, "gates": op_gates, "deploy": op_deploy,
        "qa_reset": op_qa_reset, "qa": op_qa, "clean_check": op_clean_check,
        "health": op_health, "reap": op_reap, "screenshot": op_screenshot,
-       "programs": op_programs}
+       "programs": op_programs, "fetch_repo": op_fetch_repo,
+       "fetch_cleanup": op_fetch_cleanup}
 
 
 class Handler(BaseHTTPRequestHandler):
