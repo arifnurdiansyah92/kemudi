@@ -30,7 +30,7 @@ name: kemudi
 x-back-environment: &back-environment
   POSTGRES_DB: "taiga"
   POSTGRES_USER: "${POSTGRES_USER:?set POSTGRES_USER in infra/.env}"
-  POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?run scripts/init-secrets.sh}"
+  POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?}"
   POSTGRES_HOST: "kemudi-db"
   TAIGA_SECRET_KEY: "${SECRET_KEY:?run scripts/init-secrets.sh}"
   TAIGA_SITES_SCHEME: "${KEMUDI_SCHEME:-https}"
@@ -88,7 +88,7 @@ services:
     environment:
       POSTGRES_DB: "taiga"
       POSTGRES_USER: "${POSTGRES_USER:?set POSTGRES_USER in infra/.env}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?run scripts/init-secrets.sh}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?}"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d taiga"]
       interval: 5s
