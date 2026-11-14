@@ -22,6 +22,7 @@ import { Switch } from '@/components/ui/switch'
 import { SettingsSection } from '@/features/project-settings/layout'
 import { useProject } from '@/features/project/use-project'
 import { BotAccessNotice, LastError } from './bot-access'
+import { EnvVarsCard } from './env-vars'
 import { Jobs } from './jobs'
 import { ProjectLlmSection } from './llm-connection'
 import { Machine } from './machine'
@@ -82,6 +83,12 @@ export function AgentSettingsPage() {
         description={t('runbook.description')}
       >
         <RunbookCard slug={slug} canEdit={canEdit} />
+      </SettingsSection>
+      <SettingsSection
+        title={t('env.title')}
+        description={t('env.description')}
+      >
+        <EnvVarsCard slug={slug} canEdit={canEdit} />
       </SettingsSection>
       <SettingsSection
         title={t('roles.title')}

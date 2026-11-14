@@ -130,7 +130,7 @@ class Merger:
 
     def fail(self, job_id: int, story_id: int, reason: str) -> MergeResult:
         w = self.w
-        reason = secrets.redact(reason, w.redact_values)[:500]
+        reason = secrets.redact(reason, w.redact_values_for(w._job(job_id).project_slug))[:500]
         w._set(job_id, merge_state="failed", merge_error=reason)
         w._event(job_id, "merge_failed", {"error": reason})
         try:
@@ -271,7 +271,8 @@ class Merger:
                     ok, out = bool(res.get("ok")), str(res.get("output") or "")
         except (GitError, RunnerError, SecretKeyMissing, OSError) as e:
             ok, out = False, f"{type(e).__name__}: {e}"
-        tail = (secrets.redact(out, [*w.redact_values, *deploy_secrets(command)])[-1500:]
+        tail = (secrets.redact(out, [*w.redact_values_for(job.project_slug),
+                                     *deploy_secrets(command)])[-1500:]
                 .strip() or "(tanpa output)")
         w._event(job.id, "deploy", {"ok": ok})
         if ok:

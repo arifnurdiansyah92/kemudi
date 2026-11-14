@@ -310,7 +310,8 @@
       "checks": "Checks",
       "build": "Build",
       "env": "Env",
-      "noCommands": "No commands."
+      "noCommands": "No commands.",
+      "generated": "Generated"
     },
     "services": {
       "title": "Services",
@@ -341,6 +342,52 @@
       "rejected_one": "Not saved: {{count}} problem",
       "rejected_other": "Not saved: {{count}} problems",
       "save": "Save and approve"
+    }
+  },
+  "env": {
+    "title": "Env & secrets",
+    "description": "Values the runbook's services, setup commands and QA read by name. Stored encrypted and hidden from every comment, log and diff.",
+    "unavailable": "Env values aren't reachable. Check that the Kemudi AI orchestrator is running.",
+    "testOnly": "Test and development values only. Never enter production credentials: the project's own containers and QA can read these values.",
+    "empty": "No values yet.",
+    "add": "Add value",
+    "secret": "secret",
+    "required": "required",
+    "fromRunbook": "in runbook",
+    "hidden": "Hidden",
+    "notSet": "Not set",
+    "missingRequired": "Required, not set",
+    "emptyValue": "(empty)",
+    "edit": "Edit {{name}}",
+    "setValue": "Set {{name}}",
+    "setShort": "Set value",
+    "updated": "{{who}}, {{when}}",
+    "missing_one": "{{count}} required value is missing.",
+    "missing_other": "{{count}} required values are missing.",
+    "dialog": {
+      "newTitle": "New value",
+      "editTitle": "Edit {{name}}",
+      "description": "Use test or development values only.",
+      "name": "Name",
+      "nameHint": "Capital letters, digits and _, starting with a letter or _. Names Kemudi uses itself (PATH, HOME, KEMUDI_…, GIT_…) are reserved.",
+      "nameInvalid": "Use capital letters, digits and _, starting with a letter or _ (at most 64).",
+      "value": "Value",
+      "valueStored": "A value is stored. Leave this empty to keep it.",
+      "valueHidden": "Once saved, a secret value can be replaced but not shown again.",
+      "valuePlain": "Project members can see this value.",
+      "valueRequired": "Enter a value.",
+      "valueRetype": "Enter the value again: it will be shown once it is no longer secret.",
+      "secret": "Secret",
+      "secretHint": "Write-only: never shown again, not even to admins.",
+      "save": "Save",
+      "delete": "Delete"
+    },
+    "saved": "{{name}} saved",
+    "deleted": "{{name}} deleted",
+    "confirmDelete": {
+      "title": "Delete {{name}}?",
+      "desc": "Services, setup commands and QA that read {{name}} will no longer get a value.",
+      "confirm": "Delete"
     }
   },
   "roles": {

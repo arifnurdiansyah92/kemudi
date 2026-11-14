@@ -38,6 +38,7 @@ const playfast: RunbookState = {
         checks: ['pnpm exec tsc --noEmit', 'pnpm lint'],
         build: [],
         env: { INTERNAL_API_URL: '{services.api.url}' },
+        generated: ['public/icons/*.svg'],
       },
     ],
     services: [
@@ -122,6 +123,8 @@ describe('RunbookCard', () => {
     await expect.element(screen.getByText('QA opens this')).toBeVisible()
     await expect.element(screen.getByText('JWT_SECRET_KEY')).toBeVisible()
     await expect.element(screen.getByText('QA_ADMIN_EMAIL')).toBeVisible()
+    await expect.element(screen.getByText('Generated')).toBeVisible()
+    await expect.element(screen.getByText('public/icons/*.svg')).toBeVisible()
   })
 
   it('shows the server defaults for a service without health or timeout', async () => {

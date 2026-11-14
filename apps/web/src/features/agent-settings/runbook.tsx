@@ -229,7 +229,7 @@ function Commands({
 function AppRow({ app }: { app: RunbookApp }) {
   const { t } = useTranslation('agent')
   const envNames = Object.keys(app.env ?? {})
-  const hasCommands = [app.install, app.checks, app.build].some(
+  const hasCommands = [app.install, app.checks, app.build, app.generated].some(
     (c) => Array.isArray(c) && c.length > 0
   )
   return (
@@ -254,6 +254,10 @@ function AppRow({ app }: { app: RunbookApp }) {
             [t('runbook.apps.checks'), app.checks],
             [t('runbook.apps.build'), app.build],
             [t('runbook.apps.env'), envNames],
+            [
+              t('runbook.apps.generated'),
+              Array.isArray(app.generated) ? app.generated : [],
+            ],
           ]}
         />
       ) : (

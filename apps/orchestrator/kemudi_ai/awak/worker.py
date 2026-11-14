@@ -7,6 +7,7 @@ job row only remembers attempts, feedback and cost between ticks.
 import fnmatch
 import logging
 import os
+import re
 import shutil
 import socket
 import threading
@@ -24,7 +25,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import Settings
 from ..store import AwakJob, AwakKey, AwakProject, AwakWorkerLease, record_event
-from . import checks, config_store, llm_conn, runbook, secrets, ssh
+from . import checks, config_store, llm_conn, runbook, secrets, ssh, vault
 from .config_store import QA_MODES, ProjectConfig, RepoConfig, RoleConfig
 from .crypto import SecretKeyMissing
 from .agent import Agent, AgentError
@@ -79,6 +80,7 @@ def now() -> datetime:
 # Only one worker may run (the API's thread, `awak-tick --forever`, several
 # uvicorn workers...). A crashed holder's lease lapses after this long.
 LEASE_TTL_S = 120
+_SHA_RE = re.compile(r"[0-9a-f]{7,64}")
 
 
 def _naive_now() -> datetime:
@@ -127,6 +129,36 @@ class Worker:
         scan diffs: an ordinary value would refuse ordinary code."""
         with self.sessions() as db:
             return [*self.secret_values, *runbook.all_env_values(db)]
+
+    def redact_values_for(self, slug: str) -> list[str]:
+        """`redact_values` plus the project's vault values in every encoding
+        (comments, events, feedback to the agent and logs of its work)."""
+        with self.sessions() as db:
+            own = vault.redaction_values(db, self.s, slug)
+        return [*own, *self.redact_values]
+
+    def scan_values_for(self, slug: str) -> list[str]:
+        """What a diff of the project must not add: `secret_values` plus its
+        vault values of 8+ characters."""
+        with self.sessions() as db:
+            own = vault.scan_values(db, self.s, slug)
+        return [*own, *self.secret_values]
+
+    def _redact_detail(self, slug: str, detail):
+        values = self.redact_values_for(slug)
+
+        def walk(x):
+            if isinstance(x, str):
+                # a commit sha is read back (e.g. `prepared.base`); a short
+                # value that happens to be hex inside it is no leak
+                return x if _SHA_RE.fullmatch(x) else secrets.redact(x, values)
+            if isinstance(x, dict):
+                return {k: walk(v) for k, v in x.items()}
+            if isinstance(x, list):
+                return [walk(v) for v in x]
+            return x
+
+        return walk(detail)
 
     # ------------------------------------------------------------------ loop
     def _seed(self) -> None:
@@ -221,7 +253,8 @@ class Worker:
     def _project_failed(self, slug: str, error: Exception) -> None:
         log.warning("awak: project %s failed: %s", slug, error,
                     exc_info=not isinstance(error, TaigaError))
-        text = secrets.redact(str(error) or type(error).__name__, self.redact_values)[:1000]
+        text = secrets.redact(str(error) or type(error).__name__,
+                              self.redact_values_for(slug))[:1000]
         with self.sessions() as db:
             p = db.get(AwakProject, slug)
             if p is not None:
@@ -412,8 +445,8 @@ class Worker:
                 continue
             if result is None:  # passed
                 return
-            job = self._set(job_id, attempts=job.attempts + 1, feedback=result.feedback,
-                            phase="")
+            feedback = secrets.redact(result.feedback, self.redact_values_for(project.slug))
+            job = self._set(job_id, attempts=job.attempts + 1, feedback=feedback, phase="")
             self._move(story["id"], project.status("in-progress"))
             self._say(story["id"], job_id, result.comment)
 
@@ -494,7 +527,7 @@ class Worker:
                         f"Awak mengubah berkas di luar cakupan peran {role.name}: "
                         + ", ".join(f"`{f}`" for f in outside))
         leaked = secrets.files_with_secrets(repo.diff_from_main(job.branch),
-                                            self.secret_values)
+                                            self.scan_values_for(job.project_slug))
         if leaked:
             return Fail("Your change contains a secret or key-like value in: "
                         + ", ".join(leaked) + ". Remove it.",
@@ -894,6 +927,11 @@ class Worker:
             return row.detail if row else None
 
     def _event(self, job_id: int, kind: str, detail: dict) -> None:
+        """Every string in the detail is redacted (errors, QA reasons, logs)."""
+        with self.sessions() as db:
+            job = db.get(AwakJob, job_id)
+            slug = job.project_slug if job is not None else ""
+        detail = self._redact_detail(slug, detail)
         with self.sessions() as db:
             record_event(db, job_id, kind, detail)
 
@@ -904,7 +942,7 @@ class Worker:
         head = f"**Awak** · percobaan {max(n, 1)}/{self.s.max_attempts} · {mins} mnt"
         if job.cost_idr:
             head += f" · biaya model Rp{job.cost_idr:,.0f}".replace(",", ".")
-        body = secrets.redact(f"{head}\n\n{text}", self.redact_values)
+        body = secrets.redact(f"{head}\n\n{text}", self.redact_values_for(job.project_slug))
         self.taiga.comment(story_id, body)
         self._event(job_id, "comment", {"text": body[:500]})
 

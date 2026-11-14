@@ -22,7 +22,7 @@ from ..config import Settings, get_settings
 from ..deps import access, actor, admin, get_db, get_llm, get_sessions, member
 from ..llm import LLM
 from ..store import AwakJob, AwakKey, AwakProject, AwakRepo, AwakRole, record_decision
-from . import config_store, crypto, detect, gitops, llm_conn, prompts, runbook, secrets, ssh
+from . import config_store, crypto, detect, gitops, llm_conn, prompts, runbook, secrets, ssh, vault
 from .bot_access import BotAccess, BotAccessError
 from .crypto import SecretKeyMissing
 from .detect import FIELDS as COMMAND_FIELDS
@@ -254,6 +254,57 @@ def put_runbook(slug: str, body: RunbookIn, user: TaigaUser = Depends(admin),
     row = runbook.save(db, slug, rb, actor(user))
     record_decision(db, actor(user), "awak_runbook", slug, {"version": row.version})
     return runbook.state(db, slug)
+
+
+# --- env vault -------------------------------------------------------------------
+
+
+class EnvIn(BaseModel):
+    # None keeps the stored value (a secret edited without retyping it).
+    value: str | None = None
+    secret: bool = True
+
+
+def _env_name(name: str) -> str:
+    problem = vault.name_problem(name)
+    if problem:
+        raise HTTPException(422, problem)
+    return name
+
+
+@router.get("/env")
+def get_env(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(get_db),
+            settings: Settings = Depends(get_settings)):
+    """Names and flags; plain values in full, a secret only as `set`."""
+    return {"vars": vault.listing(db, settings, slug)}
+
+
+@router.put("/env/{name}")
+def put_env(slug: str, name: str, body: EnvIn, user: TaigaUser = Depends(admin),
+            db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
+    _env_name(name)
+    if body.value is not None and (problem := vault.value_problem(body.value)):
+        raise HTTPException(422, problem)
+    existing = next((r for r in vault.rows(db, slug) if r.name == name), None)
+    if body.value is None and (existing is None or (existing.secret and not body.secret)):
+        # a new name needs a value; a secret made plain would show the old value
+        raise HTTPException(422, f"enter a value for {name}")
+    try:
+        created = vault.put(db, settings, slug, name, body.value, body.secret, actor(user))
+    except SecretKeyMissing as e:
+        raise _no_secret_key(e) from e
+    record_decision(db, actor(user), "awak_env", slug,
+                    {"op": "set", "name": name, "secret": body.secret, "created": created})
+    return {"vars": vault.listing(db, settings, slug)}
+
+
+@router.delete("/env/{name}", status_code=204)
+def delete_env(slug: str, name: str, user: TaigaUser = Depends(admin),
+               db: Session = Depends(get_db)):
+    if not vault.delete(db, slug, _env_name(name)):
+        raise HTTPException(404, f"{name} is not set")
+    record_decision(db, actor(user), "awak_env", slug, {"op": "delete", "name": name})
+    return Response(status_code=204)
 
 
 def _hosts_in_use(db: Session, slug: str, skip_repo: int | None = None,
