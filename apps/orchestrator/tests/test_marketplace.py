@@ -60,7 +60,7 @@ EXTERNAL = {"skills/ext-skill/SKILL.md": skill_md(name="ext-skill"),
 
 @pytest.fixture
 def fake(agent_settings):
-    r = FakeFetchRunner(agent_settings.workspace_dir)
+    r = FakeFetchRunner(agent_settings.skills_fetch_dir)
     r.publish("acme/skills", SHA1, anthropic_like())
     r.publish("ext/plug", EXT_SHA, EXTERNAL)
     return r
@@ -86,7 +86,7 @@ class fake_tree:
     def __enter__(self):
         res = self.fake.call("fetch_repo", owner="x", repo="y", ref=self.sha)
         self.dir = res["dir"]
-        return open_tree(self.settings, res["dir"], res["sha"], res["skipped"])
+        return open_tree(self.settings, res)
 
     def __exit__(self, *a):
         self.fake.call("fetch_cleanup", dir=self.dir)
@@ -423,6 +423,18 @@ def test_check_update_up_to_date(client):
     assert client.fake.live_dirs() == []
 
 
+def _pending_sha(client, slug="notes", version=None) -> str:
+    sk = client.get(f"{LIB}/{slug}", headers=ADMIN).json()
+    return next(p["sha256"] for p in sk["pending"] if version in (None, p["version"]))
+
+
+def _decide(client, version, op="approve", slug="notes", sha=None, **params):
+    """approve / reject with the reviewed version's sha256 (the pending one's
+    unless `sha` is given)."""
+    params["sha256"] = sha or _pending_sha(client, slug, version)
+    return client.post(f"{LIB}/{slug}/versions/{version}/{op}", headers=ADMIN, params=params)
+
+
 def test_update_pending_then_approve(client):
     _installed(client)
     assert client.post(f"{LIB}/notes/enable", headers=ADMIN).status_code == 200
@@ -442,7 +454,11 @@ def test_update_pending_then_approve(client):
     # checking again finds the same pending version
     assert _check(client)["result"] == {"status": "pending", "sha": SHA2, "version": 2,
                                         "new": False}
-    r = client.post(f"{LIB}/notes/versions/2/approve", headers=ADMIN)
+    # the reviewed tree's sha256 is required, and must match
+    assert client.post(f"{LIB}/notes/versions/2/approve", headers=ADMIN).status_code == 422
+    r = _decide(client, 2, sha="0" * 64)
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "stale"
+    r = _decide(client, 2)
     assert r.status_code == 200, r.text
     sk = r.json()
     assert sk["version"] == 2 and sk["pending"] == [] and sk["origin"]["sha"] == SHA2
@@ -452,15 +468,17 @@ def test_update_pending_then_approve(client):
         assert [(e.slug, e.version) for e in res.entries] == [("notes", 2)]
         ops = [d.detail["op"] for d in db.query(Decision).filter_by(subject="notes")]
     assert ops == ["install", "enable", "update_pending", "approve_version"]
-    assert client.post(f"{LIB}/notes/versions/2/approve", headers=ADMIN).status_code == 409
-    assert client.post(f"{LIB}/notes/versions/9/approve", headers=ADMIN).status_code == 404
+    assert _decide(client, 2, sha=p["sha256"]).status_code == 409  # not pending now
+    assert _decide(client, 9, sha=p["sha256"]).status_code == 404
 
 
 def test_update_reject_is_not_proposed_again(client):
     _installed(client)
     client.fake.publish("acme/skills", SHA2, anthropic_like(notes_body="# Other\n"))
     assert _check(client)["result"]["status"] == "pending"
-    r = client.post(f"{LIB}/notes/versions/2/reject", headers=ADMIN)
+    r = _decide(client, 2, "reject", sha="0" * 64)
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "stale"
+    r = _decide(client, 2, "reject")
     assert r.status_code == 200, r.text
     assert r.json()["pending"] == [] and r.json()["version"] == 1
     with client.S() as db:
@@ -471,18 +489,59 @@ def test_update_reject_is_not_proposed_again(client):
     assert _check(client)["result"]["status"] == "pending"
 
 
+def test_rejected_trees_are_all_remembered(client):
+    """Rejecting B after A: upstream flipping back to A is still refused."""
+    _installed(client)
+    client.fake.publish("acme/skills", SHA2, anthropic_like(notes_body="# A\n"))
+    assert _check(client)["result"]["status"] == "pending"
+    assert _decide(client, 2, "reject").status_code == 200
+    client.fake.publish("acme/skills", SHA3, anthropic_like(notes_body="# B\n"))
+    v = _check(client)["result"]["version"]
+    assert _decide(client, v, "reject").status_code == 200
+    client.fake.publish("acme/skills", "4" * 40, anthropic_like(notes_body="# A\n"))
+    assert _check(client)["result"]["status"] == "rejected"
+    with client.S() as db:
+        assert len(db.get(AwakSkill, "notes").origin["rejected_shas"]) == 2
+
+
+def test_rejected_memory_is_bounded_and_reads_the_old_form():
+    origin = {"rejected": "old"}
+    assert marketplace.rejected_shas(origin) == ["old"]
+    for i in range(marketplace.REJECTED_KEPT + 5):
+        marketplace.remember_rejected(origin, f"s{i}")
+    shas = origin["rejected_shas"]
+    assert "rejected" not in origin and len(shas) == marketplace.REJECTED_KEPT
+    assert shas[-1] == f"s{marketplace.REJECTED_KEPT + 4}" and "old" not in shas
+    marketplace.remember_rejected(origin, shas[0])  # again: moves to the end
+    assert origin["rejected_shas"][-1] == shas[0] and len(origin["rejected_shas"]) == 20
+
+
 def test_update_replaces_an_older_pending_version(client):
+    """A replaced pending version's number is never given again, so an
+    approve of the number the admin reviewed cannot apply other content."""
     _installed(client)
     client.fake.publish("acme/skills", SHA2, anthropic_like(notes_body="# Two\n"))
     assert _check(client)["result"]["version"] == 2
+    reviewed = _pending_sha(client, version=2)
     client.fake.publish("acme/skills", SHA3, anthropic_like(notes_body="# Three\n"))
     out = _check(client)
-    assert out["result"]["version"] == 2 and out["result"]["sha"] == SHA3
-    assert [p["origin"]["sha"] for p in out["skill"]["pending"]] == [SHA3]
+    assert out["result"]["version"] == 3 and out["result"]["sha"] == SHA3
+    assert [(p["version"], p["origin"]["sha"]) for p in out["skill"]["pending"]] == [
+        (3, SHA3)]
+    # the admin approves what they reviewed as version 2: gone, not replaced
+    assert _decide(client, 2, sha=reviewed).status_code == 404
+    # and version 3 with version 2's tree: stale
+    r = _decide(client, 3, sha=reviewed)
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "stale"
     # upstream back to the installed tree: the stale pending version goes
     client.fake.publish("acme/skills", "4" * 40, anthropic_like())
     out = _check(client)
     assert out["result"]["status"] == "up_to_date" and out["skill"]["pending"] == []
+    # the next change gets a new number again (3 was given once)
+    client.fake.publish("acme/skills", "5" * 40, anthropic_like(notes_body="# Five\n"))
+    assert _check(client)["result"]["version"] == 4
+    with client.S() as db:
+        assert db.get(AwakSkill, "notes").last_version == 4
 
 
 def test_update_findings_rise_on_approve(client):
@@ -493,14 +552,118 @@ def test_update_findings_rise_on_approve(client):
     client.fake.publish("acme/skills", SHA2,
                         anthropic_like(notes_body="Then run git push.\n"))
     assert _check(client)["result"]["status"] == "pending"
-    r = client.post(f"{LIB}/notes/versions/2/approve", headers=ADMIN)
+    r = _decide(client, 2)
     assert r.status_code == 409
     d = r.json()["detail"]
     assert d["code"] == "findings_rise" and d["worst"] == "high"
     assert d["used_by"][0]["role_id"] == role["id"]
-    r = client.post(f"{LIB}/notes/versions/2/approve?accept_findings=true", headers=ADMIN)
+    r = _decide(client, 2, accept_findings="true")
     assert r.status_code == 200 and r.json()["disabled_now"] is True
     assert r.json()["enabled"] is False
+
+
+def test_root_path_skill_checks_updates(client):
+    """A skill at the root of its repo (`path` "") can be checked."""
+    client.fake.publish("x/solo", SHA2, {"SKILL.md": skill_md(name="solo")})
+    mid = _add(client, "x/solo")
+    _refresh(client, mid)
+    r = _install(client, mid, "solo", "solo")
+    assert r.status_code == 200, r.text
+    assert r.json()["origin"]["path"] == ""
+    assert _check(client, "solo")["result"] == {"status": "up_to_date", "sha": SHA2}
+    client.fake.publish("x/solo", SHA3, {"SKILL.md": skill_md(name="solo", body="# New\n")})
+    out = _check(client, "solo")["result"]
+    assert out["status"] == "pending" and out["sha"] == SHA3 and out["version"] == 2
+
+
+EXT_SHA2 = "f" * 40
+
+
+def _pinned_marketplace(ext_sha, extra_plugins=()) -> dict:
+    files = anthropic_like()
+    files[".claude-plugin/marketplace.json"] = manifest([
+        {"name": "external",
+         "source": {"source": "github", "repo": "ext/plug", "sha": ext_sha}},
+        *extra_plugins])
+    return files
+
+
+def test_github_plugin_pinned_to_a_sha_follows_the_marketplace(client):
+    """The update check re-reads the marketplace entry: a new pin is followed;
+    without the entry (or the marketplace) the stored source is checked and
+    the answer says so."""
+    client.fake.publish("acme/skills", SHA1, _pinned_marketplace(EXT_SHA))
+    mid = _installed_ext(client)
+    assert _check(client, "ext-skill")["result"] == {"status": "up_to_date", "sha": EXT_SHA}
+    # the plugin repo moves on (not its default branch: a commit only), and
+    # the marketplace pins the new commit
+    changed = {**EXTERNAL, "skills/ext-skill/SKILL.md": skill_md(name="ext-skill",
+                                                               body="# v2\n")}
+    client.fake.publish("ext/plug", EXT_SHA2, changed, ref="some-branch")
+    client.fake.publish("acme/skills", SHA2, _pinned_marketplace(EXT_SHA2))
+    out = _check(client, "ext-skill")
+    res = out["result"]
+    assert res["status"] == "pending" and res["sha"] == EXT_SHA2 and "note" not in res
+    fetches = [c[1] for c in client.fake.calls if c[0] == "fetch_repo"]
+    assert fetches[-2:] == [{"owner": "acme", "repo": "skills", "ref": ""},
+                            {"owner": "ext", "repo": "plug", "ref": EXT_SHA2}]
+    assert _decide(client, 2, slug="ext-skill").status_code == 200
+    with client.S() as db:
+        o = db.get(AwakSkill, "ext-skill").origin
+        assert (o["sha"], o["ref"], o["repo"]) == (EXT_SHA2, EXT_SHA2, "ext/plug")
+    # the entry is gone: the stored source (now EXT_SHA2), with a note
+    client.fake.publish("acme/skills", SHA3, _pinned_marketplace(EXT_SHA2)
+                        | {".claude-plugin/marketplace.json": manifest([])})
+    res = _check(client, "ext-skill")["result"]
+    assert res["status"] == "up_to_date" and "no longer lists the plugin" in res["note"]
+    # the marketplace is gone
+    assert client.delete(f"{MP}/{mid}", headers=ADMIN).status_code == 200
+    res = _check(client, "ext-skill")["result"]
+    assert res["status"] == "up_to_date" and "no longer registered" in res["note"]
+    assert client.fake.live_dirs() == []
+
+
+def _installed_ext(client) -> int:
+    mid = _add(client)
+    _refresh(client, mid)
+    r = _install(client, mid, "external", "ext-skill")
+    assert r.status_code == 200, r.text
+    o = r.json()["origin"]
+    assert (o["sha"], o["ref"], o["source_type"]) == (EXT_SHA, EXT_SHA, "github")
+    return mid
+
+
+def test_install_refuses_another_commit_than_the_pinned_one(client):
+    mid = _add(client)
+    _refresh(client, mid)
+    client.fake.answer_sha[SHA1] = SHA2  # the runner answers with another commit
+    r = _install(client, mid)
+    assert r.status_code == 502 and "another commit" in r.json()["detail"]["problems"][0]
+    with client.S() as db:
+        assert db.get(AwakSkill, "notes") is None
+
+
+def test_refresh_unexpected_error_is_kept(client, monkeypatch):
+    mid = _add(client)
+
+    def boom(*a, **k):
+        raise KeyError("plugins")
+    monkeypatch.setattr(marketplace, "build_listing", boom)
+    r = client.post(f"{MP}/{mid}/refresh", headers=ADMIN)
+    assert r.status_code == 502 and r.json()["detail"]["code"] == "fetch_failed"
+    m = client.get(MP, headers=ADMIN).json()["marketplaces"][-1]
+    assert "internal error: KeyError" in m["error"]
+
+
+def test_refresh_unreadable_tree_is_kept(client, monkeypatch):
+    """An OSError reading the fetched tree is a FetchError (502, kept)."""
+    mid = _add(client)
+    # the runner extracts somewhere the orchestrator does not see
+    monkeypatch.setattr(client.fake, "base", client.fake.base.parent / "elsewhere")
+    r = client.post(f"{MP}/{mid}/refresh", headers=ADMIN)
+    assert r.status_code == 502, r.text
+    m = client.get(MP, headers=ADMIN).json()["marketplaces"][-1]
+    assert "cannot be read" in m["error"]
 
 
 def test_update_invalid_missing_and_failures(client):
@@ -553,6 +716,32 @@ def test_store_migrates_version_origin(tmp_path):
         v = db.query(AwakSkillVersion).one()
         assert v.origin is None
         assert db.query(AwakSkillMarketplace).count() == 0
+
+
+def test_store_migrates_skill_last_version(tmp_path):
+    """Skill rows from before `last_version` get 0; numbering still goes past
+    every stored version."""
+    import sqlite3
+
+    from kemudi_ai.store import make_session
+
+    db_file = tmp_path / "old.db"
+    con = sqlite3.connect(db_file)
+    con.execute("CREATE TABLE awak_skills (slug VARCHAR(64) PRIMARY KEY, source VARCHAR(20), "
+                "title VARCHAR(200), description TEXT, license VARCHAR(100), enabled BOOLEAN, "
+                "current_version INTEGER, origin JSON, created_by VARCHAR(200), "
+                "created_at DATETIME, updated_at DATETIME)")
+    con.execute("INSERT INTO awak_skills VALUES ('x', 'local', 'x', '', '', 1, 3, '{}', 'me', "
+                "'2026-01-01 00:00:00', '2026-01-01 00:00:00')")
+    con.commit()
+    con.close()
+    S = make_session(f"sqlite:///{db_file}")
+    with S() as db:
+        assert db.get(AwakSkill, "x").last_version == 0
+        db.add(AwakSkillVersion(slug="x", version=3, sha256="h", files={}))
+        db.commit()
+        assert skills.next_version(db, "x") == 4
+        assert db.get(AwakSkill, "x").last_version == 4
 
 
 def test_license_pointing_at_a_file_and_oversized_skills(fake, agent_settings, monkeypatch):

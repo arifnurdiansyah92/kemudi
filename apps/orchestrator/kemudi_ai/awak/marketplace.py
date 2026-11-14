@@ -450,7 +450,9 @@ def find(listing: dict, plugin: str, skill: str) -> tuple[dict, dict]:
 
 def source_of(mp: AwakSkillMarketplace, plugin: dict) -> dict:
     """Where a plugin's files come from: {owner, repo, sha, follow_ref, root}.
-    `follow_ref` is what an update check fetches."""
+    `follow_ref` is the ref stored at install; for a github plugin (pinned
+    by `sha`, say) an update check re-reads the marketplace's entry first
+    (update_source), so a new pin is followed."""
     src = plugin.get("source") or {}
     if src.get("type") == "github":
         o, r = src["repo"].split("/")
@@ -500,10 +502,13 @@ def refresh(db: Session, runner: Runner, settings: Settings,
     try:
         listing = build_listing(runner, settings, mp.owner, mp.repo, mp.ref)
     except (FetchError, MarketplaceError) as e:
-        mp.error = str(e)[:1000]
-        mp.last_fetched_at = datetime.now(UTC)
-        db.commit()
+        _refresh_failed(db, mp, str(e))
         raise
+    except Exception as e:  # noqa: BLE001 - kept on the row, answered 502
+        log.exception("refresh of marketplace %s/%s failed", mp.owner, mp.repo)
+        msg = f"the marketplace could not be read (internal error: {type(e).__name__})"
+        _refresh_failed(db, mp, msg)
+        raise FetchError(msg) from e
     mp.listing = listing
     mp.name = listing.get("name") or f"{mp.owner}/{mp.repo}"
     mp.last_sha = listing["sha"]
@@ -511,6 +516,13 @@ def refresh(db: Session, runner: Runner, settings: Settings,
     mp.error = ""
     db.commit()
     return mp
+
+
+def _refresh_failed(db: Session, mp: AwakSkillMarketplace, msg: str) -> None:
+    db.rollback()  # whatever the failed refresh left in the session
+    mp.error = msg[:1000]
+    mp.last_fetched_at = datetime.now(UTC)
+    db.commit()
 
 
 def installed_info(db: Session, mp: AwakSkillMarketplace, plugin: dict, s: dict) -> dict | None:
@@ -555,7 +567,8 @@ def install(db: Session, runner: Runner, settings: Settings, mp: AwakSkillMarket
     origin = {"marketplace_id": mp.id, "marketplace": mp.name,
               "repo": f"{src['owner']}/{src['repo']}", "ref": src["follow_ref"],
               "sha": src["sha"], "plugin": plugin_name, "path": s["path"],
-              "plugin_root": src["root"]}
+              "plugin_root": src["root"],
+              "source_type": (plugin.get("source") or {}).get("type", "relative")}
     sk = AwakSkill(slug=slug, source="marketplace", title=slug, description=c.meta.description,
                    license=lic, enabled=False, current_version=1, origin=origin, created_by=by)
     db.add(sk)
@@ -583,67 +596,157 @@ def diff(old: dict[str, bytes], new: dict[str, bytes]) -> dict:
             "changed": sorted(p for p in set(old) & set(new) if old[p] != new[p])}
 
 
+REJECTED_KEPT = 20  # rejected upstream trees remembered per skill
+
+
+def rejected_shas(origin: dict) -> list[str]:
+    """The skill's rejected upstream trees (canonical sha), oldest first;
+    reads the old single `rejected` value too."""
+    out = [s for s in (origin.get("rejected_shas") or []) if isinstance(s, str)]
+    old = origin.get("rejected")
+    if isinstance(old, str) and old and old not in out:
+        out.insert(0, old)
+    return out
+
+
+def remember_rejected(origin: dict, tree_sha: str) -> None:
+    """Add a rejected tree to `origin` (in place), keeping the last REJECTED_KEPT."""
+    shas = [s for s in rejected_shas(origin) if s != tree_sha] + [tree_sha]
+    origin.pop("rejected", None)
+    origin["rejected_shas"] = shas[-REJECTED_KEPT:]
+
+
+def plugin_source(tree: Tree, plugin_name: str) -> tuple[dict, str] | None:
+    """The `source` of plugin `plugin_name` in a fetched marketplace, as
+    (source, unsupported reason); None when the repo lists no such plugin."""
+    try:
+        raw = tree.read(MARKETPLACE_FILE, MAX_MANIFEST_BYTES)
+        data = json.loads(raw.decode("utf-8")) if raw is not None else None
+    except (TreeError, UnicodeDecodeError, ValueError):
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("plugins"), list):
+        return None
+    meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+    root_prefix = ""
+    if isinstance(meta.get("pluginRoot"), str):
+        try:
+            root_prefix = _rel(meta["pluginRoot"])
+        except MarketplaceError:
+            root_prefix = ""
+    for entry in data["plugins"][:MAX_PLUGINS]:
+        if isinstance(entry, dict) and _plugin_base(entry)["name"] == plugin_name:
+            return _source(entry, root_prefix)
+    return None
+
+
+def update_source(db: Session, runner: Runner, settings: Settings,
+                  origin: dict) -> tuple[str, str, str, str]:
+    """(owner, repo, ref, note): where an update check fetches the skill.
+
+    A plugin in the marketplace's own repo follows the marketplace's ref (as
+    stored). A `github` plugin is resolved again from the marketplace's
+    current entry, so a new `sha` / `ref` pin (or a moved repo) is followed;
+    when the marketplace or its entry is gone, the source stored at install
+    is checked and `note` says so."""
+    repo = str(origin.get("repo", ""))
+    owner, name = repo.split("/")
+    stored = (owner, name, check_ref(str(origin.get("ref") or "")))
+    mid = origin.get("marketplace_id")
+    mp = db.get(AwakSkillMarketplace, mid) if isinstance(mid, int) else None
+    own_repo = mp is not None and repo.lower() == f"{mp.owner}/{mp.repo}".lower()
+    if origin.get("source_type", "relative" if own_repo else "github") != "github":
+        return (*stored, "")
+    plugin_name = str(origin.get("plugin") or "")
+    if mp is None:
+        return (*stored, "the marketplace this skill came from is no longer registered; "
+                f"checked {repo} as installed")
+    with fetched(runner, settings, mp.owner, mp.repo, mp.ref) as tree:
+        found = plugin_source(tree, plugin_name)
+    if found is None:
+        return (*stored, f"{mp.owner}/{mp.repo} no longer lists the plugin {plugin_name!r}; "
+                f"checked {repo} as installed")
+    src, reason = found
+    if reason or src.get("type") != "github":
+        why = reason or f"its source is now {src.get('type')}"
+        return (*stored, f"the plugin {plugin_name!r} cannot be followed ({why}); "
+                f"checked {repo} as installed")
+    o, r = src["repo"].split("/")
+    return o, r, src.get("sha") or src.get("ref") or "", ""
+
+
 def check_update(db: Session, runner: Runner, settings: Settings, sk: AwakSkill,
                  by: str) -> dict:
-    """Fetch the skill's origin at its followed ref. Returns {status, ...}:
-    `up_to_date`, `pending` (a new pending version, or the one already
-    there), `rejected` (the upstream tree was rejected before), `invalid`
-    (problems) or `missing` (the folder is gone upstream)."""
+    """Fetch the skill's origin at its followed ref (update_source). Returns
+    {status, sha, ...}: `up_to_date`, `pending` (a new pending version, or
+    the one already there), `rejected` (the upstream tree was rejected
+    before), `invalid` (problems) or `missing` (the folder is gone
+    upstream); `note` when the source stored at install was used instead of
+    the marketplace's current entry."""
     origin = dict(sk.origin or {})
     repo = str(origin.get("repo", ""))
-    if sk.source != "marketplace" or repo.count("/") != 1 or not origin.get("path"):
+    # "path" may be "" (a skill at the root of its repo)
+    if sk.source != "marketplace" or repo.count("/") != 1 or "path" not in origin \
+            or not isinstance(origin["path"], str):
         raise MarketplaceError("only marketplace skills can be checked for updates")
-    owner, name = repo.split("/")
+    check_owner_repo(*repo.split("/"))
+    owner, name, ref, note = update_source(db, runner, settings, origin)
     check_owner_repo(owner, name)
+    check_ref(ref)
+    repo = f"{owner}/{name}"
+    path = origin["path"]
+    extra = {"note": note} if note else {}
     cur = (db.query(AwakSkillVersion)
            .filter_by(slug=sk.slug, version=sk.current_version).one_or_none())
-    with fetched(runner, settings, owner, name, check_ref(str(origin.get("ref") or ""))) as tree:
+    with fetched(runner, settings, owner, name, ref) as tree:
         sha = tree.sha
-        if not tree.is_dir(origin["path"]):
-            out = {"status": "missing", "sha": sha,
-                   "message": f"{origin['path']} is no longer in {repo} at {sha[:12]}"}
+        if not tree.is_dir(path):
+            out = {"status": "missing", "sha": sha, **extra,
+                   "message": f"{path or 'the repository root'} is no longer in {repo} at "
+                              f"{sha[:12]}"}
             files = None
         else:
             try:
-                files = skill_files(tree, origin["path"], str(origin.get("plugin_root") or ""))
+                files = skill_files(tree, path, str(origin.get("plugin_root") or ""))
             except TreeError as e:
                 return _checked(db, sk, origin, sha, {"status": "invalid", "sha": sha,
-                                                      "problems": [str(e)]})
+                                                      "problems": [str(e)], **extra})
     if files is None:
         return _checked(db, sk, origin, sha, out)
     tree_sha = skills.canonical_sha(files)
     if cur is not None and cur.sha256 == tree_sha:
         for p in db.query(AwakSkillVersion).filter_by(slug=sk.slug, status="pending"):
             db.delete(p)  # upstream went back to the current tree
-        return _checked(db, sk, origin, sha, {"status": "up_to_date", "sha": sha})
-    if origin.get("rejected") == tree_sha:
-        return _checked(db, sk, origin, sha, {"status": "rejected", "sha": sha})
+        return _checked(db, sk, origin, sha, {"status": "up_to_date", "sha": sha, **extra})
+    if tree_sha in rejected_shas(origin):
+        return _checked(db, sk, origin, sha, {"status": "rejected", "sha": sha, **extra})
     pending = db.query(AwakSkillVersion).filter_by(slug=sk.slug, status="pending").all()
     for p in pending:
         if p.sha256 == tree_sha:
             return _checked(db, sk, origin, sha, {"status": "pending", "sha": sha,
-                                                  "version": p.version, "new": False})
+                                                  "version": p.version, "new": False, **extra})
     try:
         c = skills.check(sk.slug, files)
     except skills.SkillError as e:
         return _checked(db, sk, origin, sha, {"status": "invalid", "sha": sha,
-                                              "problems": e.problems[:20]})
+                                              "problems": e.problems[:20], **extra})
     for p in pending:  # one pending version at a time: the newest upstream
         db.delete(p)
     db.flush()
+    # a new number (never a deleted pending version's): skills.next_version
     v = skills.store_version(db, sk.slug, files, c, by)
     v.status = "pending"
-    v.origin = {"repo": repo, "sha": sha, "path": origin["path"],
+    v.origin = {"repo": repo, "ref": ref, "sha": sha, "path": path,
                 "license": _license_of(files, c)}
     db.flush()
     return _checked(db, sk, origin, sha, {"status": "pending", "sha": sha,
-                                          "version": v.version, "new": True})
+                                          "version": v.version, "new": True, **extra})
 
 
 def _checked(db: Session, sk: AwakSkill, origin: dict, sha: str, out: dict) -> dict:
     origin["checked_sha"] = sha
     origin["checked_at"] = datetime.now(UTC).isoformat(timespec="seconds")
     origin["check_status"] = out["status"]
+    origin["check_note"] = out.get("note", "")
     sk.origin = origin
     db.commit()
     return out

@@ -1006,7 +1006,7 @@ def seed_builtin(db: Session, root: Path = BUILTIN_DIR) -> list[str]:
             sk = AwakSkill(slug=slug, source="builtin", title=src.get("title") or slug,
                            description=meta.description,
                            license=src.get("license") or meta.license or "",
-                           enabled=worst(findings) != "high", current_version=1,
+                           enabled=worst(findings) != "high", current_version=1, last_version=1,
                            origin=origin, created_by="builtin")
             db.add(sk)
             _store_version(db, slug, 1, files, sha, findings, meta.warnings, "builtin")
@@ -1020,10 +1020,9 @@ def seed_builtin(db: Session, root: Path = BUILTIN_DIR) -> list[str]:
                 log.warning("skill %s exists as %s; the builtin copy is not seeded",
                             slug, sk.source)
                 continue
-            last = max([v.version for v in db.query(AwakSkillVersion).filter_by(slug=slug)],
-                       default=0)
-            _store_version(db, slug, last + 1, files, sha, findings, meta.warnings, "builtin")
-            sk.current_version = last + 1
+            n = next_version(db, slug)
+            _store_version(db, slug, n, files, sha, findings, meta.warnings, "builtin")
+            sk.current_version = n
             sk.description = meta.description
             sk.license = src.get("license") or meta.license or sk.license
             sk.title = src.get("title") or sk.title
@@ -1031,7 +1030,7 @@ def seed_builtin(db: Session, root: Path = BUILTIN_DIR) -> list[str]:
             if worst(findings) == "high":
                 sk.enabled = False
             sk.updated_at = datetime.now(UTC)
-            changed.append(f"{slug} v{last + 1}")
+            changed.append(f"{slug} v{n}")
         if worst(findings) == "high":
             log.error("builtin skill %s has a high scan finding; stored disabled", slug)
     db.commit()
@@ -1267,8 +1266,21 @@ def check(slug: str, files: dict[str, bytes]) -> Checked:
 def store_version(db: Session, slug: str, files: dict[str, bytes], c: Checked,
                   by: str) -> AwakSkillVersion:
     """The next version of `slug` (active). The caller makes it current."""
+    return _store_version(db, slug, next_version(db, slug), files, c.sha, c.findings,
+                          c.meta.warnings, by)
+
+
+def next_version(db: Session, slug: str) -> int:
+    """A version number `slug` never had: above every stored version and the
+    skill's `last_version` counter (which it advances), so a number freed by
+    a deleted pending version is never given again."""
+    # the query autoflushes, so a skill added in this session is found below
     last = max([v.version for v in db.query(AwakSkillVersion).filter_by(slug=slug)], default=0)
-    return _store_version(db, slug, last + 1, files, c.sha, c.findings, c.meta.warnings, by)
+    sk = db.get(AwakSkill, slug)
+    n = max(last, (sk.last_version or 0) if sk is not None else 0) + 1
+    if sk is not None:
+        sk.last_version = n
+    return n
 
 
 def used_by(db: Session) -> dict[str, list[dict]]:

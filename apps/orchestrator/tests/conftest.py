@@ -1,3 +1,5 @@
+import os
+
 import httpx
 import pytest
 from cryptography.fernet import Fernet
@@ -45,6 +47,9 @@ def agent_settings(tmp_path):
         bare_repo=str(tmp_path / "awak.git"),
         host_git=str(tmp_path / "host-git"),
         workspace_dir=str(tmp_path / "ws"),
+        skills_fetch_dir=str(tmp_path / "skills-fetch"),
+        # the fake fetch runner writes as the test's own uid
+        skills_fetch_uid=os.getuid() if hasattr(os, "getuid") else 0,
         ai_db_url="sqlite:///:memory:",
     )
 

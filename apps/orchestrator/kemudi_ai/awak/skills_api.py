@@ -523,24 +523,37 @@ def check_update(slug: str, user: TaigaUser = Depends(kemudi_admin),
     return {"result": res, "skill": _detail(db, sk)}
 
 
-def _pending(db: Session, slug: str, version: int) -> tuple[AwakSkill, AwakSkillVersion]:
+def _pending(db: Session, slug: str, version: int,
+             sha256: str) -> tuple[AwakSkill, AwakSkillVersion]:
+    """The pending version the admin reviewed: `sha256` (its tree, as the
+    review showed it) must still match, else 409 `stale`."""
     sk = _get(db, slug)
     v = db.query(AwakSkillVersion).filter_by(slug=slug, version=version).one_or_none()
     if v is None:
         raise HTTPException(404, "no such version")
     if v.status != "pending":
         raise _problems(409, f"version {version} is not pending", [], code="not_pending")
+    if v.sha256 != sha256:
+        raise _problems(409, f"version {version} is not the one you reviewed (it was "
+                        "replaced by a newer upstream change); review it again", [],
+                        code="stale", sha256=v.sha256)
     return sk, v
 
 
+# The reviewed version's tree (`pending[].sha256` of the skill detail).
+SHA256_QUERY = Query(..., min_length=64, max_length=64, pattern="^[0-9a-f]{64}$")
+
+
 @router.post("/{slug}/versions/{version}/approve")
-def approve_version(slug: str, version: int, accept_findings: bool = Query(False),
+def approve_version(slug: str, version: int, sha256: str = SHA256_QUERY,
+                    accept_findings: bool = Query(False),
                     user: TaigaUser = Depends(kemudi_admin), db: Session = Depends(get_db)):
     """A pending version becomes current (every role using the skill gets it
-    on its next run). A scan worse than the current version's on a skill in
-    use is refused (409 `findings_rise`) unless `accept_findings`; a high
-    finding disables the skill."""
-    sk, v = _pending(db, slug, version)
+    on its next run). `sha256` must be the reviewed version's (409 `stale`
+    otherwise). A scan worse than the current version's on a skill in use is
+    refused (409 `findings_rise`) unless `accept_findings`; a high finding
+    disables the skill."""
+    sk, v = _pending(db, slug, version, sha256)
     cur = _current(db, sk)
     worst = _scan_level(v)
     findings = (v.scan or {}).get("findings", [])
@@ -566,7 +579,13 @@ def approve_version(slug: str, version: int, accept_findings: bool = Query(False
     origin = dict(sk.origin or {})
     if vo.get("sha"):
         origin["sha"] = vo["sha"]
-    origin.pop("rejected", None)
+    # where the version came from: the marketplace entry may have moved the
+    # plugin to another repo or pin since the install
+    for k in ("repo", "ref"):
+        if isinstance(vo.get(k), str) and (k == "ref" or vo[k]):
+            origin[k] = vo[k]
+    origin.pop("rejected", None)  # the old single-sha form
+    origin["rejected_shas"] = [s for s in marketplace.rejected_shas(origin) if s != v.sha256]
     sk.origin = origin
     sk.updated_at = datetime.now(UTC)
     disabled = sk.enabled and worst == "high"
@@ -581,14 +600,16 @@ def approve_version(slug: str, version: int, accept_findings: bool = Query(False
 
 
 @router.post("/{slug}/versions/{version}/reject")
-def reject_version(slug: str, version: int, user: TaigaUser = Depends(kemudi_admin),
-                   db: Session = Depends(get_db)):
-    """Deletes a pending version; the same upstream tree is not proposed again."""
-    sk, v = _pending(db, slug, version)
+def reject_version(slug: str, version: int, sha256: str = SHA256_QUERY,
+                   user: TaigaUser = Depends(kemudi_admin), db: Session = Depends(get_db)):
+    """Deletes a pending version; the same upstream tree is not proposed again
+    (the last REJECTED_KEPT rejected trees are remembered). `sha256` as for
+    approve."""
+    sk, v = _pending(db, slug, version, sha256)
     detail = _version_detail(v)
     upstream = (v.origin or {}).get("sha", "")
     origin = dict(sk.origin or {})
-    origin["rejected"] = v.sha256
+    marketplace.remember_rejected(origin, v.sha256)
     sk.origin = origin
     db.delete(v)
     db.commit()

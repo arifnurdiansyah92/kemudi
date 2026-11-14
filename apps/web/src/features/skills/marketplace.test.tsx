@@ -291,6 +291,8 @@ describe('MarketplaceTab', () => {
   })
 })
 
+const PENDING_SHA = 'b'.repeat(64)
+
 function marketplaceSkill(over: Partial<SkillDetail> = {}): SkillDetail {
   const base = detailOf({
     slug: 'internal-comms',
@@ -318,7 +320,7 @@ function marketplaceSkill(over: Partial<SkillDetail> = {}): SkillDetail {
     pending: [
       {
         version: 2,
-        sha256: 'b'.repeat(64),
+        sha256: PENDING_SHA,
         origin: { repo: 'anthropics/skills', sha: 'f'.repeat(40) },
         diff: {
           added: ['reference/new.md'],
@@ -396,6 +398,7 @@ describe('MarketplaceOrigin', () => {
       slug: 'internal-comms',
       version: 2,
       decision: 'approve',
+      sha256: PENDING_SHA,
       acceptFindings: false,
     })
     state.decide.mock.calls[0][1].onError(
@@ -423,6 +426,7 @@ describe('MarketplaceOrigin', () => {
     ).toMatchObject({
       decision: 'reject',
       version: 2,
+      sha256: PENDING_SHA,
     })
   })
 })

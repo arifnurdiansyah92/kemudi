@@ -140,7 +140,13 @@ function PendingCard({
 
   const run = (decision: 'approve' | 'reject', acceptFindings = false) =>
     decide.mutate(
-      { slug: s.slug, version: p.version, decision, acceptFindings },
+      {
+        slug: s.slug,
+        version: p.version,
+        decision,
+        sha256: p.sha256,
+        acceptFindings,
+      },
       {
         onSuccess: (d) => {
           setRise(null)

@@ -591,11 +591,15 @@ export function useDecideVersion() {
       slug,
       version,
       decision,
+      sha256,
       acceptFindings = false,
     }: {
       slug: string
       version: number
       decision: 'approve' | 'reject'
+      /** The reviewed version's tree: the server answers 409 `stale` when the
+       * pending version is no longer that one. */
+      sha256: string
       /** Approve a version whose scan is worse than the current one's. */
       acceptFindings?: boolean
     }) =>
@@ -605,7 +609,10 @@ export function useDecideVersion() {
           null,
           {
             ...base,
-            params: acceptFindings ? { accept_findings: true } : undefined,
+            params: {
+              sha256,
+              ...(acceptFindings ? { accept_findings: true } : {}),
+            },
           }
         )
       ).data,

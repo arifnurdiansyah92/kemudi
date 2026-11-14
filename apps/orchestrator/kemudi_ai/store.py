@@ -367,6 +367,10 @@ class AwakSkill(Base):
     license: Mapped[str] = mapped_column(String(100), default="")
     enabled: Mapped[bool] = mapped_column(default=True)
     current_version: Mapped[int] = mapped_column(default=0)
+    # The highest version number ever given (skills.next_version): a deleted
+    # pending version's number is never reused, so an approve can never
+    # apply content other than the one reviewed under that number.
+    last_version: Mapped[int] = mapped_column(default=0)
     # Where it came from: {repo, commit, path, ...} or {uploaded_by}.
     origin: Mapped[dict[str, Any]] = mapped_column(default=dict)
     created_by: Mapped[str] = mapped_column(String(200), default="")
@@ -529,7 +533,8 @@ def _set_qa_modes(engine, host_git: str | None) -> None:
 # Tables that existed before a column was added to them. `create_all` never
 # alters an existing table, so missing columns are added here.
 _MIGRATED_TABLES = ("awak_jobs", "awak_projects", "awak_roles", "ai_calls",
-                    "awak_llm_aliases", "awak_setup_runs", "awak_skill_versions")
+                    "awak_llm_aliases", "awak_setup_runs", "awak_skill_versions",
+                    "awak_skills")
 
 
 def _sql_literal(value: Any) -> str:
