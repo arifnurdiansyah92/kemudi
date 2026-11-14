@@ -920,3 +920,15 @@ def test_members_see_no_compose_environment_values(api):
     admin = api.get(f"{BASE}/latest", headers=ADMIN).json()["run"]
     assert admin["proposal"]["runbook"]["services"][0]["environment"]["backend"] == {
         "FLASK_ENV": "plain-but-hidden"}
+
+
+def test_the_setup_folder_belongs_to_the_agent_uid(tmp_path, monkeypatch):
+    # the orchestrator runs as root; the agent (awak uid) writes runbook.json there
+    calls = []
+    monkeypatch.setattr(setup.os, "geteuid", lambda: 0, raising=False)
+    monkeypatch.setattr(setup.os, "chown", lambda p, u, g: calls.append((Path(p), u, g)),
+                        raising=False)
+    d = tmp_path / "setup"
+    d.mkdir()
+    setup._own(d, 10000)
+    assert calls == [(d, 10000, 10000)]

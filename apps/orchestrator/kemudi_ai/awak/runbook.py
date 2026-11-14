@@ -126,6 +126,12 @@ class App(_Strict):
     def _dir(cls, v: str) -> str:
         return v.strip().rstrip("/")  # a leading '/' is reported by _problems
 
+    @field_validator("generated")
+    @classmethod
+    def _generated(cls, v: list[str]) -> list[str]:
+        # "out/" and "out" mean the same; a leading '/' is reported by _problems
+        return [g.strip().rstrip("/") or g for g in v]
+
 
 class Service(_Strict):
     name: str

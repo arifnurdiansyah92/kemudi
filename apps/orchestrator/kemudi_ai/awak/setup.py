@@ -43,6 +43,7 @@ cancel from the API is never overwritten by a step that was still running.
 
 import json
 import logging
+import os
 import shutil
 from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
@@ -109,6 +110,13 @@ class _Cancelled(Exception):
 
 def now() -> datetime:
     return datetime.now(UTC)
+
+
+def _own(path: Path, uid: int) -> None:
+    """The folder itself (not its contents) belongs to the agent's uid, as the
+    story checkouts do; the orchestrator runs as root and creates it."""
+    if getattr(os, "geteuid", lambda: -1)() == 0 and path.stat().st_uid != uid:
+        os.chown(path, uid, uid)
 
 
 def setup_root(settings: Settings, slug: str) -> Path:
@@ -474,6 +482,8 @@ class SetupRunner:
         cfg, _ = self._config(slug)
         setup_root(self.s, slug).mkdir(parents=True, exist_ok=True)
         root = contained(self.s, slug)
+        if root is not None:
+            _own(root, self.s.awak_uid)  # the agent (uid awak) writes runbook.json here
         if root is None:
             raise SetupBlocked(f"{setup_root(self.s, slug)} is not a plain folder inside the "
                                "workspace.")
