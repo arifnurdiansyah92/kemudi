@@ -87,6 +87,22 @@ def _git(*args: str, git_dir: str | None = None, cwd: str | None = None, timeout
     return p.stdout.strip()
 
 
+def list_dirs(bare: str, branch: str, path: str = "") -> list[str]:
+    """Directory names under `path` on `branch` of a bare repo (`ls-tree`, no
+    checkout); [] when the path or branch does not exist."""
+    spec = f"refs/heads/{branch}:{path}" if path else f"refs/heads/{branch}"
+    try:
+        out = _git("ls-tree", "-z", spec, git_dir=bare, timeout=30)
+    except GitError:
+        return []
+    names = []
+    for entry in out.split("\0"):
+        meta, _, name = entry.partition("\t")
+        if name and meta.split(" ")[1:2] == ["tree"]:
+            names.append(name)
+    return sorted(names)
+
+
 class Repo:
     def __init__(self, bare: str, remote: str, workspace: str, uid: int,
                  default_branch: str = "main", subdir: str = "", git_env: GitEnv = None,

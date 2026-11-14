@@ -22,11 +22,11 @@ from ..config import Settings, get_settings
 from ..deps import access, actor, admin, get_db, get_llm, get_sessions, member
 from ..llm import LLM
 from ..store import AwakJob, AwakKey, AwakProject, AwakRepo, AwakRole, record_decision
-from . import config_store, crypto, gitops, llm_conn, prompts, secrets, ssh
+from . import config_store, crypto, detect, gitops, llm_conn, prompts, secrets, ssh
 from .bot_access import BotAccess, BotAccessError
 from .crypto import SecretKeyMissing
 from .detect import FIELDS as COMMAND_FIELDS
-from .detect import detect_commands
+from .detect import detect_apps, detect_commands
 from .ssh import CommandRunner
 
 log = logging.getLogger(__name__)
@@ -453,7 +453,7 @@ def check_repo(settings: Settings, slug: str, r: AwakRepo, key: AwakKey | None,
                run: CommandRunner) -> dict:
     """Can Kemudi clone and push? Nothing is created on the remote."""
     res = {"ok": False, "clone": False, "push": False, "default_branch_found": False,
-           "host_key": None, "detected": {}, "error": None}
+           "host_key": None, "detected": {}, "apps": [], "compose_files": [], "error": None}
     local = ssh.is_local_url(r.url)
     bare = bare_path(settings, r)
     branch = r.default_branch
@@ -491,16 +491,21 @@ def check_repo(settings: Settings, slug: str, r: AwakRepo, key: AwakKey | None,
         res["host_key"] = ssh.host_key_fingerprint(ssh.known_hosts_path(settings, slug),
                                                    ssh.url_host(r.url))
     if fetched:
-        prefix = f"{r.subdir}/" if r.subdir else ""
-
         def tree(path: str) -> str | None:
             try:
-                return gitops._git("show", f"refs/heads/{branch}:{prefix}{path}", git_dir=bare,
+                return gitops._git("show", f"refs/heads/{branch}:{path}", git_dir=bare,
                                    timeout=30)
             except gitops.GitError:
                 return None
 
-        res["detected"] = detect_commands(tree)
+        found = detect_apps(tree, lambda path: gitops.list_dirs(bare, branch, path))
+        res["apps"], res["compose_files"] = found["apps"], found["compose_files"]
+        if r.subdir:
+            # The admin chose the app's folder: detect there only.
+            res["detected"] = detect_commands(lambda p: tree(f"{r.subdir}/{p}"))
+        else:
+            # The root app, else the first subfolder app (with its `subdir`).
+            res["detected"] = detect.suggestion(found)
     res["ok"] = res["clone"] and res["push"] and res["default_branch_found"]
     return res
 
@@ -518,7 +523,12 @@ def check_repo_access(slug: str, repo_id: int, user: TaigaUser = Depends(admin),
         res = check_repo(settings, slug, r, key, run)
     except SecretKeyMissing as e:
         raise _no_secret_key(e) from e
-    filled = [f for f in COMMAND_FIELDS if not getattr(r, f) and res["detected"].get(f)]
+    detected = res["detected"]
+    if detected.get("subdir") and any(getattr(r, f) for f in COMMAND_FIELDS):
+        # Commands from another folder would mix with the ones typed for the root.
+        filled = []
+    else:
+        filled = [f for f in (*COMMAND_FIELDS, "subdir") if not getattr(r, f) and detected.get(f)]
     for f in filled:
         setattr(r, f, res["detected"][f])
     r.last_check = {**res, "checked_at": config_store.now().isoformat()}
