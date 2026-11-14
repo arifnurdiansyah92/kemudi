@@ -207,7 +207,8 @@ def _worker(tmp_path, repo=None, agent=None, runner=None):
     from kemudi_ai.awak.worker import Worker
 
     settings = Settings(awak_projects="kemudi", ai_db_url="sqlite:///:memory:",
-                        workspace_dir=str(tmp_path / "ws"), secret_key=SECRET_KEY)
+                        workspace_dir=str(tmp_path / "ws"), repos_dir=str(tmp_path / "repos"),
+                        secret_key=SECRET_KEY)
     sessions = make_session(settings.ai_db_url)
     taiga = FakeTaiga()
     w = Worker(settings, sessions, taiga, FakeTaiga("awak-qa"), agent or FakeAgent(),
