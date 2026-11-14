@@ -399,3 +399,142 @@ def test_the_server_stops_a_child_process_group(runner):
     code, out = runner.run(["sh", "-c", "pgrep -u %d -x sleep || true" % runner.CHILD_UID],
                            Path("/"), 30)
     assert out.strip() == ""
+
+
+# --- stage 1b: compose URLs, health, login, spec env, reap ---------------------------
+
+def _mock_services(runner, monkeypatch, envs):
+    class Proc:
+        pid, returncode = 0, None
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(runner, "_spawn", lambda argv, cwd, env, log: envs.append(
+        (argv, env)) or Proc())
+    monkeypatch.setattr(runner, "_stop", lambda p: None)
+    monkeypatch.setattr(runner, "_wait_http", lambda *a, **k: True)
+    monkeypatch.setattr(runner, "_warm", lambda *a: None)
+    monkeypatch.setattr(runner, "_npm_root", lambda: "/npm")
+
+
+def test_qa_resolves_compose_urls_for_process_services(runner, tmp_path, monkeypatch):
+    _spec(tmp_path)
+    envs, seen = [], {}
+    _mock_services(runner, monkeypatch, envs)
+    monkeypatch.setattr(runner, "_run_specs", lambda d, s, base, state, extra, dl: seen.update(
+        base=base, state=state, extra=extra) or {"ok": True, "runs": []})
+    web = _service("web", env={"INTERNAL_API_URL": "{services.api.url}"})
+    res = runner.op_qa({"path": JOB, "services": [web], "base_service": "web",
+                        "external": {"api": "http://kemudi-dind:32768"}})
+    assert res == {"ok": True, "runs": []}
+    assert envs[0][1]["INTERNAL_API_URL"] == "http://kemudi-dind:32768"
+    assert seen["state"] is None and seen["extra"] == {}
+    for external in ({"api": "http://evil:1"}, {"api": "http://kemudi-dind:1/x"},
+                     {"web": "http://kemudi-dind:1"}, {"Bad": "http://kemudi-dind:1"},
+                     ["http://kemudi-dind:1"]):
+        with pytest.raises(ValueError):
+            runner.op_qa({"path": JOB, "services": [web], "base_service": "web",
+                          "external": external})
+
+
+def test_qa_login_runs_once_and_the_specs_get_its_state(runner, tmp_path, monkeypatch):
+    import json
+
+    _spec(tmp_path)
+    envs, seen, logins = [], {}, []
+    _mock_services(runner, monkeypatch, envs)
+    value = "pw-" + os.urandom(6).hex()
+
+    def fake_run(argv, cwd, timeout, env=None):
+        logins.append((argv, cwd, env))
+        Path(env["QA_STATE_OUT"]).write_text("{}")
+        return 0, ""
+
+    monkeypatch.setattr(runner, "run", fake_run)
+    monkeypatch.setattr(runner, "_run_specs", lambda d, s, base, state, extra, dl: seen.update(
+        state=state, state_ok=state.is_file(), extra=extra) or {"ok": True, "runs": []})
+    login = {"path": "/login", "submit": "button[type=submit]", "success_url": "/store",
+             "fields": [{"selector": "input[type=password]", "value": value}]}
+    res = runner.op_qa({"path": JOB, "services": [_service()], "base_service": "web",
+                        "login": login, "spec_env": {"QA_ADMIN_PASSWORD": value}})
+    assert res == {"ok": True, "runs": []}
+    [(argv, cwd, env)] = logins
+    assert argv == ["node", runner.LOGIN_SCRIPT] and cwd.name == ".qa"
+    assert json.loads(env["QA_LOGIN"]) == login and value not in " ".join(argv)
+    assert env["QA_BASE_URL"].startswith("http://localhost:") and env["NODE_PATH"] == "/npm"
+    assert seen["state_ok"] and seen["extra"] == {"QA_ADMIN_PASSWORD": value}
+    assert not seen["state"].parent.exists()  # the state's temp dir is removed
+    # the process services never get the login or the spec's values
+    assert value not in str(envs)
+
+
+def test_qa_login_failure_is_reported_and_services_stop(runner, tmp_path, monkeypatch):
+    _spec(tmp_path)
+    envs, stopped = [], []
+    _mock_services(runner, monkeypatch, envs)
+    monkeypatch.setattr(runner, "_stop", lambda p: stopped.append(p))
+    monkeypatch.setattr(runner, "run", lambda *a, **k: (
+        1, "login failed: still at /login 30 s after submitting the login form"))
+    monkeypatch.setattr(runner, "_run_specs", lambda *a: pytest.fail("specs must not run"))
+    login = {"path": "/login", "submit": "#go", "fields": [{"selector": "#u", "value": "x"}]}
+    res = runner.op_qa({"path": JOB, "services": [_service()], "base_service": "web",
+                        "login": login})
+    assert "still at /login" in res["login_error"] and len(stopped) == 1
+
+
+@pytest.mark.parametrize("body", [
+    {"login": {"path": "login", "submit": "#go", "fields": [{"selector": "#u", "value": "x"}]}},
+    {"login": {"path": "/login", "submit": "", "fields": [{"selector": "#u", "value": "x"}]}},
+    {"login": {"path": "/login", "submit": "#go", "fields": []}},
+    {"login": {"path": "/login", "submit": "#go", "fields": [{"selector": "#u"}]}},
+    {"login": {"path": "/l", "submit": "#go", "success_url": "x",
+               "fields": [{"selector": "#u", "value": "x"}]}},
+    {"spec_env": {"QA_BASE_URL": "http://evil"}},
+    {"spec_env": {"KEMUDI_RUNNER_KEY": "x"}},
+    {"spec_env": {"NODE_OPTIONS": "--require x"}},
+])
+def test_qa_login_and_spec_env_are_validated(runner, tmp_path, body):
+    _spec(tmp_path)
+    with pytest.raises(ValueError):
+        runner.op_qa({"path": JOB, "services": [_service()], "base_service": "web", **body})
+
+
+def test_health_waits_for_a_published_compose_port(runner, monkeypatch):
+    import http.server
+    import threading
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            self.send_response(200 if self.path == "/api/health" else 503)
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        monkeypatch.setattr(runner, "DIND_HOST", "127.0.0.1")
+        url = f"http://127.0.0.1:{srv.server_address[1]}"
+        assert runner.op_health({"url": url, "path": "/api/health", "timeout": 5})["ok"]
+        res = runner.op_health({"url": url, "path": "/down", "timeout": 1})
+        assert not res["ok"] and "/down" in res["error"]
+    finally:
+        srv.shutdown()
+    for body in ({"url": "http://kemudi-gateway:80"}, {"url": "file:///etc/passwd"},
+                 {"url": "http://127.0.0.1:1", "path": "x"}):
+        with pytest.raises(ValueError):
+            runner.op_health(body)
+
+
+def test_reap_stops_left_over_process_services(runner, tmp_path):
+    import sys as _sys
+
+    proc = runner._spawn([_sys.executable, "-c", "import time; time.sleep(60)"], tmp_path,
+                         runner.child_env(), None)
+    assert proc in runner.LIVE
+    res = runner.op_reap({})
+    assert res["ok"] and res["stopped"] == 1 and proc.poll() is not None
+    assert not runner.LIVE
+    assert runner.OPS["reap"] is runner.op_reap and runner.OPS["health"] is runner.op_health

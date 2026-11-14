@@ -13,7 +13,7 @@ import socket
 import threading
 import time
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -35,6 +35,7 @@ from .merge import DONE_TAG, HUMAN_TAG, Merger, effective_mode, save_spec
 from .runbook import Runbook
 from .prompts import RoleScope, out_of_scope, prompt_version, render, render_role
 from .runner import Runner, RunnerError, RunnerRejected
+from .svc import Svc, SvcError, SvcRejected
 from .stories import code_task, criteria, qa_task
 from .taiga import Project, Taiga, TaigaError, tag_names
 from .verdict import Verdict, evaluate, safe_screenshot
@@ -100,6 +101,7 @@ class Worker:
         secret_values: list[str] | None = None,
         sleep: Callable[[float], None] = time.sleep,
         command_runner: ssh.CommandRunner = ssh.subprocess_runner,
+        svc: Svc | None = None,
     ):
         self.s = settings
         self.sessions = sessions
@@ -111,8 +113,10 @@ class Worker:
         self._secret_values = secrets.known_values() if secret_values is None else secret_values
         self.sleep = sleep
         self.command_runner = command_runner  # deploy over SSH
+        self.svc = svc  # kemudi-svc: compose services (None: not configured)
         self._seeded = False
         self._swept = False
+        self._services_swept = False
         self.holder = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 
     @property
@@ -171,8 +175,12 @@ class Worker:
         """A job left running by a crash becomes queued again (infra error)."""
         self._seed()
         with self.sessions() as db:
-            if not self._swept and not db.query(AwakJob).filter_by(state="running").count():
+            running = db.query(AwakJob).filter(
+                or_(AwakJob.state == "running", AwakJob.merge_state == "merging")).all()
+            if not self._swept and not any(j.state == "running" for j in running):
                 self._sweep_old_workspaces()
+            if not self._services_swept:
+                self._sweep_services(db, running)
             for job in db.query(AwakJob).filter_by(state="running"):
                 job.state = "queued"
                 job.infra_errors += 1
@@ -200,6 +208,29 @@ class Worker:
                     shutil.rmtree(d, onerror=_force_remove)
             except OSError as e:
                 log.warning("awak: could not delete old workspace %s: %s", d, e)
+
+    def _sweep_services(self, db: Session, running: list[AwakJob]) -> None:
+        """Once per worker: compose projects of jobs that are not running come
+        down (kemudi-svc), and with no job running, the runner stops every
+        process service left behind. Failures are logged, never fatal."""
+        self._services_swept = True
+        if self.svc is not None:
+            keep: set[str] = set()
+            for j in running:
+                rb = runbook.load(db, j.project_slug)
+                keep |= set(checks.compose_projects(rb, j.project_slug,
+                                                    f"us{j.story_ref}").values())
+            try:
+                res = self.svc.call("svc_sweep", keep=sorted(keep))
+                if res.get("removed"):
+                    log.warning("awak: swept compose projects %s", res["removed"])
+            except SvcError as e:
+                log.warning("awak: compose sweep failed: %s", e)
+        if not running:
+            try:
+                self.runner.call("reap")
+            except RunnerError as e:
+                log.warning("awak: runner reap failed: %s", e)
 
     def tick(self) -> bool:
         """Process at most one story. Returns True if it did any work.
@@ -427,6 +458,26 @@ class Worker:
             except (NeedsHuman, checks.Unsupported) as e:
                 self._block(project, story, job_id, f"Berhenti: {e}")
                 return
+            except checks.ServiceFailed as e:
+                # A compose service, init/seed or the QA login: the redacted
+                # logs go to the event and the card.
+                self._event(job_id, "service_failed", {"error": str(e)[:1000],
+                                                       "logs": e.logs[-4000:],
+                                                       "infra": e.infra})
+                logs = f"\n\n```\n{e.logs.strip()[-1500:]}\n```" if e.logs.strip() else ""
+                if not e.infra:
+                    self._block(project, story, job_id, f"Berhenti: {e}{logs}")
+                    return
+                job = self._set(job_id, infra_errors=job.infra_errors + 1)
+                if job.infra_errors >= self.s.max_infra_errors:
+                    self._block(project, story, job_id,
+                                f"Gangguan lingkungan berulang ({job.infra_errors}x): {e}{logs}")
+                    return
+                self._say(story["id"], job_id,
+                          f"Gangguan lingkungan, bukan kesalahan story ({e}). Dicoba lagi "
+                          f"otomatis; tidak dihitung sebagai percobaan.{logs}")
+                self.sleep(30 * job.infra_errors)
+                continue
             except Stop as e:
                 self._set(job_id, state="stopped")
                 self._say(story["id"], job_id, f"Berhenti: {e}")
@@ -541,8 +592,11 @@ class Worker:
         gates: list[dict] = []
         if qa_mode != "off":
             self._set(job.id, phase="gates")
-            gates = checks.run_gates(self._runner, self._path(workdir),
-                                     checks.gate_payloads(rc, route.runbook, files, workdir))
+            payloads = checks.gate_payloads(rc, route.runbook, files, workdir)
+            gates = checks.run_gates(
+                self._runner, self._path(workdir), payloads,
+                self.compose_for(job, route.runbook, workdir)
+                if checks.needs_compose(payloads) else None)
         failed = [g for g in gates if not g.get("ok")]
         table = "\n".join(f"- {'✅' if g.get('ok') else '❌'} {g['name']}" for g in gates)
         if failed:
@@ -672,14 +726,16 @@ class Worker:
                                self.s.qa_project, spec_feedback, app_dir=route.rc.subdir)
             else:
                 task = qa_task(str(workdir), job.story_ref, story["subject"], texts, "",
-                               spec_feedback, app_dirs=plan["app_dirs"])
+                               spec_feedback, app_dirs=plan["app_dirs"],
+                               env_names=plan["qa_env"],
+                               login_path=(plan["login"] or {}).get("path"),
+                               backing=plan["compose"])
             _, cost = self.agent.run("awak.qa", model, system, task, slug=route.config.slug,
                                      role_id=qa_role.id if qa_role else None)
             self._add_cost(job.id, cost)
             if plan is not None:
                 self.qa_siblings(route.config, route.rc, route.runbook, job.branch)
-            report = self._runner("qa", path=self._path(workdir),
-                                  **self.qa_payload(plan, token, route.rc))
+            report = self.run_qa(job, workdir, route.runbook, route.rc, plan, token)
             verdict = evaluate(report, texts)
             self._event(job.id, "qa", {"outcome": verdict.outcome, "reason": verdict.reason})
             if verdict.outcome != "spec":
@@ -689,13 +745,86 @@ class Worker:
             raise Infra(f"QA tidak dapat berjalan: {verdict.reason}")
         return verdict
 
-    def qa_payload(self, plan: dict | None, token: str, rc: RepoConfig) -> dict:
-        """The runner's `qa` body: the runbook's services, or Kemudi's vite path."""
+    def qa_payload(self, plan: dict | None, token: str, rc: RepoConfig,
+                   external: dict[str, str] | None = None, login: dict | None = None,
+                   spec_env: dict[str, str] | None = None) -> dict:
+        """The runner's `qa` body: the runbook's services (plus the compose
+        services' URLs, the resolved login and the spec's vault values), or
+        Kemudi's vite path."""
         if plan is None:
             return {"token": token, "user": self.qa_taiga.me, "project": self.s.qa_project,
                     "subdir": rc.subdir}
-        return {"services": plan["services"], "base_service": plan["base_service"],
+        body = {"services": plan["services"], "base_service": plan["base_service"],
                 "warm": plan["warm"]}
+        if external:
+            body["external"] = external
+        if login:
+            body["login"] = login
+        if spec_env:
+            body["spec_env"] = spec_env
+        return body
+
+    def run_qa(self, job: AwakJob, workdir: Path, rb: Runbook | None, rc: RepoConfig,
+               plan: dict | None, token: str) -> dict:
+        """One runner QA run (worker and merge re-run). With a runbook: its
+        compose services up (kemudi-svc), init, seed and health first, the login
+        and the spec's vault values resolved, and the services down afterwards,
+        whatever happens."""
+        if plan is None or rb is None:
+            return self._runner("qa", path=self._path(workdir),
+                                **self.qa_payload(plan, token, rc))
+        values = self._vault(job.project_slug) if (
+            plan["compose"] or plan["login"] or plan["qa_env"]) else {}
+        login = checks.login_payload(rb, values)
+        spec_env = checks.vault_env(rb, plan["qa_env"], values, "qa.env")
+        compose = self.compose_for(job, rb, workdir, values) if plan["compose"] else None
+        with compose.for_qa(plan) if compose else nullcontext({}) as urls:
+            report = self._runner("qa", path=self._path(workdir),
+                                  **self.qa_payload(plan, token, rc, urls, login, spec_env))
+        if report.get("login_error"):
+            raise checks.ServiceFailed(
+                "login QA (qa.login) gagal; periksa selector dan nilai vault di runbook, atau "
+                "kembalikan story ke In progress jika story ini mengubah halaman login.",
+                logs=str(report["login_error"]), infra=False)
+        return report
+
+    def _vault(self, slug: str) -> dict[str, str]:
+        try:
+            with self.sessions() as db:
+                return vault.values(db, self.s, slug)
+        except SecretKeyMissing as e:
+            raise checks.Unsupported(f"vault proyek tidak bisa dibaca: {e}") from e
+
+    def compose_for(self, job: AwakJob, rb: Runbook | None, workdir: Path,
+                    values: dict[str, str] | None = None) -> checks.Compose:
+        """The job's compose services (projects `<slug>-us<ref>`), reached
+        through kemudi-svc from the story folder's checkouts."""
+        if rb is None:
+            raise checks.Unsupported("tidak ada runbook untuk service compose.")
+        slug = job.project_slug
+        return checks.Compose(
+            rb, self._svc, self._runner,
+            checks.compose_projects(rb, slug, f"us{job.story_ref}"),
+            lambda repo: self._path(workdir.parent / repo),
+            self._vault(slug) if values is None else values,
+            self.redact_values_for(slug),
+            lambda kind, detail: self._event(job.id, kind, detail))
+
+    def _svc(self, op: str, **payload) -> dict:
+        if self.svc is None:
+            raise checks.ServiceFailed("kemudi-svc belum dikonfigurasi (KEMUDI_SVC_KEY), jadi "
+                                       "service compose tidak bisa berjalan.", infra=False)
+        try:
+            res = self.svc.call(op, **payload)
+        except SvcRejected as e:
+            raise checks.Unsupported(
+                f"kemudi-svc menolak langkah {op}: {e}. Periksa service compose di runbook "
+                "(file, compose_services, expose, env) dan compose file repo.") from e
+        except SvcError as e:
+            raise checks.ServiceFailed(f"kemudi-svc tidak bisa dihubungi ({op}): {e}") from e
+        if res.get("infra_error"):
+            raise checks.ServiceFailed(f"kemudi-svc {op}: {res['infra_error']}")
+        return res
 
     # ------------------------------------------------------------- helpers
     def _route(self, job: AwakJob, story: dict, slug: str) -> Route:
@@ -1002,9 +1131,8 @@ def qa_mode_for(cfg: ProjectConfig, rc: RepoConfig, rb: Runbook | None,
     if mode != "browser" or (rb is not None and rb.browser_qa_ready()):
         return mode, ""
     if rb is not None and rb.qa_service() is not None:
-        return "gates", ("Mode QA proyek Browser, tetapi service QA di runbook (atau service yang "
-                         "dibutuhkannya) bertipe compose "
-                         "(baru tersedia di tahap 1b); diperlakukan sebagai Gates only.")
+        return "gates", ("Mode QA proyek Browser, tetapi service QA di runbook bukan service "
+                         "process (dev server app); diperlakukan sebagai Gates only.")
     if rc.url == host_git:
         return mode, ""
     return "gates", ("Mode QA proyek Browser, tetapi QA browser belum bisa berjalan "

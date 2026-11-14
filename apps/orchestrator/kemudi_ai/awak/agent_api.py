@@ -213,11 +213,13 @@ def _qa_mode_blocker(db: Session, settings: Settings, slug: str, merge_mode: str
         return None
     rb = runbook.load(db, slug)
     if rb is not None and rb.browser_qa_ready():
+        if rb.qa_compose() and not settings.svc_key:
+            return ("QA mode browser: the runbook's QA needs compose services, but kemudi-svc "
+                    "is not configured (KEMUDI_SVC_KEY)")
         return None
     if rb is not None and rb.qa_service() is not None:
-        return ("QA mode browser: the runbook's qa service (or a service it needs) is a "
-                "compose service, which "
-                "runs from stage 1b; use a process service or gates for now")
+        return ("QA mode browser: the runbook's qa service must be a process service (the "
+                "app's dev server); the services it needs may be compose services")
     if db.query(AwakRepo).filter_by(project_slug=slug, url=settings.host_git).count():
         return None  # Kemudi's own repo: iteration 1's vite path
     # Browser QA starts the app from a runbook's QA section; without a runbook

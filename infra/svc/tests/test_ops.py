@@ -105,6 +105,15 @@ def test_svc_up_subset_and_no_wait(svc, fake):
     assert "--wait" not in start["args"] and start["args"][-1] == "postgres"
 
 
+def test_svc_up_with_empty_up_builds_only(svc, fake):
+    # run_in gates whose service has no dependency: the image, nothing started
+    res = up(svc, expose=None, up=[])
+    assert res == {"ok": True, "project": "demo-us1",
+                   "services": ["backend", "postgres", "redis"], "built": ["backend"],
+                   "url": None, "logs_tail": ""}
+    assert fake.verbs() == ["config", "config", "build"]
+
+
 @pytest.mark.parametrize("body,match", [
     ({"path": "../x"}, "bad workspace path"),
     ({"project": "Bad"}, "bad project"),

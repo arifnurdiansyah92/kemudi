@@ -18,7 +18,8 @@ POST /svc_up    {path, project, services, file?, expose?, env?, up?, wait?, reda
     services: the services wanted; their depends_on closure comes along.
     expose: "<service>:<port>", published on a random port of kemudi-dind.
     env: vault values, the only variables compose interpolates with.
-    up: services to start (default all of the closure; with their deps).
+    up: services to start (default all of the closure; with their deps);
+        [] builds only and starts nothing (run_in gates with no dependency).
     wait: `up --wait` for health (default true).
     -> {ok: true, project, services, built, url?, logs_tail}
     -> {ok: false, stage: "build"|"up", error, logs_tail}
@@ -212,7 +213,9 @@ def op_svc_up(body: dict) -> dict:
     selected = sanitize.service_names(body.get("services"))
     expose = sanitize.parse_expose(body.get("expose"))
     env = sanitize.request_env(body.get("env"))
-    up_only = sanitize.service_names(body["up"], "up") if body.get("up") is not None else None
+    raw_up = body.get("up")
+    up_only = (None if raw_up is None else [] if raw_up == []
+               else sanitize.service_names(raw_up, "up"))
     wait = body.get("wait", True) is not False
     hide = redact_values(body) + list(env.values())
 
@@ -272,6 +275,9 @@ def op_svc_up(body: dict) -> dict:
         if code != 0:
             return {"ok": False, "stage": "build", "error": f"build failed (exit {code})",
                     "logs_tail": tail(redact(out + err, hide))}
+    if up_only == []:
+        return {"ok": True, "project": project, "services": keep, "built": built, "url": None,
+                "logs_tail": ""}
     up = [*base, "up", "-d", "--no-build", "--pull", "missing", "--remove-orphans"]
     if wait:
         up += ["--wait", "--wait-timeout", str(UP_TIMEOUT)]

@@ -84,9 +84,12 @@ def code_task(workspace: str, ref: int, subject: str, description: str,
 
 def qa_task(workspace: str, ref: int, subject: str, criteria_list: list[str],
             project_slug: str, feedback: str = "", app_dir: str | None = None,
-            app_dirs: list[str] | None = None) -> str:
+            app_dirs: list[str] | None = None, env_names: list[str] | None = None,
+            login_path: str | None = None, backing: list[str] | None = None) -> str:
     """`app_dirs`: QA runs against the project's runbook services (not Kemudi's
-    own app): no login, no QA project, a dev server that compiles on first hit."""
+    own app): no QA project, a dev server that compiles on first hit, logged in
+    through `login_path` when the runbook has a login. `env_names`: the vault
+    values the spec may read (names only, never a value)."""
     numbered = "\n".join(f"AC{i}: {c}" for i, c in enumerate(criteria_list, 1))
     parts = [f"Workspace: {workspace}"]
     if app_dirs is None:
@@ -100,8 +103,20 @@ def qa_task(workspace: str, ref: int, subject: str, criteria_list: list[str],
             "",
             "This project's app is started by the runner from the project's runbook; the "
             "configured baseURL (http://localhost:<port>) points at it. Use relative URLs. "
-            "The browser starts logged out, and there is no QA project slug and no "
-            "KEMUDI_QA_TOKEN: ignore those parts of your instructions.",
+            "There is no QA project slug and no KEMUDI_QA_TOKEN: ignore those parts of your "
+            "instructions.",
+            (f"The browser starts logged in: before the tests the runner signs in once "
+             f"through the login form at {login_path} with the project's QA account and "
+             "every test starts with that session. Do not log out; to test the login page "
+             "itself, use a fresh browser context." if login_path else
+             "The browser starts logged out."),
+            ("Your spec may read these environment variables, set by the runner from the "
+             "project's test values: " + ", ".join(f"process.env.{n}" for n in env_names)
+             + ". Use them only through process.env; never print, log, assert on or "
+               "hard-code their values." if env_names else
+             "The spec gets no project environment variables."),
+            *([f"Backing services ({', '.join(backing)}) are started fresh for each QA run "
+               "and shared by both spec runs (one database)."] if backing else []),
             "Besides the spec, write the paths your tests visit, one per line (at most 10, "
             "e.g. `/` or `/campaigns`), to <workspace>/.qa/routes.txt. The runner loads each "
             "once before the tests, because the dev server compiles a page on its first hit.",
