@@ -1,11 +1,14 @@
 """kemudi-runner's marketplace fetch: one GitHub repo at a full commit sha.
 
-Run by the runner as a child (uid 10000, clean environment, no Kemudi
-secrets), never by the server itself:
+Run by the runner as a child (its own uid, 10001: not the uid that runs
+project code; clean environment, no Kemudi secrets), never by the server
+itself:
 
     python -I fetch.py '{"owner": ..., "repo": ..., "ref": ..., "dest": ...}'
 
-prints one JSON line: {"sha", "files", "bytes", "skipped"} or {"error"}.
+prints one JSON line: {"sha", "files", "bytes", "skipped", "skipped_truncated",
+"manifest"} or {"error"}. `manifest` is {path: sha256} of every extracted
+file; the orchestrator checks each file it reads against it.
 
 - GitHub only: `ref` (default branch when empty) is resolved to a full sha
   with `https://api.github.com/repos/<o>/<r>/commits/<ref>` (no token), then
@@ -18,12 +21,24 @@ prints one JSON line: {"sha", "files", "bytes", "skipped"} or {"error"}.
   hardlinks and special files are skipped and listed; files over
   MAX_FILE_BYTES are skipped; more than MAX_ENTRIES entries or
   MAX_EXTRACT_BYTES bytes fails the fetch.
+- Memory and time are bounded: the child limits itself (RLIMIT_AS
+  MAX_MEMORY, RLIMIT_CPU CPU_SECONDS, RLIMIT_FSIZE) before anything else;
+  the archive is read as a stream; a GNU long-name or PAX header bigger than
+  MAX_HEADER_BYTES is refused before tarfile reads it into memory (a TarInfo
+  subclass checks the header's declared size in `_proc_gnulong` /
+  `_proc_pax`, which would otherwise `read(size)` it whole), and sparse
+  members (whose maps tarfile also builds in memory) are refused; the
+  wall-clock DEADLINE is checked while downloading and for every member and
+  chunk extracted. A child killed anyway (the runner's timeout) leaves a
+  folder the runner removes at once, and `sweep` removes any older than an
+  hour.
 
 Python stdlib only.
 """
 
 from __future__ import annotations
 
+import hashlib
 import http.client
 import ipaddress
 import json
@@ -58,6 +73,9 @@ MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_ENTRIES = 20_000
 MAX_DEPTH = 24
 MAX_SKIPPED_LISTED = 200
+MAX_HEADER_BYTES = 64 * 1024  # a GNU long name's / PAX header's data
+MAX_MEMORY = 768 * 1024 * 1024  # RLIMIT_AS of the child
+CPU_SECONDS = 200  # RLIMIT_CPU of the child
 SOCKET_TIMEOUT = 30
 DEADLINE = 240  # seconds for the whole fetch
 CHUNK = 64 * 1024
@@ -266,6 +284,29 @@ def _ensure_dirs(root: Path, parts: list[str]) -> Path:
     return p
 
 
+class _BoundedTarInfo(tarfile.TarInfo):
+    """tarfile reads a GNU long name or a PAX header's data whole into memory
+    (`fileobj.read(size)`, the size taken from the archive): refuse one over
+    MAX_HEADER_BYTES before that read. Sparse members are refused too."""
+
+    def _proc_gnulong(self, tarfile):
+        if self.size > MAX_HEADER_BYTES:
+            raise FetchError(f"a long-name header of {self.size} bytes in the archive "
+                             f"(more than {MAX_HEADER_BYTES})")
+        return super()._proc_gnulong(tarfile)
+
+    def _proc_pax(self, tarfile):
+        if self.size > MAX_HEADER_BYTES:
+            raise FetchError(f"a PAX header of {self.size} bytes in the archive "
+                             f"(more than {MAX_HEADER_BYTES})")
+        return super()._proc_pax(tarfile)
+
+    def _no_sparse(self, *_a, **_k):
+        raise FetchError("sparse files in the archive are not supported")
+
+    _proc_sparse = _proc_gnusparse_00 = _proc_gnusparse_01 = _proc_gnusparse_10 = _no_sparse
+
+
 def _kind(m: tarfile.TarInfo) -> str:
     if m.issym():
         return "symlink"
@@ -274,25 +315,38 @@ def _kind(m: tarfile.TarInfo) -> str:
     return "special file"
 
 
-def extract(fileobj, dest: Path, expect_sha: str | None = None) -> dict:
+def extract(fileobj, dest: Path, expect_sha: str | None = None,
+            deadline: float | None = None) -> dict:
     """The gzip tarball in `fileobj` into `dest` (an existing, empty folder),
-    without its single top folder. Returns {files, bytes, skipped}."""
+    without its single top folder. Returns {files, bytes, skipped,
+    skipped_truncated, manifest}."""
     files = total = entries = 0
     skipped: list[dict] = []
+    truncated = False
+    manifest: dict[str, str] = {}
     top: str | None = None
     checked_sha = False
+    deadline = deadline or time.monotonic() + DEADLINE
 
     def skip(path: str, reason: str) -> None:
+        nonlocal truncated
         if len(skipped) < MAX_SKIPPED_LISTED:
             skipped.append({"path": path, "reason": reason})
+        else:
+            truncated = True
+
+    def in_time() -> None:
+        if time.monotonic() > deadline:
+            raise FetchError("the fetch took too long")
 
     try:
-        tf = tarfile.open(fileobj=fileobj, mode="r|gz")
-    except (tarfile.TarError, OSError, EOFError) as e:
+        tf = tarfile.open(fileobj=fileobj, mode="r|gz", tarinfo=_BoundedTarInfo)
+    except (tarfile.TarError, OSError, EOFError, zlib.error) as e:
         raise FetchError(f"the archive is not a gzip tarball: {e}") from e
     with tf:
         try:
             for m in tf:
+                in_time()
                 entries += 1
                 if entries > MAX_ENTRIES:
                     raise FetchError(f"the repository has more than {MAX_ENTRIES} entries")
@@ -336,14 +390,18 @@ def extract(fileobj, dest: Path, expect_sha: str | None = None) -> dict:
                     fd = os.open(parent / parts[-1],
                                  os.O_WRONLY | os.O_CREAT | os.O_EXCL | _O_NOFOLLOW | _O_BINARY,
                                  0o644)
+                    h = hashlib.sha256()
                     with os.fdopen(fd, "wb") as out:
                         left = m.size
                         while left > 0:
+                            in_time()
                             chunk = src.read(min(CHUNK, left))
                             if not chunk:
                                 raise FetchError(f"{rel}: the archive ends early")
                             out.write(chunk)
+                            h.update(chunk)
                             left -= len(chunk)
+                    manifest[rel] = h.hexdigest()
                     files += 1
                 else:
                     skip(rel, _kind(m))
@@ -351,7 +409,8 @@ def extract(fileobj, dest: Path, expect_sha: str | None = None) -> dict:
             raise FetchError(f"a path appears twice in the archive: {e.filename}") from e
         except (tarfile.TarError, EOFError, zlib.error) as e:
             raise FetchError(f"the archive is damaged: {e}") from e
-    return {"files": files, "bytes": total, "skipped": skipped}
+    return {"files": files, "bytes": total, "skipped": skipped,
+            "skipped_truncated": truncated, "manifest": manifest}
 
 
 # --- one fetch ---------------------------------------------------------------------------
@@ -399,19 +458,39 @@ def fetch(owner: str, repo: str, ref: str, dest: Path, urlopen=default_urlopen) 
     sweep(base, keep=dest.name)
     os.mkdir(dest, 0o755)
     try:
+        os.chmod(dest, 0o755)  # whatever the umask: the orchestrator reads it
         sha = resolve_sha(owner, repo, ref, urlopen)
         with tempfile.TemporaryFile() as tmp:
             download(owner, repo, sha, tmp, urlopen, deadline=deadline)
             tmp.seek(0)
-            res = extract(tmp, dest, expect_sha=sha)
+            res = extract(tmp, dest, expect_sha=sha, deadline=deadline)
         return {"sha": sha, **res}
     except BaseException:
         shutil.rmtree(dest, ignore_errors=True)
         raise
 
 
+def limit_self() -> None:
+    """Memory, CPU time and file size limits for this process (lowering a
+    limit needs no privilege). Without the `resource` module (Windows): none."""
+    try:
+        import resource
+    except ImportError:
+        return
+    for name, value in (("RLIMIT_AS", MAX_MEMORY), ("RLIMIT_CPU", CPU_SECONDS),
+                        ("RLIMIT_FSIZE", MAX_DOWNLOAD_BYTES + CHUNK)):
+        lim = getattr(resource, name, None)
+        if lim is None:
+            continue
+        _soft, hard = resource.getrlimit(lim)
+        if hard != resource.RLIM_INFINITY:
+            value = min(value, hard)
+        resource.setrlimit(lim, (value, value))
+
+
 def main(argv: list[str]) -> int:
     try:
+        limit_self()
         args = json.loads(argv[1])
         res = fetch(str(args["owner"]), str(args["repo"]), str(args.get("ref") or ""),
                     Path(args["dest"]))

@@ -27,6 +27,15 @@ COPY install-browsers.py /tmp/install-browsers.py
 RUN /opt/hermes/.venv/bin/python3 /tmp/install-browsers.py /ms-playwright \
  && chown -R 10000:10000 /ms-playwright /pnpm-store /workspace
 
+# Marketplace fetches (fetch.py) run as their own uid 10001 and extract into
+# /skills-fetch (the kemudi-skills-fetch volume, which copies this folder's
+# owner and mode): root-owned, only group 10001 may create folders there,
+# everyone else may only traverse (the orchestrator reads it read-only).
+ENV RUNNER_FETCH_UID=10001 \
+    RUNNER_FETCH_GID=10001 \
+    RUNNER_SKILLS_FETCH=/skills-fetch
+RUN mkdir -p /skills-fetch && chown 0:10001 /skills-fetch && chmod 1771 /skills-fetch
+
 COPY --chmod=0755 runner.py /opt/runner/runner.py
 COPY --chmod=0644 playwright.config.cjs login.cjs screenshot.cjs fetch.py /opt/runner/
 

@@ -3,6 +3,7 @@
 Run: python -m pytest infra/runner -q
 """
 
+import hashlib
 import importlib.util
 import io
 import json
@@ -42,7 +43,8 @@ def fetch():
 
 @pytest.fixture
 def runner(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUNNER_WORKSPACE", str(tmp_path))
+    monkeypatch.setenv("RUNNER_WORKSPACE", str(tmp_path / "ws"))
+    monkeypatch.setenv("RUNNER_SKILLS_FETCH", str(tmp_path / "skills-fetch"))
     mod = _load("kemudi_runner_fetch_ops", HERE / "runner.py")
     yield mod
     sys.modules.pop("kemudi_runner_fetch_ops", None)
@@ -233,9 +235,64 @@ def test_download_caps(fetch):
 
 def test_extract_plain_tree(fetch, tmp_path):
     res = fetch.extract(io.BytesIO(tarball(GOOD)), tmp_path, expect_sha=SHA)
-    assert res["files"] == 3 and res["skipped"] == []
+    assert res["files"] == 3 and res["skipped"] == [] and res["skipped_truncated"] is False
     t = tree(tmp_path)
     assert set(t) == {".claude-plugin/marketplace.json", "skills/demo/SKILL.md", "LICENSE"}
+    # the manifest: every extracted file's sha256
+    assert res["manifest"] == {p: hashlib.sha256(d).hexdigest() for p, d in t.items()}
+
+
+def test_extract_flags_a_truncated_skipped_list(fetch, tmp_path, monkeypatch):
+    monkeypatch.setattr(fetch, "MAX_SKIPPED_LISTED", 2)
+    data = tarball(GOOD + [(f"l{i}", "symlink", "/etc/passwd") for i in range(3)])
+    res = fetch.extract(io.BytesIO(data), tmp_path)
+    assert len(res["skipped"]) == 2 and res["skipped_truncated"] is True
+
+
+def _long_header_tar(fmt) -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz", format=fmt) as tf:
+        info = tarfile.TarInfo("top/" + "a/" * 40_000 + "f")  # an 80 KB name
+        info.size = 1
+        tf.addfile(info, io.BytesIO(b"x"))
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize("fmt,msg", [(tarfile.GNU_FORMAT, "long-name header"),
+                                     (tarfile.PAX_FORMAT, "PAX header")])
+def test_extract_refuses_huge_name_headers(fetch, tmp_path, fmt, msg):
+    """The header's size is checked before tarfile reads its data."""
+    with pytest.raises(fetch.FetchError, match=msg):
+        fetch.extract(io.BytesIO(_long_header_tar(fmt)), tmp_path)
+
+
+def test_bounded_tarinfo_overrides_real_methods(fetch):
+    """The guarded methods exist in this Python's tarfile (else the guard is
+    silently dead)."""
+    for name in ("_proc_gnulong", "_proc_pax", "_proc_sparse", "_proc_gnusparse_00",
+                 "_proc_gnusparse_01", "_proc_gnusparse_10"):
+        assert callable(getattr(tarfile.TarInfo, name)), name
+        assert getattr(fetch._BoundedTarInfo, name) is not getattr(tarfile.TarInfo, name)
+
+
+def test_extract_checks_the_deadline(fetch, tmp_path):
+    with pytest.raises(fetch.FetchError, match="took too long"):
+        fetch.extract(io.BytesIO(tarball(GOOD)), tmp_path, deadline=time.monotonic() - 1)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="resource limits are POSIX only")
+def test_limit_self_in_a_child(fetch):
+    import subprocess
+
+    code = ("import importlib.util, resource, sys\n"
+            "spec = importlib.util.spec_from_file_location('f', sys.argv[1])\n"
+            "m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)\n"
+            "m.limit_self()\n"
+            "print(resource.getrlimit(resource.RLIMIT_AS)[0], "
+            "resource.getrlimit(resource.RLIMIT_CPU)[0])\n")
+    out = subprocess.run([sys.executable, "-c", code, str(HERE / "fetch.py")],
+                         capture_output=True, text=True, check=True).stdout.split()
+    assert int(out[0]) <= fetch.MAX_MEMORY and int(out[1]) <= fetch.CPU_SECONDS
 
 
 def test_extract_skips_links_and_special_files(fetch, tmp_path):
@@ -402,17 +459,33 @@ def test_op_fetch_repo(runner, monkeypatch):
 
     def child(args):
         calls.append(args)
-        return {"sha": SHA, "files": 3, "bytes": 10, "skipped": []}
+        return {"sha": SHA, "files": 3, "bytes": 10, "skipped": [], "skipped_truncated": True,
+                "manifest": {"a": "0" * 64}}
     monkeypatch.setattr(runner, "_run_fetch_child", child)
     res = runner.op_fetch_repo({"owner": "anthropics", "repo": "skills"})
     assert res["ok"] and res["sha"] == SHA
-    assert re.fullmatch(r"\.skills-fetch/[0-9a-f]{32}", res["dir"])
-    assert calls[0]["dest"] == str(runner.WORKSPACE / res["dir"].split("/")[0]
-                                   / res["dir"].split("/")[1])
+    assert re.fullmatch(r"[0-9a-f]{32}", res["dir"])
+    # the dedicated fetch volume, never the workspace
+    assert calls[0]["dest"] == str(runner.FETCH_ROOT / res["dir"])
+    assert not calls[0]["dest"].startswith(str(runner.WORKSPACE))
     assert calls[0]["ref"] == ""
+    assert res["manifest"] == {"a": "0" * 64} and res["skipped_truncated"] is True
     monkeypatch.setattr(runner, "_run_fetch_child", lambda a: {"error": "rate limit"})
     assert runner.op_fetch_repo({"owner": "a", "repo": "b", "ref": "main"}) == {
         "ok": False, "error": "rate limit"}
+    # a child killed on the timeout leaves a partial folder: removed at once
+    def killed(args):
+        d = Path(args["dest"])
+        (d / "skills").mkdir(parents=True)
+        (d / "skills" / "half").write_text("x")
+        calls.append(args)
+        return {"error": "the fetch took longer than 300 s"}
+    monkeypatch.setattr(runner, "_run_fetch_child", killed)
+    assert runner.op_fetch_repo({"owner": "a", "repo": "b"})["ok"] is False
+    assert not os.path.lexists(calls[-1]["dest"])
+    # no manifest: refused (and removed) too
+    monkeypatch.setattr(runner, "_run_fetch_child", lambda a: {"sha": SHA})
+    assert runner.op_fetch_repo({"owner": "a", "repo": "b"})["ok"] is False
     for bad in ({"owner": "a/b", "repo": "c"}, {"owner": "a", "repo": "../x"},
                 {"owner": "a", "repo": "b", "ref": "../../etc"}, {}):
         with pytest.raises(ValueError):
@@ -429,14 +502,23 @@ def test_fetch_child_glue(runner, monkeypatch, tmp_path):
     assert "boom" in runner._run_fetch_child({})["error"]
 
 
+def test_fetch_child_kw(runner, monkeypatch):
+    """As root the fetch child runs as FETCH_UID, not the workspace uid."""
+    monkeypatch.setattr(runner, "dropping", lambda: True)
+    monkeypatch.setattr(runner, "_child_home", lambda: "/home/hermes")
+    assert runner.fetch_kw() == {"user": 10001, "group": 10001, "extra_groups": []}
+    assert runner.child_kw()["user"] == runner.CHILD_UID != runner.FETCH_UID
+    env = runner.fetch_env()
+    assert env["HOME"] == "/tmp" and not any(k.startswith("KEMUDI_") for k in env)
+
+
 def test_op_fetch_cleanup(runner):
-    d = runner.WORKSPACE / ".skills-fetch" / ("c" * 32)
+    d = runner.FETCH_ROOT / ("c" * 32)
     (d / "skills").mkdir(parents=True)
     (d / "skills" / "x").write_text("x")
-    assert runner.op_fetch_cleanup({"dir": ".skills-fetch/" + "c" * 32}) == {
-        "ok": True, "removed": True}
+    assert runner.op_fetch_cleanup({"dir": "c" * 32}) == {"ok": True, "removed": True}
     assert not d.exists()
-    for bad in ("", ".skills-fetch/../x", "/etc", ".skills-fetch/abc", "x/" + "c" * 32,
-                ".skills-fetch/" + "C" * 32):
+    for bad in ("", "../x", "/etc", "abc", "x/" + "c" * 32, "C" * 32,
+                ".skills-fetch/" + "c" * 32):
         with pytest.raises(ValueError):
             runner.op_fetch_cleanup({"dir": bad})
