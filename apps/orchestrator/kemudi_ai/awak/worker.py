@@ -114,6 +114,14 @@ class Worker:
         with self.sessions() as db:
             return [*self._secret_values, *llm_conn.stored_keys(db, self.s)]
 
+    @property
+    def redact_values(self) -> list[str]:
+        """What comments and errors never show: the secrets plus the runbooks'
+        env values (tokens or internal URLs an admin put there). Not used to
+        scan diffs: an ordinary value would refuse ordinary code."""
+        with self.sessions() as db:
+            return [*self.secret_values, *runbook.all_env_values(db)]
+
     # ------------------------------------------------------------------ loop
     def _seed(self) -> None:
         if not self._seeded:
@@ -207,7 +215,7 @@ class Worker:
     def _project_failed(self, slug: str, error: Exception) -> None:
         log.warning("awak: project %s failed: %s", slug, error,
                     exc_info=not isinstance(error, TaigaError))
-        text = secrets.redact(str(error) or type(error).__name__, self.secret_values)[:1000]
+        text = secrets.redact(str(error) or type(error).__name__, self.redact_values)[:1000]
         with self.sessions() as db:
             p = db.get(AwakProject, slug)
             if p is not None:
@@ -804,7 +812,7 @@ class Worker:
         head = f"**Awak** · percobaan {max(n, 1)}/{self.s.max_attempts} · {mins} mnt"
         if job.cost_idr:
             head += f" · biaya model Rp{job.cost_idr:,.0f}".replace(",", ".")
-        body = secrets.redact(f"{head}\n\n{text}", self.secret_values)
+        body = secrets.redact(f"{head}\n\n{text}", self.redact_values)
         self.taiga.comment(story_id, body)
         self._event(job_id, "comment", {"text": body[:500]})
 

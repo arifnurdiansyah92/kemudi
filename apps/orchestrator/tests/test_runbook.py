@@ -284,6 +284,60 @@ def test_browser_qa_allowed_with_a_runbook_qa_process_service(agent_client):
     assert r.status_code == 200 and r.json()["qa_mode"] == "browser"
 
 
+def test_settings_save_when_browser_qa_became_invalid(agent_client):
+    """The modes are checked when they change or Awak is turned on, so an admin
+    can still turn Awak off (or edit other fields) after the runbook changed."""
+    settings = "/projects/demo/agent/settings"
+    _repo(agent_client)
+    agent_client.put("/projects/demo/agent/runbook", headers=ADMIN, json={"runbook": PLAYFAST})
+    on = {**SETTINGS, "enabled": True, "merge_mode": "auto", "qa_mode": "browser"}
+    assert agent_client.put(settings, headers=ADMIN, json=on).status_code == 200
+    compose = copy.deepcopy(PLAYFAST)
+    compose["services"][1] = {"name": "web", "kind": "compose", "repo": "pf-web",
+                              "file": "docker-compose.yml"}
+    agent_client.put("/projects/demo/agent/runbook", headers=ADMIN, json={"runbook": compose})
+    r = agent_client.put(settings, headers=ADMIN, json={**on, "deploy_command": "make deploy"})
+    assert r.status_code == 200
+    r = agent_client.put(settings, headers=ADMIN, json={**on, "enabled": False})
+    assert r.status_code == 200 and r.json()["enabled"] is False
+    # turning it back on, or changing a mode, is checked
+    assert agent_client.put(settings, headers=ADMIN, json=on).status_code == 422
+    r = agent_client.put(settings, headers=ADMIN, json={**on, "enabled": False,
+                                                        "merge_mode": "approve"})
+    assert r.status_code == 422 and "1b" in r.text
+    r = agent_client.put(settings, headers=ADMIN, json={**on, "merge_mode": "approve",
+                                                        "qa_mode": "gates"})
+    assert r.status_code == 200
+
+
+def test_runbook_env_values_are_admin_only(agent_client):
+    _repo(agent_client)
+    url = "/projects/demo/agent/runbook"
+    agent_client.put(url, headers=ADMIN, json={"runbook": PLAYFAST})
+    member = agent_client.get(url, headers=MEMBER).json()["runbook"]
+    assert member["apps"][0]["env"] == {"NEXT_PUBLIC_API_URL": "***", "INTERNAL_API_URL": "***"}
+    assert member["services"][1]["env"] == {"API_BASE": "***"}
+    admin = agent_client.get(url, headers=ADMIN).json()["runbook"]
+    assert admin["apps"][0]["env"]["NEXT_PUBLIC_API_URL"] == "/api"
+
+
+def test_repo_used_by_the_runbook_cannot_be_renamed_or_deleted(agent_client):
+    _repo(agent_client)
+    agent_client.put("/projects/demo/agent/runbook", headers=ADMIN, json={"runbook": PLAYFAST})
+    with agent_client.S() as db:
+        rid = db.query(AwakRepo).filter_by(project_slug="demo").one().id
+    body = {"name": "pf-renamed", "role": "web", "url": "git@github.com:acme/pf.git"}
+    r = agent_client.put(f"/projects/demo/agent/repos/{rid}", headers=ADMIN, json=body)
+    assert r.status_code == 422
+    assert "apps.web" in r.text and "apps.api" in r.text and "pf-web" in r.text
+    r = agent_client.delete(f"/projects/demo/agent/repos/{rid}", headers=ADMIN)
+    assert r.status_code == 422 and "apps.web" in r.text
+    # other fields can still change
+    r = agent_client.put(f"/projects/demo/agent/repos/{rid}", headers=ADMIN,
+                         json={**body, "name": "pf-web", "default_branch": "dev"})
+    assert r.status_code == 200, r.text
+
+
 # --- worker and merge ---------------------------------------------------------------
 
 KEMUDI_RB = {
@@ -379,6 +433,25 @@ def test_merge_recheck_uses_the_runbook_gates(tmp_path, remote):
     assert job.merge_state == "merged" and rev(remote) == job.merged_sha
     gates = [b for op, b in runner.payloads[n:] if op == "gates"]
     assert gates and gates[0]["commands"][1]["argv"][-1] == "./feature1.txt"
+
+
+def test_runbook_env_values_are_redacted_from_comments(tmp_path, repo):
+    w, taiga, sessions = make_worker(tmp_path, repo, FakeAgent(), FakeRunner(tmp_path / "ws"))
+    w._seed()
+    spec = copy.deepcopy(KEMUDI_RB)
+    spec["apps"][0]["env"] = {"MODE": "test", "API_URL": "http://internal-api:8080"}
+    _save_rb(sessions, spec)
+    assert "http://internal-api:8080" in w.redact_values and "test" not in w.redact_values
+    assert runbook.env_values(_rb()) == []  # "/api" is short; a service URL is no secret
+    assert "http://internal-api:8080" not in w.secret_values  # diffs are not scanned for it
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    with sessions() as db:
+        from kemudi_ai.store import AwakJob
+        db.add(AwakJob(project_slug="kemudi", story_id=1, story_ref=12, branch="awak/us-12"))
+        db.commit()
+        job_id = db.query(AwakJob).one().id
+    w._say(1, job_id, "server at http://internal-api:8080 failed in test mode")
+    assert "internal-api" not in taiga.texts(1)[-1] and "test mode" in taiga.texts(1)[-1]
 
 
 def test_unparseable_runbook_command_stops_the_story(tmp_path, repo):

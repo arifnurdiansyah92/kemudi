@@ -317,6 +317,47 @@ def validate(data: object, repo_names: set[str]) -> tuple[Runbook | None, list[s
     return (None, problems) if problems else (rb, [])
 
 
+def repo_refs(rb: Runbook | None, repo: str) -> list[str]:
+    """The runbook's apps and compose services that name `repo`."""
+    if rb is None:
+        return []
+    return ([f"apps.{a.name}" for a in rb.apps if a.repo == repo]
+            + [f"services.{s.name}" for s in rb.services if s.kind == "compose" and s.repo == repo])
+
+
+MASK = "***"
+
+
+def masked(spec: dict | None) -> dict | None:
+    """The stored runbook with app and process-service env values hidden."""
+    if not spec:
+        return spec
+    out = {**spec}
+    out["apps"] = [{**a, "env": {k: MASK for k in a["env"]}}
+                   if isinstance(a, dict) and isinstance(a.get("env"), dict) else a
+                   for a in spec.get("apps") or []]
+    out["services"] = [{**s, "env": {k: MASK for k in s["env"]}}
+                       if isinstance(s, dict) and isinstance(s.get("env"), dict) else s
+                       for s in spec.get("services") or []]
+    return out
+
+
+# Shorter values ("1", "dev") would redact ordinary words.
+MIN_SECRET_LEN = 6
+
+
+def env_values(rb: Runbook | None) -> list[str]:
+    """Env values of the runbook's apps and process services, to keep out of
+    comments; values that only refer to a service URL are left out."""
+    if rb is None:
+        return []
+    values = [v for a in rb.apps for v in a.env.values()]
+    values += [v for s in rb.services if isinstance(s.env, dict) for v in s.env.values()]
+    return sorted({v for v in values
+                   if len(v) >= MIN_SECRET_LEN and not SERVICE_URL_RE.fullmatch(v)},
+                  key=len, reverse=True)
+
+
 # --- storage ------------------------------------------------------------------
 
 
@@ -333,6 +374,17 @@ def load(db: Session, slug: str) -> Runbook | None:
         return Runbook.model_validate(row.spec)
     except ValidationError:
         return None
+
+
+def all_env_values(db: Session) -> list[str]:
+    """`env_values` of every project's runbook."""
+    out: set[str] = set()
+    for row in db.query(AwakRunbook):
+        try:
+            out.update(env_values(Runbook.model_validate(row.spec or {})))
+        except ValidationError:
+            continue
+    return sorted(out, key=len, reverse=True)
 
 
 def state(db: Session, slug: str) -> dict:

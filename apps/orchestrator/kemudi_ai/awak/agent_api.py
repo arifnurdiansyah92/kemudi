@@ -160,7 +160,13 @@ def put_agent_settings(
     new = body.model_dump()
     if new["qa_mode"] is None:
         new["qa_mode"] = p.qa_mode or config_store.DEFAULTS["qa_mode"]
-    why = _qa_mode_blocker(db, settings, slug, new["merge_mode"], new["qa_mode"])
+    # Checked when the modes change or Awak is turned on: a runbook edited
+    # since must not stop an admin from turning Awak off or saving the rest.
+    # (The worker lowers a browser mode it cannot run to gates.)
+    modes_changed = (new["qa_mode"] != p.qa_mode or new["merge_mode"] != p.merge_mode)
+    turning_on = new["enabled"] and not p.enabled
+    why = (_qa_mode_blocker(db, settings, slug, new["merge_mode"], new["qa_mode"])
+           if modes_changed or turning_on else None)
     if why:
         db.rollback()
         raise HTTPException(422, why)
@@ -228,8 +234,13 @@ class RunbookIn(BaseModel):
 
 
 @router.get("/runbook")
-def get_runbook(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(get_db)):
-    return runbook.state(db, slug)
+def get_runbook(slug: str, acc: ProjectAccess = Depends(access), db: Session = Depends(get_db)):
+    """Env values may hold tokens or internal URLs: admins only; members see
+    the names."""
+    out = runbook.state(db, slug)
+    if not acc.is_admin:
+        out["runbook"] = runbook.masked(out["runbook"])
+    return out
 
 
 @router.put("/runbook")
@@ -380,6 +391,15 @@ def _get_repo(db: Session, slug: str, repo_id: int) -> AwakRepo:
     return r
 
 
+def _refuse_if_in_runbook(db: Session, slug: str, name: str, what: str) -> None:
+    """The runbook names repos: renaming or deleting one would silently change
+    which gates and QA services run."""
+    refs = runbook.repo_refs(runbook.load(db, slug), name)
+    if refs:
+        raise HTTPException(422, f"repo {name!r} cannot be {what}: the runbook uses it in "
+                                 f"{', '.join(refs)}. Edit the runbook first.")
+
+
 def _name_taken(db: Session, slug: str, name: str, repo_id: int | None = None) -> bool:
     q = db.query(AwakRepo).filter_by(project_slug=slug, name=name)
     return any(r.id != repo_id for r in q)
@@ -416,6 +436,8 @@ def update_repo(slug: str, repo_id: int, body: RepoIn, user: TaigaUser = Depends
     _allowed_local(settings, body.url)
     if _name_taken(db, slug, body.name, repo_id):
         raise HTTPException(409, f"a repo named {body.name!r} already exists")
+    if body.name != r.name:
+        _refuse_if_in_runbook(db, slug, r.name, "renamed")
     old_host = ssh.url_host(r.url)
     new = body.model_dump()
     changed = sorted(k for k, v in new.items() if getattr(r, k) != v)
@@ -441,6 +463,7 @@ def delete_repo(slug: str, repo_id: int, user: TaigaUser = Depends(admin),
     r = _get_repo(db, slug, repo_id)
     if db.query(AwakJob).filter_by(repo_id=r.id, state="running").count():
         raise HTTPException(409, "a running job uses this repo; stop it first")
+    _refuse_if_in_runbook(db, slug, r.name, "deleted")
     key = config_store.key_row(db, r.key_id)
     name = r.name
     db.delete(r)
