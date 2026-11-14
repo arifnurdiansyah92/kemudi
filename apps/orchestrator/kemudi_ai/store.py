@@ -32,6 +32,7 @@ __all__ = [
     "AwakProject",
     "AwakRepo",
     "AwakRole",
+    "AwakRunbook",
     "AwakWorkerLease",
     "AwakLlmAlias",
     "record_event",
@@ -246,6 +247,19 @@ class AwakRole(Base):
     llm_model: Mapped[str] = mapped_column(String(100), default="")
     llm_api_key_enc: Mapped[str] = mapped_column(Text, default="")
     llm_key_last4: Mapped[str] = mapped_column(String(4), default="")
+    updated_by: Mapped[str] = mapped_column(String(200), default="")
+    updated_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class AwakRunbook(Base):
+    """A project's runbook (kemudi_ai/awak/runbook.py), as an admin approved it."""
+
+    __tablename__ = "awak_runbooks"
+    project_slug: Mapped[str] = mapped_column(String(200), primary_key=True)
+    spec: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    version: Mapped[int] = mapped_column(default=0)
+    approved_by: Mapped[str] = mapped_column(String(200), default="")
+    approved_at: Mapped[datetime | None] = mapped_column(default=None)
     updated_by: Mapped[str] = mapped_column(String(200), default="")
     updated_at: Mapped[datetime] = mapped_column(default=now)
 

@@ -22,7 +22,7 @@ from ..config import Settings, get_settings
 from ..deps import access, actor, admin, get_db, get_llm, get_sessions, member
 from ..llm import LLM
 from ..store import AwakJob, AwakKey, AwakProject, AwakRepo, AwakRole, record_decision
-from . import config_store, crypto, detect, gitops, llm_conn, prompts, secrets, ssh
+from . import config_store, crypto, detect, gitops, llm_conn, prompts, runbook, secrets, ssh
 from .bot_access import BotAccess, BotAccessError
 from .crypto import SecretKeyMissing
 from .detect import FIELDS as COMMAND_FIELDS
@@ -203,14 +203,46 @@ def _qa_mode_blocker(db: Session, settings: Settings, slug: str, merge_mode: str
     if merge_mode == "auto" and qa_mode != "browser":
         # Auto-merging code that nothing exercised is the one case refused.
         return "auto merge needs QA mode browser"
-    if qa_mode == "browser" and not (db.query(AwakRepo)
-                                     .filter_by(project_slug=slug, url=settings.host_git)
-                                     .count()):
-        # Browser QA starts the app from a runbook's QA section; without a
-        # runbook only Kemudi's own repo has a known way to run.
-        return ("QA mode browser needs a runbook with a qa section (or Kemudi's own repo); "
-                "use gates until the project has one")
-    return None
+    if qa_mode != "browser":
+        return None
+    rb = runbook.load(db, slug)
+    if rb is not None and rb.browser_qa_ready():
+        return None
+    if rb is not None and rb.qa_service() is not None:
+        return ("QA mode browser: the runbook's qa service (or a service it needs) is a "
+                "compose service, which "
+                "runs from stage 1b; use a process service or gates for now")
+    if db.query(AwakRepo).filter_by(project_slug=slug, url=settings.host_git).count():
+        return None  # Kemudi's own repo: iteration 1's vite path
+    # Browser QA starts the app from a runbook's QA section; without a runbook
+    # only Kemudi's own repo has a known way to run.
+    return ("QA mode browser needs a runbook with a qa section (or Kemudi's own repo); "
+            "use gates until the project has one")
+
+
+# --- runbook -------------------------------------------------------------------
+
+
+class RunbookIn(BaseModel):
+    runbook: dict
+
+
+@router.get("/runbook")
+def get_runbook(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(get_db)):
+    return runbook.state(db, slug)
+
+
+@router.put("/runbook")
+def put_runbook(slug: str, body: RunbookIn, user: TaigaUser = Depends(admin),
+                db: Session = Depends(get_db)):
+    """Saving is the approval: version +1, approved by the saver."""
+    names = {r.name for r in db.query(AwakRepo).filter_by(project_slug=slug)}
+    rb, problems = runbook.validate(body.runbook, names)
+    if rb is None:
+        raise HTTPException(422, problems)
+    row = runbook.save(db, slug, rb, actor(user))
+    record_decision(db, actor(user), "awak_runbook", slug, {"version": row.version})
+    return runbook.state(db, slug)
 
 
 def _hosts_in_use(db: Session, slug: str, skip_repo: int | None = None,
@@ -249,8 +281,7 @@ def get_agent_jobs(slug: str, _: TaigaUser = Depends(member), db: Session = Depe
 # --- repos -------------------------------------------------------------------
 
 # Mirrors infra/runner/runner.py ALLOWED_PROGRAMS (the runner enforces it).
-ALLOWED_PROGRAMS = {"pnpm", "npm", "npx", "yarn", "node", "python", "uv", "pytest", "make",
-                    "go", "cargo"}
+ALLOWED_PROGRAMS = runbook.ALLOWED_PROGRAMS
 ACCESS_CHECK_REF = "refs/heads/awak/kemudi-access-check"
 
 

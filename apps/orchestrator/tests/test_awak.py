@@ -415,6 +415,10 @@ def test_build_output_allowlist():
            ("!!", "src/generated.ts"), ("??", "dist"), ("D ", "README.md")]
     assert all(build_output(s, p, "apps/web") for s, p in ok)
     assert not any(build_output(s, p, "apps/web") for s, p in bad)
+    # runbook app dirs (Next.js leaves .next/ after QA's dev server)
+    assert build_output("!!", "frontend/.next/", ["", "frontend", "backend"])
+    assert build_output("!!", "backend/.pytest_cache/", ["frontend", "backend"])
+    assert not build_output("!!", "frontend/.next/", "apps/web")
 
 
 def test_ignored_file_during_qa_fails_the_attempt(tmp_path, repo):

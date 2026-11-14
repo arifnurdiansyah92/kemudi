@@ -254,7 +254,7 @@ services:
     networks: [kemudi-sandbox, kemudi-egress]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    mem_limit: 3g
+    mem_limit: 4g
     pids_limit: 1024
     restart: unless-stopped
 
