@@ -123,6 +123,13 @@
     "keyHintStored": "Stored encrypted. Only the last 4 characters are shown.",
     "keyHintReplace": "Replaces the stored key when you save.",
     "keyMoves": "The stored key ending in {{last4}} will be sent to this new address. Replace it if it belongs to another provider.",
+    "insecure": {
+      "title": "Unencrypted connection",
+      "body": "This address uses plain http over the internet. The API key and every prompt, including your client’s code, travel unencrypted, so anyone on the way can read or change them. Prefer https: put a reverse proxy with TLS in front of the model, use a tunnel, or reach it over a private network.",
+      "ack": "I understand, use unencrypted http",
+      "badge": "Unencrypted",
+      "badgeHint": "Plain http to a public address: the API key and prompts travel unencrypted."
+    },
     "test": "Test connection",
     "testing": "Testing…",
     "testOk": "Connected in {{ms}} ms",

@@ -113,7 +113,8 @@ def test_role_model_overrides_inherited_connection_model():
         assert (c.source, c.base_url, c.api_key, c.model) == (
             "project", "https://proj.example/v1", KEY, "role-model")
         assert llm_conn.describe(db, s, "demo", role.id).public() == {
-            "llm_source": "project", "llm_model": "role-model", "llm_host": "proj.example"}
+            "llm_source": "project", "llm_model": "role-model", "llm_host": "proj.example",
+            "llm_insecure_http": False}
         # The server default too, ahead of the fallback model.
         p.llm_base_url = ""
         db.commit()
@@ -141,6 +142,24 @@ def test_base_url_validation():
             ok(bad, resolve=False)
     with pytest.raises(ValueError):  # a public hostname over http
         ok("http://api.openai.com/v1", resolve=False)
+    with pytest.raises(ValueError, match="allow unencrypted http"):
+        ok("http://8.8.8.8/v1", resolve=False)
+
+
+def test_insecure_http_needs_the_acknowledgement():
+    ok = llm_conn.validate_base_url
+    assert ok("http://8.8.8.8/v1/", allow_insecure=True) == "http://8.8.8.8/v1"
+    assert ok("http://api.example.com/v1", resolve=False,
+              allow_insecure=True) == "http://api.example.com/v1"
+    # The flag does not loosen the other rules.
+    for bad in ("ftp://8.8.8.8/v1", "http://u:p@8.8.8.8/v1", "http://8.8.8.8/v1?a=1"):
+        with pytest.raises(ValueError):
+            ok(bad, resolve=False, allow_insecure=True)
+    assert llm_conn.is_insecure("http://8.8.8.8/v1")
+    assert llm_conn.is_insecure("http://api.example.com/v1", resolve=False)
+    for safe in ("https://8.8.8.8/v1", "http://10.0.0.5/v1", "http://localhost:8000/v1",
+                 "http://192.168.1.10/v1"):
+        assert not llm_conn.is_insecure(safe, resolve=False)
 
 
 # --- API ------------------------------------------------------------------------
@@ -155,7 +174,8 @@ def test_project_level_api_key_write_only(agent_client):
     out = r.json()
     assert out["set"] and out["key_set"] and out["key_last4"] == "wxyz"
     assert out["effective"] == {"llm_source": "project", "llm_model": "gpt-4o-mini",
-                                "llm_host": "api.openai.com"}
+                                "llm_host": "api.openai.com", "llm_insecure_http": False}
+    assert out["insecure_http"] is False
     # Empty key keeps the stored one.
     r = agent_client.put(url, headers=ADMIN, json={**body, "model": "gpt-4o", "api_key": ""})
     assert r.json()["key_last4"] == "wxyz" and r.json()["model"] == "gpt-4o"
@@ -573,7 +593,8 @@ def test_migrate_adds_llm_columns(tmp_path):
     init_db(engine)  # idempotent
     cols = {t: {c["name"] for c in inspect(engine).get_columns(t)}
             for t in ("awak_projects", "awak_roles", "ai_calls")}
-    llm = {"llm_base_url", "llm_model", "llm_api_key_enc", "llm_key_last4"}
+    llm = {"llm_base_url", "llm_model", "llm_api_key_enc", "llm_key_last4",
+           "llm_insecure_http"}
     assert llm <= cols["awak_projects"] and llm <= cols["awak_roles"]
     assert "llm_source" in cols["ai_calls"]
     assert "awak_llm_aliases" in inspect(engine).get_table_names()
@@ -581,6 +602,7 @@ def test_migrate_adds_llm_columns(tmp_path):
     s = _settings()
     with S() as db:
         assert db.get(AwakProject, "demo").llm_base_url == ""
+        assert db.get(AwakProject, "demo").llm_insecure_http is None
         assert db.get(AiCall, 1).llm_source == ""
         c = llm_conn.resolve(db, s, "demo", 1)
         assert (c.source, c.model) == ("server", "deepseek-flash")
@@ -605,3 +627,110 @@ def test_proxy_maps_non_alias_model_to_the_single_active_run(agent_client, upstr
         llm_conn.drop_alias(db, second)
     assert agent_client.post(url, json={"model": "deepseek-flash", "messages": []}
                              ).status_code == 403
+
+
+# --- plain http to a public address -----------------------------------------------
+
+
+def _decisions(client) -> list[dict]:
+    with client.S() as db:
+        return [d.detail for d in db.query(Decision).filter_by(action="awak_llm")
+                .order_by(Decision.id)]
+
+
+def test_project_insecure_http_saved_only_with_the_flag(agent_client):
+    url = "/projects/demo/agent/llm"
+    body = {"base_url": "http://8.8.8.8/v1", "model": "m"}
+    r = agent_client.put(url, headers=ADMIN, json=body)
+    assert r.status_code == 422 and "allow unencrypted http" in r.text
+    r = agent_client.put(url, headers=ADMIN, json={**body, "allow_insecure_http": True})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["insecure_http"] is True and out["base_url"] == "http://8.8.8.8/v1"
+    assert out["effective"]["llm_insecure_http"] is True
+    assert agent_client.get(url, headers=MEMBER).json()["insecure_http"] is True
+    with agent_client.S() as db:
+        assert db.get(AwakProject, "demo").llm_insecure_http is True
+    last = _decisions(agent_client)[-1]
+    assert last["insecure_http"] is True and "api_key" not in last
+    # Roles that inherit the connection show it too.
+    _role(agent_client)
+    roles = agent_client.get("/projects/demo/agent/roles", headers=MEMBER).json()["roles"]
+    assert roles[0]["llm_insecure_http"] is True
+    # Back to https: the flag goes, and so does the warning.
+    r = agent_client.put(url, headers=ADMIN, json={"base_url": "https://p.example/v1",
+                                                   "model": "m",
+                                                   "allow_insecure_http": True})
+    assert r.json()["insecure_http"] is False
+    assert "insecure_http" not in _decisions(agent_client)[-1]
+    # Clearing the level clears the flag.
+    agent_client.put(url, headers=ADMIN, json={**body, "allow_insecure_http": True})
+    r = agent_client.put(url, headers=ADMIN, json={"clear": True})
+    assert r.json()["insecure_http"] is False
+    with agent_client.S() as db:
+        assert db.get(AwakProject, "demo").llm_insecure_http is None
+
+
+def test_private_http_needs_no_flag_and_is_not_insecure(agent_client):
+    role_id = _role(agent_client)
+    url = f"/projects/demo/agent/roles/{role_id}/llm"
+    r = agent_client.put(url, headers=ADMIN,
+                         json={"base_url": "http://10.0.0.5:11434/v1", "model": "qwen3"})
+    assert r.status_code == 200 and r.json()["insecure_http"] is False
+    # The flag on a private address records nothing insecure.
+    r = agent_client.put(url, headers=ADMIN,
+                         json={"base_url": "http://10.0.0.5:11434/v1", "model": "qwen3",
+                               "allow_insecure_http": True})
+    assert r.json()["insecure_http"] is False
+    assert "insecure_http" not in _decisions(agent_client)[-1]
+
+
+def test_role_insecure_http_saved_with_the_flag(agent_client):
+    role_id = _role(agent_client)
+    url = f"/projects/demo/agent/roles/{role_id}/llm"
+    body = {"base_url": "http://8.8.4.4/v1", "model": "m"}
+    assert agent_client.put(url, headers=ADMIN, json=body).status_code == 422
+    r = agent_client.put(url, headers=ADMIN, json={**body, "allow_insecure_http": True})
+    assert r.status_code == 200 and r.json()["insecure_http"] is True
+    with agent_client.S() as db:
+        assert db.get(AwakRole, role_id).llm_insecure_http is True
+    last = _decisions(agent_client)[-1]
+    assert last["level"] == "agent" and last["insecure_http"] is True
+
+
+def test_test_and_models_endpoints_honour_the_flag(agent_client):
+    seen: list[httpx.Request] = []
+
+    def upstream(req: httpx.Request) -> httpx.Response:
+        seen.append(req)
+        if req.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "m"}]})
+        return httpx.Response(200, json={"choices": [{"message": {"content": "p"}}]})
+
+    app.dependency_overrides[agent_api.get_llm_transport] = lambda: httpx.MockTransport(upstream)
+    role_id = _role(agent_client)
+    body = {"base_url": "http://8.8.8.8/v1", "model": "m"}
+    for url in ("/projects/demo/agent/llm/test",
+                f"/projects/demo/agent/roles/{role_id}/llm/test"):
+        assert agent_client.post(url, headers=ADMIN, json=body).status_code == 422
+        r = agent_client.post(url, headers=ADMIN, json={**body, "allow_insecure_http": True})
+        assert r.status_code == 200 and r.json()["ok"] is True
+        assert r.json()["llm_insecure_http"] is True
+        assert str(seen[-1].url) == "http://8.8.8.8/v1/chat/completions"
+    url = "/projects/demo/agent/llm/models"
+    assert agent_client.post(url, headers=ADMIN,
+                             json={"base_url": "http://8.8.8.8/v1"}).status_code == 422
+    r = agent_client.post(url, headers=ADMIN,
+                          json={"base_url": "http://8.8.8.8/v1", "allow_insecure_http": True})
+    assert r.status_code == 200 and r.json()["models"] == ["m"]
+
+
+def test_proxy_uses_a_saved_insecure_connection(agent_client, upstream):
+    seen, _ = upstream
+    agent_client.put("/projects/demo/agent/llm", headers=ADMIN,
+                     json={"base_url": "http://8.8.8.8/v1", "model": "m",
+                           "allow_insecure_http": True})
+    r = agent_client.post("/llm/v1/chat/completions",
+                          json={"model": _alias(agent_client), "messages": []})
+    assert r.status_code == 200
+    assert str(seen[-1].url) == "http://8.8.8.8/v1/chat/completions"
