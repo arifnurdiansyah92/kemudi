@@ -23,7 +23,19 @@ from ..deps import access, actor, admin, get_db, get_llm, get_sessions, member
 from ..llm import LLM
 from ..store import (AwakJob, AwakKey, AwakProject, AwakRepo, AwakRole, AwakSetupRun,
                      record_decision)
-from . import config_store, crypto, detect, gitops, llm_conn, prompts, runbook, secrets, ssh, vault
+from . import (
+    config_store,
+    crypto,
+    detect,
+    gitops,
+    llm_conn,
+    prompts,
+    runbook,
+    secrets,
+    skills,
+    ssh,
+    vault,
+)
 from . import setup as setup_runs
 from .bot_access import BotAccess, BotAccessError
 from .crypto import SecretKeyMissing
@@ -957,7 +969,7 @@ def forget_machine_host_key(slug: str, user: TaigaUser = Depends(admin),
 
 # Fields whose change makes a different prompt (or model) -> version += 1.
 PROMPT_FIELDS = ("template", "prompt_overlay", "model", "repo_ids", "allowed_paths",
-                 "denied_paths")
+                 "denied_paths", "skills")
 
 
 def _clean_paths(paths: list[str]) -> list[str]:
@@ -988,6 +1000,9 @@ class RoleIn(BaseModel):
     denied_paths: list[str] = Field(default_factory=list)
     prompt_overlay: str = ""
     enabled: bool = True
+    # Skill slugs, in order. Omitted: the template's defaults on create,
+    # unchanged on update.
+    skills: list[str] | None = Field(None, max_length=skills.MAX_ROLE_SKILLS)
 
     @field_validator("allowed_paths", "denied_paths")
     @classmethod
@@ -1000,15 +1015,30 @@ class RoleIn(BaseModel):
         prompts.check_overlay(v, secrets.known_values())
         return v
 
+    @field_validator("skills")
+    @classmethod
+    def _skills(cls, v: list[str] | None) -> list[str] | None:
+        if v is not None and len(set(v)) != len(v):
+            raise ValueError("each skill can be assigned once")
+        return v
+
 
 def _role_out(db: Session, r: AwakRole, settings: Settings) -> dict:
     cfg = config_store.load(db, r.project_slug)
     role = cfg.role(r.id)
+    kit = skills.resolve(db, role.skills)
     return {
         **{f: getattr(r, f) for f in RoleIn.model_fields},
+        "skills": list(r.skills or []),
+        # For display: each assigned skill with its status (ok | disabled |
+        # missing | no_version; the others are dropped at run time).
+        "skill_details": skills.describe(db, r.skills),
+        # What "Reset to defaults" would give this role now.
+        "skill_defaults": skills.template_defaults(db, r.template),
         "id": r.id,
         "version": r.version,
-        "prompt_version": prompts.prompt_version(role, cfg.repos),
+        "prompt_version": prompts.prompt_version(role, cfg.repos,
+                                                 kit.setid if kit.entries else ""),
         # The resolved model connection (agent > project > server), no key.
         **llm_conn.describe(db, settings, r.project_slug, r.id).public(),
         "updated_by": r.updated_by,
@@ -1032,6 +1062,13 @@ def _check_repo_ids(db: Session, slug: str, repo_ids: list[int]) -> list[int]:
     return ids
 
 
+def _check_skills(db: Session, slugs: list[str], keep: list[str] | None = None) -> list[str]:
+    try:
+        return skills.check_assignable(db, slugs, keep or ())
+    except skills.SkillError as e:
+        raise HTTPException(422, str(e)) from e
+
+
 @router.get("/roles")
 def list_roles(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(get_db),
                settings: Settings = Depends(get_settings)):
@@ -1045,13 +1082,16 @@ def create_role(slug: str, body: RoleIn, user: TaigaUser = Depends(admin),
                 db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
     data = body.model_dump()
     data["repo_ids"] = _check_repo_ids(db, slug, body.repo_ids)
+    data["skills"] = (skills.template_defaults(db, body.template) if body.skills is None
+                      else _check_skills(db, body.skills))
     r = AwakRole(project_slug=slug, version=1, updated_by=actor(user), **data)
     db.add(r)
     db.commit()
     out = _role_out(db, r, settings)
     record_decision(db, actor(user), "awak_role", slug,
                     {"op": "create", "role": r.name, "role_id": r.id, "old_overlay": None,
-                     "new_overlay": r.prompt_overlay, "version": out["prompt_version"]})
+                     "new_overlay": r.prompt_overlay, "skills": r.skills,
+                     "version": out["prompt_version"]})
     return out
 
 
@@ -1061,7 +1101,13 @@ def update_role(slug: str, role_id: int, body: RoleIn, user: TaigaUser = Depends
     r = _get_role(db, slug, role_id)
     new = body.model_dump()
     new["repo_ids"] = _check_repo_ids(db, slug, body.repo_ids)
-    changed = sorted(k for k, v in new.items() if getattr(r, k) != v)
+    old_skills = list(r.skills or [])
+    if body.skills is None:
+        new.pop("skills")
+    else:
+        new["skills"] = _check_skills(db, body.skills, keep=old_skills)
+    changed = sorted(k for k, v in new.items()
+                     if (old_skills if k == "skills" else getattr(r, k)) != v)
     if not changed:
         return _role_out(db, r, settings)
     old_overlay = r.prompt_overlay
@@ -1076,6 +1122,31 @@ def update_role(slug: str, role_id: int, body: RoleIn, user: TaigaUser = Depends
     record_decision(db, actor(user), "awak_role", slug,
                     {"op": "update", "role": r.name, "role_id": r.id, "changed": changed,
                      "old_overlay": old_overlay, "new_overlay": r.prompt_overlay,
+                     **({"old_skills": old_skills, "new_skills": r.skills}
+                        if "skills" in changed else {}),
+                     "old_version": old_version, "version": out["prompt_version"]})
+    return out
+
+
+@router.post("/roles/{role_id}/skills/reset")
+def reset_role_skills(slug: str, role_id: int, user: TaigaUser = Depends(admin),
+                      db: Session = Depends(get_db),
+                      settings: Settings = Depends(get_settings)):
+    """The role's skills back to its template's defaults (those enabled now)."""
+    r = _get_role(db, slug, role_id)
+    old_skills = list(r.skills or [])
+    defaults = skills.template_defaults(db, r.template)
+    if old_skills == defaults:
+        return _role_out(db, r, settings)
+    old_version = _role_out(db, r, settings)["prompt_version"]
+    r.skills = defaults
+    r.version += 1
+    r.updated_by, r.updated_at = actor(user), config_store.now()
+    db.commit()
+    out = _role_out(db, r, settings)
+    record_decision(db, actor(user), "awak_role", slug,
+                    {"op": "skills_reset", "role": r.name, "role_id": r.id,
+                     "old_skills": old_skills, "new_skills": defaults,
                      "old_version": old_version, "version": out["prompt_version"]})
     return out
 
@@ -1087,14 +1158,15 @@ def get_role_prompt(slug: str, role_id: int, _: TaigaUser = Depends(member),
     cfg = config_store.load(db, slug)
     role = cfg.role(role_id)
     scope = prompts.scope_for(role, cfg.repos)
+    kit = skills.resolve(db, role.skills)
     return {
         "fixed": prompts.KEMUDI_RULES,
         "role": prompts.ROLE_TEMPLATES[role.template],
         "scope": scope.__dict__,
         "overlay": role.prompt_overlay,
         "reminder": prompts.REMINDER,
-        "rendered": prompts.render_role(role, cfg.repos),
-        "version": prompts.prompt_version(role, cfg.repos),
+        "rendered": prompts.render_role(role, cfg.repos, bool(kit.entries)),
+        "version": prompts.prompt_version(role, cfg.repos, kit.setid if kit.entries else ""),
     }
 
 

@@ -37,6 +37,9 @@ __all__ = [
     "AwakSetupRun",
     "AwakWorkerLease",
     "AwakLlmAlias",
+    "AwakSkill",
+    "AwakSkillVersion",
+    "AwakSkillSet",
     "record_event",
     "make_session",
     "init_db",
@@ -247,6 +250,9 @@ class AwakRole(Base):
     prompt_overlay: Mapped[str] = mapped_column(Text, default="")
     enabled: Mapped[bool] = mapped_column(default=True)
     version: Mapped[int] = mapped_column(default=1)
+    # Skill slugs (awak_skills) this role's runs get, in order. NULL on rows
+    # from before the column: read as [].
+    skills: Mapped[list[Any]] = mapped_column(default=list)
     # BYOK, agent level; same shape as AwakProject's.
     llm_base_url: Mapped[str] = mapped_column(String(500), default="")
     llm_model: Mapped[str] = mapped_column(String(100), default="")
@@ -338,6 +344,58 @@ class AwakLlmAlias(Base):
     upstream_ok: Mapped[int] = mapped_column(default=0)
     upstream_errors: Mapped[int] = mapped_column(default=0)
     upstream_error: Mapped[str] = mapped_column(Text, default="")
+    # The Hermes profile (sk-<setid>) the run goes through: the skill-set
+    # sweep never removes a set a live alias names.
+    profile: Mapped[str] = mapped_column(String(40), default="")
+
+
+class AwakSkill(Base):
+    """A skill in the Kemudi library (kemudi_ai/awak/skills.py). The files
+    live in its versions; `current_version` is the one runs get."""
+
+    __tablename__ = "awak_skills"
+    slug: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source: Mapped[str] = mapped_column(String(20))  # builtin|local|marketplace
+    title: Mapped[str] = mapped_column(String(200), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    license: Mapped[str] = mapped_column(String(100), default="")
+    enabled: Mapped[bool] = mapped_column(default=True)
+    current_version: Mapped[int] = mapped_column(default=0)
+    # Where it came from: {repo, commit, path, ...} or {uploaded_by}.
+    origin: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    created_by: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(default=now)
+    updated_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class AwakSkillVersion(Base):
+    """Immutable files of one skill version: {path: base64}, at most 2 MB."""
+
+    __tablename__ = "awak_skill_versions"
+    __table_args__ = (UniqueConstraint("slug", "version"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(64), index=True)
+    version: Mapped[int] = mapped_column()
+    sha256: Mapped[str] = mapped_column(String(64))  # skills.canonical_sha
+    files: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    size: Mapped[int] = mapped_column(default=0)
+    # {"findings": [{rule, severity, path, line, excerpt}], "warnings": [...]}
+    scan: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    status: Mapped[str] = mapped_column(String(10), default="active")  # active|pending
+    created_by: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class AwakSkillSet(Base):
+    """A materialised skill set (/opt/skills/sets/<setid>, profile sk-<setid>),
+    for the sweep: when a run last used it. Naive UTC times."""
+
+    __tablename__ = "awak_skill_sets"
+    setid: Mapped[str] = mapped_column(String(32), primary_key=True)
+    # [{slug, version, sha256, source}]
+    skills: Mapped[list[Any]] = mapped_column(default=list)
+    created_at: Mapped[datetime] = mapped_column()
+    last_used_at: Mapped[datetime] = mapped_column()
 
 
 class AwakWorkerLease(Base):

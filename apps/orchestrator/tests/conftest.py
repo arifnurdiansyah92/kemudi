@@ -27,6 +27,15 @@ def taiga_auth(request: httpx.Request) -> httpx.Response:
     return httpx.Response(404)
 
 
+@pytest.fixture(autouse=True)
+def _skill_dirs(tmp_path, monkeypatch):
+    """Skill sets and Hermes profiles go to the test's tmp dir (never
+    /opt/...), and nobody waits for Hermes to serve a profile."""
+    monkeypatch.setenv("KEMUDI_AWAK_SKILLS_DIR", str(tmp_path / "awak-skills"))
+    monkeypatch.setenv("KEMUDI_AWAK_PROFILES_DIR", str(tmp_path / "awak-profiles"))
+    monkeypatch.setenv("KEMUDI_AWAK_PROFILE_WAIT_S", "0")
+
+
 @pytest.fixture
 def agent_settings(tmp_path):
     return Settings(

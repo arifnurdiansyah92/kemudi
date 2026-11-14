@@ -16,10 +16,13 @@ model:
   # the proxy refuses any other model name.
   default: ${KEMUDI_AWAK_MODEL}
 
-# --- Tools: terminal and file only -------------------------------------------
+# --- Tools: terminal, file and (read-only) skills ----------------------------
+# skills: the role's skill set, served through the run's profile
+# (/p/sk-<setid>/, skills.external_dirs). The set volume is read-only and
+# skills.write_approval stages any skill_manage write, never applies it.
 platform_toolsets:
-  api_server: [terminal, file, todo]
-toolsets: [terminal, file, todo]
+  api_server: [terminal, file, todo, skills]
+toolsets: [terminal, file, todo, skills]
 mcp_servers: {}
 
 terminal:
@@ -53,7 +56,6 @@ agent:
     - project
     - search
     - session_search
-    - skills
     - stt
     - tts
     - video
@@ -81,17 +83,19 @@ security:
   # AGENTS.md/CLAUDE.md stay off limits (default true): refused when unattended.
   protected_instruction_files: true
 
-# --- No memory, skills or background LLM work --------------------------------
+# --- No memory or background LLM work; skills read-only ----------------------
 memory:
   memory_enabled: false
   user_profile_enabled: false
   nudge_interval: 0
   provider: ""
 
+# No skills.auto_load or external_dirs here: lists in this managed overlay
+# replace the profile's whole, and each run's profile sets external_dirs.
 skills:
   project_discovery: false
-  auto_load: []
   inline_shell: false
+  write_approval: true
 
 curator:
   enabled: false

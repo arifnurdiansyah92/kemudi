@@ -65,6 +65,7 @@ class RoleConfig:
     prompt_overlay: str = ""
     enabled: bool = True
     version: int = 1
+    skills: list[str] = field(default_factory=list)  # skill slugs, in order
 
 
 @dataclass(frozen=True)
@@ -155,7 +156,7 @@ def _role(r: AwakRole) -> RoleConfig:
     return RoleConfig(id=r.id, template=r.template, name=r.name, area=r.area, model=r.model,
                       repo_ids=list(r.repo_ids or []), allowed_paths=list(r.allowed_paths or []),
                       denied_paths=list(r.denied_paths or []), prompt_overlay=r.prompt_overlay,
-                      enabled=r.enabled, version=r.version)
+                      enabled=r.enabled, version=r.version, skills=list(r.skills or []))
 
 
 def load(db: Session, slug: str) -> ProjectConfig:

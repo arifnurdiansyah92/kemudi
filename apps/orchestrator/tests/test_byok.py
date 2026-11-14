@@ -433,6 +433,8 @@ def test_proxy_refuses_unknown_expired_alias_and_bad_token(agent_client, upstrea
 
 # --- the agent run, cost log and secret scan --------------------------------------
 
+PROFILE = "sk-e3b0c44298fc1c149afbf4c8996fb924"
+
 
 def test_hermes_agent_sends_alias_and_logs_real_model():
     s = _settings()
@@ -456,7 +458,8 @@ def test_hermes_agent_sends_alias_and_logs_real_model():
                                          "usage": {"prompt_tokens": 5, "completion_tokens": 2}})
 
     agent = HermesAgent(s, S, transport=httpx.MockTransport(hermes))
-    text_, _ = agent.run("awak.code", "role-model", "sys", "task", slug="demo", role_id=None)
+    text_, _ = agent.run("awak.code", "role-model", "sys", "task", slug="demo", role_id=None,
+                         profile=PROFILE)
     assert text_ == "done"
     assert sent[0]["model"].startswith("awak-run-")
     with S() as db:
@@ -493,7 +496,7 @@ def test_hermes_agent_raises_infra_when_every_model_call_failed():
 
     agent = HermesAgent(s, S, transport=httpx.MockTransport(hermes))
     with pytest.raises(AgentError, match="ConnectError"):
-        agent.run("awak.code", "m", "sys", "task", slug="demo")
+        agent.run("awak.code", "m", "sys", "task", slug="demo", profile=PROFILE)
     with S() as db:
         assert db.query(AwakLlmAlias).count() == 0
         assert db.query(AiCall).one().ok is False
@@ -513,7 +516,7 @@ def test_hermes_agent_error_carries_the_cost_of_the_run():
 
     agent = HermesAgent(s, S, transport=httpx.MockTransport(hermes))
     with pytest.raises(AgentError) as e:
-        agent.run("awak.setup", "m", "sys", "task", slug="demo")
+        agent.run("awak.setup", "m", "sys", "task", slug="demo", profile=PROFILE)
     assert e.value.cost_idr == pytest.approx(20.0)
     with S() as db:
         assert db.query(AiCall).one().cost_idr == pytest.approx(e.value.cost_idr)

@@ -99,10 +99,11 @@ class FakeAgent:
         self.calls: list[tuple[str, str]] = []
         self.runs: list[dict] = []
 
-    def run(self, purpose, model, system, task, slug="", role_id=None):
+    def run(self, purpose, model, system, task, slug="", role_id=None, *, profile):
+        assert profile.startswith("sk-"), profile  # every run goes through a skill-set profile
         self.calls.append((purpose, task))
         self.runs.append({"purpose": purpose, "model": model, "system": system, "task": task,
-                          "slug": slug, "role_id": role_id})
+                          "slug": slug, "role_id": role_id, "profile": profile})
         if self.fail_with:
             err = self.fail_with.pop(0)
             if err:

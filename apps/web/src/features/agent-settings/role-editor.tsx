@@ -26,6 +26,7 @@ import { Switch } from '@/components/ui/switch'
 import { KeyField, ModelPicker, ProviderFields } from './connection-fields'
 import { TestResult } from './llm-connection'
 import { hostOf } from './providers'
+import { RoleSkills } from './role-skills'
 
 const lines = (text: string) =>
   text
@@ -106,6 +107,10 @@ export function RoleEditor({
   const [denied, setDenied] = useState(initial.denied_paths.join('\n'))
   const [overlay, setOverlay] = useState(initial.prompt_overlay)
   const [enabled, setEnabled] = useState(initial.enabled)
+  // null: a new role nobody touched; it gets the template's defaults.
+  const [skills, setSkills] = useState<string[] | null>(
+    role ? role.skills : null
+  )
 
   // The connection: the project's (inherited) or this agent's own.
   const [custom, setCustom] = useState(level?.set ?? false)
@@ -175,6 +180,7 @@ export function RoleEditor({
             denied_paths: lines(denied),
             prompt_overlay: overlay,
             enabled,
+            ...(skills !== null ? { skills } : {}),
           },
           connChange()
         )
@@ -415,6 +421,14 @@ export function RoleEditor({
           {t('roles.editor.pathsHint')}
         </p>
       </div>
+
+      <RoleSkills
+        value={skills}
+        onChange={setSkills}
+        template={template}
+        details={role?.skill_details ?? []}
+        readOnly={ro}
+      />
 
       <section className='grid gap-3 border-t pt-5'>
         {role === null ? (
