@@ -29,7 +29,9 @@ POST /svc_exec  {project, service, argv, env?, timeout?, redact?}
 POST /svc_logs  {project, service?, tail?, redact?}       -> {ok, logs}
 POST /svc_stats {project}
     -> {ok, stats: [{name, service, cpu_pct, mem_bytes, mem_limit_bytes, mem_pct, pids}]}
-POST /svc_down  {project}                                 -> {ok, output}
+POST /svc_down  {project}
+    containers, volumes, networks and the images built for the project
+    (label kemudi.project) -> {ok, output}
 POST /svc_sweep {keep: [project]}
     downs every labelled project not in keep, removes their images, prunes
     dangling images and the build cache over 10 GB -> {ok, removed, images_removed}
@@ -38,13 +40,25 @@ svc_up, step by step (sanitize.py has the rules):
 1. the compose file is checked for keys that read other files, then
    `docker compose config --no-interpolate --format json` reads it as uid
    10000 (which cannot read /run/svc), env cleared, `--env-file /dev/null`;
+   its output is checked for those keys again;
 2. `sanitize.reduce`: selected services + depends_on closure, allowlist,
    build paths inside the checkout;
 3. the reduced file is interpolated by compose with only the vault env file
-   (`/run/svc/<project>/vault.env`, deleted right after);
+   (`/run/svc/<project>/vault.env`, deleted right after), and the result goes
+   through `sanitize.reduce` again (interpolated build paths, volume names,
+   images) and `sanitize.check_dockerfiles` (no FROM of a `kemudi-` image);
 4. `sanitize.rewrite` -> `/run/svc/<project>/compose.json` (0600), kept until
    svc_down;
-5. `compose build` (900 s), `compose up -d --wait` (300 s), `compose port`.
+5. `compose build` (900 s, one retry on network trouble), `compose up -d
+   --wait` (300 s), `compose port`.
+All of svc_up shares one budget of UP_BUDGET s (each docker call gets what is
+left as its deadline), below the orchestrator's client timeout.
+
+One lock per project: svc_up holds it; svc_exec and svc_down of the same
+project wait for it (at most LOCK_WAIT s), svc_sweep skips a busy project.
+
+A refusal (bad request or compose file) is HTTP 400 {error}; anything else that
+goes wrong is HTTP 200 {infra_error}.
 
 Every docker call runs with a cleared environment (PATH, HOME, DOCKER_HOST),
 in its own process group, killed on its deadline.
@@ -58,7 +72,9 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -79,6 +95,14 @@ CHILD_UID = int(os.environ.get("SVC_CHILD_UID", "10000"))
 BUILD_TIMEOUT = 900
 UP_TIMEOUT = 300
 CONFIG_TIMEOUT = 60
+# svc_up as a whole (config, build, retry, up, port; the last logs may add up
+# to 60 s). The orchestrator's client waits longer (kemudi_ai/awak/svc.py).
+UP_BUDGET = 1400
+MIN_STEP = 10  # a step with less time left than this is not started
+# How long svc_exec/svc_down wait for an svc_up of the same project.
+LOCK_WAIT = UP_BUDGET + 100
+# svc_exec's lock wait and run together stay within this.
+EXEC_WINDOW = 1650
 # Network trouble worth one more build: DNS, timeouts, resets talking to a registry.
 TRANSIENT_RE = re.compile(r"server misbehaving|i/o timeout|TLS handshake timeout|"
                           r"connection reset by peer|temporary failure in name resolution", re.I)
@@ -97,12 +121,65 @@ def job_dir(body: dict) -> Path:
     inside."""
     rel = str(body.get("path", ""))
     if not PATH_RE.fullmatch(rel):
-        raise ValueError(f"bad workspace path {rel!r}")
+        raise Refused(f"bad workspace path {rel!r}")
     d = WORKSPACE.joinpath(*rel.split("/"))
     if (d.is_symlink() or not d.is_dir()
             or not d.resolve().is_relative_to(WORKSPACE.resolve())):
-        raise ValueError(f"no workspace at {rel}")
+        raise Refused(f"no workspace at {rel}")
     return d
+
+
+def int_field(body: dict, key: str, default: int) -> int:
+    raw = body.get(key)
+    if raw in (None, ""):
+        return default
+    if isinstance(raw, bool) or not (isinstance(raw, int) or
+                                     isinstance(raw, str) and raw.strip().isdigit()):
+        raise Refused(f"{key} must be a whole number")
+    return int(raw)
+
+
+# --- time budget and project locks ----------------------------------------------
+
+clock = time.monotonic
+
+
+class Budget:
+    """Seconds left of an op's total time; each docker call gets at most that."""
+
+    def __init__(self, seconds: float):
+        self.end = clock() + seconds
+
+    def left(self) -> float:
+        return max(0.0, self.end - clock())
+
+    def step(self, cap: float) -> float:
+        return min(cap, self.left())
+
+
+class Busy(RuntimeError):
+    """Another op of the same project still holds its lock (an infra error)."""
+
+
+_locks: dict[str, threading.Lock] = {}
+_locks_guard = threading.Lock()
+
+
+def _lock(project: str) -> threading.Lock:
+    with _locks_guard:
+        return _locks.setdefault(project, threading.Lock())
+
+
+@contextmanager
+def project_lock(project: str, wait: float):
+    """Hold the project's lock, waiting at most `wait` s (Busy after that)."""
+    lock = _lock(project)
+    if not lock.acquire(timeout=max(0.0, wait)):
+        raise Busy(f"project {project!r} is busy (an svc_up still running after {int(wait)} s)")
+    try:
+        yield
+    finally:
+        lock.release()
 
 
 # --- running docker ------------------------------------------------------------
@@ -200,17 +277,30 @@ def redact_values(body: dict) -> list[str]:
     return raw
 
 
-def compose_logs(project: str, service: str | None, lines: int) -> str:
+def compose_logs(project: str, service: str | None, lines: int, timeout: float = 120) -> str:
     args = [*compose_base(project), "logs", "--no-color", "--tail", str(lines)]
     if service:
         args.append(service)
-    _, out, err = docker(args, 120)
+    _, out, err = docker(args, timeout)
     return out + err
 
 
 # --- operations -------------------------------------------------------------
 
 def op_svc_up(body: dict) -> dict:
+    budget = Budget(UP_BUDGET)
+    project = sanitize.project_name(body.get("project"))
+    with project_lock(project, budget.left()):
+        return svc_up(body, budget)
+
+
+def out_of_time(stage: str, logs: str = "") -> dict:
+    return {"ok": False, "stage": stage,
+            "error": f"svc_up ran out of its {UP_BUDGET} s budget before the {stage} step",
+            "logs_tail": logs}
+
+
+def svc_up(body: dict, budget: Budget) -> dict:
     d = job_dir(body)
     project = sanitize.project_name(body.get("project"))
     file = sanitize.compose_file(d, body.get("file"))
@@ -234,13 +324,16 @@ def op_svc_up(body: dict) -> dict:
     code, out, err = docker(
         ["compose", "-p", project, "-f", str(file), "--project-directory", str(file.parent),
          "--env-file", os.devnull, "config", "--no-interpolate", "--format", "json"],
-        CONFIG_TIMEOUT, as_child=True, daemon=False)
+        budget.step(CONFIG_TIMEOUT), as_child=True, daemon=False)
+    if code == 124:
+        raise RuntimeError("docker compose config timed out")
     if code != 0:
         raise Refused(f"docker compose config failed: {tail(redact(err or out, hide), 2000)}")
     try:
         doc = json.loads(out)
     except ValueError:
         raise Refused("docker compose config gave no JSON") from None
+    sanitize.precheck_doc(doc)
 
     # 2. reduce and check
     reduced = sanitize.reduce(doc, selected, d)
@@ -261,51 +354,71 @@ def op_svc_up(body: dict) -> dict:
         code, out, err = docker(
             ["compose", "-p", project, "-f", str(reduced_path), "--project-directory",
              str(file.parent), "--env-file", str(env_path), "config", "--format", "json"],
-            CONFIG_TIMEOUT, daemon=False)
+            budget.step(CONFIG_TIMEOUT), daemon=False)
     finally:
         for p in (env_path, reduced_path):
             p.unlink(missing_ok=True)
+    if code == 124:
+        raise RuntimeError("docker compose config timed out")
     if code != 0:
         raise Refused(f"docker compose config failed: {tail(redact(err or out, hide), 2000)}")
+    try:
+        interpolated = json.loads(out)
+    except ValueError:
+        raise RuntimeError("docker compose config gave no JSON") from None
+    # the same checks on what interpolation made of build paths, volumes, images
+    checked = sanitize.reduce(interpolated, keep, d)
+    sanitize.check_dockerfiles(checked, d)
 
     # 4. rewrite
-    final = sanitize.rewrite(json.loads(out), project, expose, environment)
+    final = sanitize.rewrite(checked, project, expose, environment)
     write_private(compose_json(project), json.dumps(final, indent=1))
     built = [n for n, s in final["services"].items() if "build" in s]
     base = compose_base(project)
 
+    def logs(lines: int) -> str:  # may run a little past the budget
+        return tail(redact(compose_logs(project, None, lines, max(MIN_STEP, budget.step(60))),
+                           hide))
+
     # 5. build, start
     if built:
-        code, out, err = docker([*base, "build", *built], BUILD_TIMEOUT)
-        if code not in (0, 124) and TRANSIENT_RE.search(out + err):
+        if budget.left() < MIN_STEP:
+            return out_of_time("build")
+        code, out, err = docker([*base, "build", *built], budget.step(BUILD_TIMEOUT))
+        if (code not in (0, 124) and TRANSIENT_RE.search(out + err)
+                and budget.left() > 5 + MIN_STEP):
             # A registry lookup through the nested DNS fails now and then.
             time.sleep(5)
-            code, out, err = docker([*base, "build", *built], BUILD_TIMEOUT)
+            code, out, err = docker([*base, "build", *built], budget.step(BUILD_TIMEOUT))
         if code != 0:
             return {"ok": False, "stage": "build", "error": f"build failed (exit {code})",
                     "logs_tail": tail(redact(out + err, hide))}
     if up_only == []:
         return {"ok": True, "project": project, "services": keep, "built": built, "url": None,
                 "logs_tail": ""}
+    if budget.left() < MIN_STEP:
+        return out_of_time("up")
     up = [*base, "up", "-d", "--no-build", "--pull", "missing", "--remove-orphans"]
     if wait:
-        up += ["--wait", "--wait-timeout", str(UP_TIMEOUT)]
-    code, out, err = docker([*up, *(up_only or keep)], UP_TIMEOUT + 300)
+        wait_s = int(min(UP_TIMEOUT, max(1.0, budget.left() - MIN_STEP)))
+        up += ["--wait", "--wait-timeout", str(wait_s)]
+    code, out, err = docker([*up, *(up_only or keep)], budget.step(UP_TIMEOUT + 300))
     if code != 0:
         return {"ok": False, "stage": "up", "error": tail(redact(err or out, hide), 2000),
-                "logs_tail": tail(redact(compose_logs(project, None, LOG_TAIL_LINES), hide))}
+                "logs_tail": logs(LOG_TAIL_LINES)}
     url = None
     if expose:
-        code, out, err = docker([*base, "port", expose[0], str(expose[1])], 60)
+        code, out, err = docker([*base, "port", expose[0], str(expose[1])],
+                                max(1.0, budget.step(60)))
         port = out.strip().rsplit(":", 1)[-1]
         if code != 0 or not port.isdigit():
             return {"ok": False, "stage": "up",
                     "error": f"{expose[0]}:{expose[1]} is not published: "
                              f"{tail(redact(err or out, hide), 500)}",
-                    "logs_tail": tail(redact(compose_logs(project, None, LOG_TAIL_LINES), hide))}
+                    "logs_tail": logs(LOG_TAIL_LINES)}
         url = f"http://{DIND_HOST}:{port}"
     return {"ok": True, "project": project, "services": keep, "built": built, "url": url,
-            "logs_tail": tail(redact(compose_logs(project, None, 50), hide))}
+            "logs_tail": logs(50)}
 
 
 def op_svc_exec(body: dict) -> dict:
@@ -317,7 +430,7 @@ def op_svc_exec(body: dict) -> dict:
     if not (isinstance(argv, list) and argv and all(isinstance(a, str) for a in argv)):
         raise Refused("argv must be a non-empty list of strings")
     env = sanitize.request_env(body.get("env"))
-    timeout = min(int(body.get("timeout") or 600), EXEC_MAX_TIMEOUT)
+    timeout = min(int_field(body, "timeout", 600), EXEC_MAX_TIMEOUT)
     if timeout <= 0:
         raise Refused("timeout must be positive")
     hide = redact_values(body) + list(env.values())
@@ -325,9 +438,12 @@ def op_svc_exec(body: dict) -> dict:
     args = [*compose_base(project), "run", "--rm", "--no-deps", "-T", "--name", name]
     for k in env:  # the value comes from the docker CLI's environment, not argv
         args += ["-e", k]
-    code, out, err = docker([*args, service, *argv], timeout, env=env)
-    if code == 124:
-        docker(["rm", "-f", name], 60)
+    window = Budget(EXEC_WINDOW)
+    with project_lock(project, LOCK_WAIT):
+        # time spent waiting for an svc_up comes off the run, not the client's wait
+        code, out, err = docker([*args, service, *argv], max(1.0, window.step(timeout)), env=env)
+        if code == 124:
+            docker(["rm", "-f", name], 60)
     return {"ok": code == 0, "exit": code, "output": tail(redact(out + err, hide))}
 
 
@@ -336,7 +452,7 @@ def op_svc_logs(body: dict) -> dict:
     service = body.get("service") or None
     if service is not None and service not in (doc.get("services") or {}):
         raise Refused(f"no service {service!r} in project {project!r}")
-    lines = max(1, min(int(body.get("tail") or LOG_TAIL_LINES), 2000))
+    lines = max(1, min(int_field(body, "tail", LOG_TAIL_LINES) or LOG_TAIL_LINES, 2000))
     logs = compose_logs(project, service, lines)
     return {"ok": True, "logs": tail(redact(logs, redact_values(body)), 64_000)}
 
@@ -389,7 +505,9 @@ def op_svc_stats(body: dict) -> dict:
 
 def down(project: str) -> tuple[bool, str]:
     """`compose down -v` (with svc's file when it still has it), then any
-    volume or network of the project compose left behind, then its files."""
+    volume or network of the project compose left behind, the images built
+    for it (no other project can base an image on them), then its files.
+    BuildKit's cache stays (svc_sweep trims it)."""
     has_file = compose_json(project).is_file()
     code, out, err = docker([*compose_base(project, has_file), "down", "-v", "--remove-orphans",
                              "-t", "10"], 300)
@@ -398,12 +516,20 @@ def down(project: str) -> tuple[bool, str]:
             _, ids, _ = docker([kind, "ls", "-q", "--filter", f"label={label}"], 60)
             if ids.split():
                 docker([kind, "rm", *([] if kind == "network" else ["-f"]), *ids.split()], 120)
+    _, ids, _ = docker(["image", "ls", "-q", "--filter", f"label={sanitize.LABEL}={project}"], 60)
+    ids = list(dict.fromkeys(ids.split()))
+    if ids:
+        icode, iout, ierr = docker(["image", "rm", "-f", *ids], 300)
+        if icode != 0:
+            out += f"\nimage rm: {iout}{ierr}"
     shutil.rmtree(project_dir(project), ignore_errors=True)
     return code == 0, tail(out + err, 4000)
 
 
 def op_svc_down(body: dict) -> dict:
-    ok, output = down(sanitize.project_name(body.get("project")))
+    project = sanitize.project_name(body.get("project"))
+    with project_lock(project, LOCK_WAIT):
+        ok, output = down(project)
     return {"ok": ok, "output": output}
 
 
@@ -426,9 +552,14 @@ def op_svc_sweep(body: dict) -> dict:
     if not (isinstance(raw, list) and all(isinstance(p, str) for p in raw)):
         raise Refused("keep must be a list of project names")
     keep = {sanitize.project_name(p) for p in raw}
-    removed = sorted(labelled_projects() - keep)
-    for project in removed:
-        down(project)
+    removed = []
+    for project in sorted(labelled_projects() - keep):
+        try:
+            with project_lock(project, 0):
+                down(project)
+            removed.append(project)
+        except Busy:  # an svc_up still running: left for the next sweep
+            keep.add(project)
     images_removed = 0
     _, ids, _ = docker(["image", "ls", "-q", "--filter", f"label={sanitize.LABEL}"], 60)
     ids = list(dict.fromkeys(ids.split()))
@@ -472,8 +603,13 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
             if not isinstance(body, dict):
                 raise ValueError("body must be a JSON object")
-            return self._reply(200, op(body))
         except ValueError as e:
+            return self._reply(400, {"error": f"bad request body: {e}"})
+        # Only a deliberate Refused is a refusal (400: the same request would be
+        # refused again); any other error, ValueError included, is svc's trouble.
+        try:
+            return self._reply(200, op(body))
+        except Refused as e:
             return self._reply(400, {"error": str(e)})
         except Exception as e:  # noqa: BLE001
             return self._reply(200, {"infra_error": f"{type(e).__name__}: {e}"})

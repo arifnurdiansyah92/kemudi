@@ -519,6 +519,58 @@ def test_worker_start_survives_an_unreachable_svc(tmp_path):
     assert runner.calls == ["reap"]
 
 
+def test_worker_sweeps_compose_when_idle_at_most_every_ten_minutes(tmp_path):
+    from kemudi_ai.awak.worker import SWEEP_EVERY_S
+
+    w, runner = _start_worker(tmp_path, running=False)
+    t = [1000.0]
+    w.clock = lambda: t[0]
+    w.idle_sweep()  # before the start sweep: nothing
+    assert w.svc.calls == []
+    w.recover()
+    assert len(w.svc.calls) == 1
+    t[0] += SWEEP_EVERY_S - 1
+    w.idle_sweep()
+    assert len(w.svc.calls) == 1
+    # a merge in progress (and a running job) keep their compose projects
+    with w.sessions() as db:
+        db.query(AwakJob).filter_by(story_ref=13).one().merge_state = "merging"
+        db.commit()
+    t[0] += 1
+    w.idle_sweep()
+    assert w.svc.calls[-1] == ("svc_sweep", {"keep": ["kemudi-us13"]})
+    t[0] += SWEEP_EVERY_S / 2
+    w.idle_sweep()
+    assert len(w.svc.calls) == 2
+
+
+def test_idle_sweep_runs_from_the_worker_loop(tmp_path):
+    from kemudi_ai.awak.worker import SWEEP_EVERY_S
+
+    w, runner = _start_worker(tmp_path, running=False)
+    t = [0.0]
+    w.clock = lambda: t[0]
+    loops = []
+
+    def sleep(_s):
+        loops.append(1)
+        t[0] += SWEEP_EVERY_S
+
+    w.sleep = sleep
+    w.tick = lambda: False
+    w.run_forever(stop_flag=lambda: len(loops) >= 3)
+    sweeps = [c for c in w.svc.calls if c[0] == "svc_sweep"]
+    assert len(sweeps) == 3  # the start sweep, then one per idle pass past 10 minutes
+
+
+def test_idle_sweep_survives_an_unreachable_svc(tmp_path):
+    w, runner = _start_worker(tmp_path, running=False)
+    w.recover()
+    w.svc.fail = SvcError("down")
+    w.clock = lambda: 10 ** 9
+    w.idle_sweep()  # logged, not raised
+
+
 def test_browser_mode_with_compose_qa_needs_kemudi_svc(agent_client):
     from .conftest import ADMIN
     from .test_runbook import SETTINGS, _repo

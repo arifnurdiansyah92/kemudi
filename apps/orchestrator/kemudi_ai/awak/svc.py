@@ -19,7 +19,8 @@ class SvcError(Exception):
 class SvcRejected(SvcError):
     """kemudi-svc refused the request (HTTP 400): a path, compose key, service
     or env it cannot accept. Retrying sends the same request: not an infra
-    error."""
+    error. (Anything else that goes wrong in kemudi-svc comes back as
+    `{infra_error}`.)"""
 
 
 class Svc(Protocol):
@@ -27,9 +28,16 @@ class Svc(Protocol):
 
 
 class SvcClient:
-    # Every op has its own deadline in kemudi-svc (svc_up: 900 s build + 300 s
-    # start), all below this.
+    # How long the client waits per op. kemudi-svc keeps below these
+    # (infra/svc/svc.py, checked by infra/svc/tests/test_ops.py):
+    # - svc_up: one budget of 1400 s for config, build (900 s, one retry),
+    #   start (300 s) and port, plus up to 60 s of logs;
+    # - svc_exec: waiting for an svc_up of the same project and the run
+    #   (<= 1500 s) together stay within 1650 s;
+    # - svc_down: waits up to 1500 s for an svc_up of the same project, then
+    #   takes a few minutes at most.
     TIMEOUT_S = 1800
+    OP_TIMEOUT_S = {"svc_up": 1500, "svc_down": 2400}
 
     def __init__(self, url: str, key: str, transport: httpx.BaseTransport | None = None):
         self.client = httpx.Client(
@@ -41,7 +49,8 @@ class SvcClient:
 
     def call(self, op: str, **payload: Any) -> dict:
         try:
-            r = self.client.post(f"/{op}", json=payload)
+            r = self.client.post(f"/{op}", json=payload,
+                                 timeout=self.OP_TIMEOUT_S.get(op, self.TIMEOUT_S))
             if r.status_code == 400:
                 try:
                     body = r.json()

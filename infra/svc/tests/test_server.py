@@ -16,7 +16,9 @@ import pytest
 def server(svc):
     def echo(body):
         if body.get("bad"):
-            raise ValueError("bad thing")
+            raise svc.Refused("bad thing")
+        if body.get("oops"):
+            int("abc")  # an unexpected ValueError is svc's trouble, not a refusal
         if body.get("boom"):
             raise RuntimeError("daemon gone")
         return {"ok": True, "got": body}
@@ -54,7 +56,17 @@ def test_errors(server):
     assert post(base + "/echo", {"bad": 1}, svc.KEY) == (400, {"error": "bad thing"})
     code, body = post(base + "/echo", {"boom": 1}, svc.KEY)
     assert code == 200 and "daemon gone" in body["infra_error"]
+    code, body = post(base + "/echo", {"oops": 1}, svc.KEY)
+    assert code == 200 and body["infra_error"].startswith("ValueError")
     assert post(base + "/echo", [1], svc.KEY)[0] == 400
+
+
+def test_int_field(svc):
+    for bad in ("abc", 1.5, True, "-3"):
+        with pytest.raises(svc.Refused, match="tail"):
+            svc.int_field({"tail": bad}, "tail", 1)
+    assert svc.int_field({"tail": "50"}, "tail", 1) == 50
+    assert svc.int_field({}, "tail", 7) == 7
 
 
 def test_empty_key_refuses_everything(server, monkeypatch):
