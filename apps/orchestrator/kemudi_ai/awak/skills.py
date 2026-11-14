@@ -53,6 +53,10 @@ MAX_DEPTH = 8
 BODY_WARN_LINES = 500
 SKILL_FILE = "SKILL.md"
 SOURCES = ("builtin", "local", "marketplace")
+# Words the library API uses as paths under /skills/ (skills_api.py): a skill
+# with one of these names would be shadowed by, or shadow, that route.
+RESERVED_SLUGS = frozenset({"library", "validate", "upload", "versions", "files",
+                            "enable", "disable"})
 
 # Where kemudi-awak sees the skill volume (read-only there).
 HERMES_SKILLS_DIR = "/opt/skills"
@@ -177,6 +181,9 @@ def validate(slug: str, files: dict[str, bytes]) -> SkillMeta:
     if not NAME_RE.match(slug or ""):
         problems.append(f"folder name {slug!r}: use 1-64 of a-z, 0-9 and single hyphens "
                         "inside, no leading or trailing hyphen")
+    elif slug in RESERVED_SLUGS:
+        problems.append(f"folder name {slug!r} is reserved (a path under /skills/); "
+                        "pick another name")
     if len(files) > MAX_FILES:
         problems.append(f"{len(files)} files; at most {MAX_FILES}")
     size = sum(len(d) for d in files.values())
@@ -270,27 +277,42 @@ _SEVERITY_ORDER = {"high": 3, "medium": 2, "low": 1}
 MAX_FINDINGS_PER_RULE = 20
 
 
+_CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+
+
+def _scan_text(data: bytes) -> str:
+    """What the scan reads of a file. Binaries (allowed under assets/) are
+    read too: NUL bytes dropped (so UTF-16 text reads as ASCII) and what is
+    not UTF-8 ignored; the agent can open any file it is given."""
+    if _is_text(data):
+        return data.decode("utf-8")
+    return data.replace(b"\x00", b"").decode("utf-8", errors="ignore")
+
+
 def scan(files: dict[str, bytes]) -> list[dict]:
-    """Findings (rule, severity, path, line, excerpt) over every text file."""
+    """Findings (rule, severity, path, line, excerpt) over every file."""
     findings: list[dict] = []
     counts: dict[str, int] = {}
     for path in sorted(files):
         if path.startswith("scripts/"):
             findings.append({"rule": "script", "severity": "medium", "path": path,
                              "line": 0, "excerpt": "a script the agent can run"})
-        data = files[path]
-        if not _is_text(data):
-            continue
-        for n, line in enumerate(data.decode("utf-8").splitlines(), 1):
+        for n, line in enumerate(_scan_text(files[path]).splitlines(), 1):
             for r in _RULES:
                 m = r.pattern.search(line)
                 if not m or counts.get(r.rule, 0) >= MAX_FINDINGS_PER_RULE:
                     continue
                 counts[r.rule] = counts.get(r.rule, 0) + 1
                 start = max(0, m.start() - 40)
+                excerpt = _CONTROL_RE.sub(" ", line[start:start + 120]).strip()
                 findings.append({"rule": r.rule, "severity": r.severity, "path": path,
-                                 "line": n, "excerpt": line[start:start + 120].strip()})
+                                 "line": n, "excerpt": excerpt})
     return findings
+
+
+def severity_rank(level: str) -> int:
+    """0 for clean ("" or unknown), then low < medium < high."""
+    return _SEVERITY_ORDER.get(level or "", 0)
 
 
 def worst(findings: Iterable[dict]) -> str:
@@ -1031,6 +1053,8 @@ _JUNK_DIRS = ("__MACOSX/",)
 _JUNK_FILES = (".DS_Store", "Thumbs.db")
 _S_IFMT, _S_IFLNK, _S_IFDIR, _S_IFREG = 0o170000, 0o120000, 0o040000, 0o100000
 _DRIVE_RE = re.compile(r"^[A-Za-z]:")
+# Methods whose decompression the read loop can bound chunk by chunk.
+_ZIP_METHODS = (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
 
 
 @dataclass(frozen=True)
@@ -1072,7 +1096,8 @@ def read_zip(data: bytes) -> tuple[dict[str, bytes], list[str]]:
 
     Decompressed bytes are counted as they are read (declared sizes are not
     trusted); entry count, depth and the per-entry ratio are capped; symlinks
-    (the entry's Unix mode), encrypted entries, duplicates, case or Unicode
+    (the entry's Unix mode), encrypted entries, methods other than stored and
+    deflate (checked before anything is read), duplicates, case or Unicode
     (NFC) collisions and nested archives are refused."""
     if len(data) > MAX_UPLOAD_BYTES:
         raise SkillError([f"the archive is larger than {MAX_UPLOAD_BYTES} bytes"])
@@ -1113,6 +1138,12 @@ def read_zip(data: bytes) -> tuple[dict[str, bytes], list[str]]:
             continue
         if info.flag_bits & 0x1:
             problems.append(f"{name!r}: encrypted entries are not allowed")
+            continue
+        if info.compress_type not in _ZIP_METHODS:
+            # bzip2 / LZMA decompress a whole block inside zipfile before
+            # the first read returns: the caps below would run too late.
+            problems.append(f"{name!r}: compression method {info.compress_type} is not "
+                            "allowed (stored or deflate only)")
             continue
         if name.startswith(_JUNK_DIRS) or name.rstrip("/").rsplit("/", 1)[-1] in _JUNK_FILES:
             dropped += 1

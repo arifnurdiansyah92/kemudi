@@ -11,9 +11,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from starlette.datastructures import UploadFile as StarletteUpload
 
 from ..auth import TaigaUser, current_user
 from ..config import Settings, get_settings
@@ -108,36 +110,90 @@ def _check(slug: str, files: dict[str, bytes]) -> skills.Checked:
         raise _problems(422, "the skill is not valid", e.problems) from e
 
 
+def _conflict(db: Session, slug: str) -> HTTPException:
+    """Another write to the same skill landed first (unique slug / version)."""
+    db.rollback()
+    return _problems(409, f"{slug} was changed at the same time by another request; "
+                     "try again", [], code="conflict", slug=slug)
+
+
+def _findings_rise(db: Session, sk: AwakSkill, cur: AwakSkillVersion | None,
+                   c: skills.Checked) -> dict | None:
+    """What a new version of `sk` would bring to the roles that run it: set
+    when the skill is enabled, listed by a role, and the new version's worst
+    scan level is above the current one's."""
+    if not sk.enabled:
+        return None
+    before = _scan_level(cur)
+    if skills.severity_rank(c.worst) <= skills.severity_rank(before):
+        return None
+    used = skills.used_by(db).get(sk.slug, [])
+    if not used:
+        return None
+    return {"from": before, "to": c.worst, "used_by": used}
+
+
 def _add_version(db: Session, sk: AwakSkill, files: dict[str, bytes], c: skills.Checked,
-                 user: TaigaUser) -> tuple[AwakSkillVersion | None, bool]:
+                 user: TaigaUser, accept_findings: bool = False
+                 ) -> tuple[AwakSkillVersion | None, bool, dict | None]:
     """A new current version of `sk` (None when the tree equals the current
-    one). A high finding disables the skill (enabling refuses it anyway).
-    Returns (version, disabled now)."""
+    one). A new version of an enabled skill goes live at once for the roles
+    that list it, so one whose scan is worse than the current version's is
+    refused (409 `findings_rise`) unless `accept_findings`. A high finding
+    disables the skill (enabling refuses it anyway). Returns (version,
+    disabled now, the accepted rise or None)."""
     cur = _current(db, sk)
     if cur is not None and cur.sha256 == c.sha:
-        return None, False
-    v = skills.store_version(db, sk.slug, files, c, actor(user))
-    sk.current_version = v.version
-    sk.description = c.meta.description
-    sk.license = c.meta.license or sk.license
-    sk.updated_at = datetime.now(UTC)
-    disabled = sk.enabled and c.worst == "high"
-    if disabled:
-        sk.enabled = False
-    db.commit()
-    return v, disabled
+        return None, False, None
+    rise = _findings_rise(db, sk, cur, c)
+    if rise is not None and not accept_findings:
+        n = len(rise["used_by"])
+        raise _problems(
+            409, f"this version's scan ({rise['to']}) is worse than the current version's "
+            f"({rise['from'] or 'clean'}) and {n} role{'s' if n != 1 else ''} will get it on "
+            "the next run; send accept_findings=true to use it anyway",
+            [f"{f['path']}:{f['line']} {f['rule']}" for f in c.findings],
+            code="findings_rise", slug=sk.slug, worst=rise["to"], previous=rise["from"],
+            findings=c.findings, used_by=rise["used_by"])
+    slug = sk.slug  # readable after a failed flush
+    try:
+        v = skills.store_version(db, slug, files, c, actor(user))
+        sk.current_version = v.version
+        sk.description = c.meta.description
+        # The new version's metadata wins: no licence there clears it.
+        sk.license = c.meta.license
+        sk.updated_at = datetime.now(UTC)
+        disabled = sk.enabled and c.worst == "high"
+        if disabled:
+            sk.enabled = False
+        db.commit()
+    except IntegrityError as e:
+        raise _conflict(db, slug) from e
+    return v, disabled, rise
+
+
+def _rise_detail(rise: dict | None) -> dict:
+    """What a version decision row says about an accepted findings rise."""
+    if rise is None:
+        return {}
+    return {"accepted_findings": {"from": rise["from"], "to": rise["to"],
+                                  "used_by": [f"{u['project']}/{u['role']}"
+                                              for u in rise["used_by"]]}}
 
 
 def _new_skill(db: Session, slug: str, files: dict[str, bytes], c: skills.Checked,
                user: TaigaUser, origin: dict) -> AwakSkillVersion:
     """A new `local` skill, disabled until an admin enables it."""
-    sk = AwakSkill(slug=slug, source="local", title=slug, description=c.meta.description,
-                   license=c.meta.license, enabled=False, current_version=1,
-                   origin=origin, created_by=actor(user))
-    db.add(sk)
-    v = skills.store_version(db, slug, files, c, actor(user))
-    sk.current_version = v.version
-    db.commit()
+    try:
+        sk = AwakSkill(slug=slug, source="local", title=slug, description=c.meta.description,
+                       license=c.meta.license, enabled=False, current_version=1,
+                       origin=origin, created_by=actor(user))
+        db.add(sk)
+        v = skills.store_version(db, slug, files, c, actor(user))
+        sk.current_version = v.version
+        db.commit()
+    except IntegrityError as e:
+        raise _conflict(db, slug) from e
     return v
 
 
@@ -221,21 +277,69 @@ def skill_file(slug: str, version: int, path: str, _: TaigaUser = Depends(kemudi
 
 # --- writes ----------------------------------------------------------------------------
 
-@router.post("/upload")
-async def upload_skill(file: UploadFile = File(...), replace: bool = Query(False),
-                       user: TaigaUser = Depends(kemudi_admin), db: Session = Depends(get_db)):
-    """A `.zip` / `.skill` archive or a lone SKILL.md: a new `local` skill
-    (disabled), or with `replace=true` the next version of the `local` skill
-    with that slug."""
-    data = await file.read(skills.MAX_UPLOAD_BYTES + 1)
-    filename = file.filename or ""
+# The whole multipart request: the archive cap plus room for the part headers
+# and boundaries. The gateway allows 5 MB on this path (infra/gateway/kemudi.conf).
+MAX_UPLOAD_BODY = skills.MAX_UPLOAD_BYTES + 64 * 1024
+
+_UPLOAD_OPENAPI = {"requestBody": {"required": True, "content": {"multipart/form-data": {
+    "schema": {"type": "object", "required": ["file"],
+               "properties": {"file": {"type": "string", "format": "binary"}}}}}}}
+
+
+async def _upload_form(request: Request) -> tuple[str, bytes]:
+    """The `file` part of the multipart body, read only after the caller is
+    known to be a Kemudi admin. A declared `File(...)` parameter would have
+    FastAPI spool the body before any dependency (auth) runs, so the route
+    takes the raw Request and parses here: Content-Length is checked first
+    (required: the gateway buffers the request and always sends it; h11 never
+    reads past it), then the form."""
+    length = request.headers.get("content-length")
+    if length is None:
+        raise HTTPException(411, "Content-Length is required")
     try:
+        size = int(length)
+    except ValueError as e:
+        raise HTTPException(400, "bad Content-Length") from e
+    if size > MAX_UPLOAD_BODY:
+        raise _problems(413, "the upload is too large",
+                        [f"the archive is larger than {skills.MAX_UPLOAD_BYTES} bytes"],
+                        code="too_large")
+    try:
+        form = await request.form(max_files=1, max_fields=8)
+    except HTTPException:
+        raise
+    except Exception as e:  # malformed multipart
+        raise _problems(422, "the upload was refused", ["not a multipart form upload"]) from e
+    try:
+        file = form.get("file")
+        if not isinstance(file, StarletteUpload):
+            raise _problems(422, "the upload was refused", ["no file in the upload"])
+        return file.filename or "", await file.read(skills.MAX_UPLOAD_BYTES + 1)
+    finally:
+        await form.close()
+
+
+@router.post("/upload", openapi_extra=_UPLOAD_OPENAPI)
+async def upload_skill(request: Request, replace: bool = Query(False),
+                       accept_findings: bool = Query(False),
+                       user: TaigaUser = Depends(kemudi_admin), db: Session = Depends(get_db)):
+    """A `.zip` / `.skill` archive or a lone SKILL.md (multipart field
+    `file`): a new `local` skill (disabled), or with `replace=true` the next
+    version of the `local` skill with that slug (see _add_version for
+    `accept_findings`). Auth runs before the body is read (_upload_form)."""
+    filename, data = "", b""
+    try:
+        filename, data = await _upload_form(request)
         up = skills.read_upload(filename, data)
-    except skills.SkillError as e:
+        c = skills.check(up.slug, up.files)
+    except (skills.SkillError, HTTPException) as e:
+        probs = e.problems if isinstance(e, skills.SkillError) else (
+            e.detail.get("problems", []) if isinstance(e.detail, dict) else [str(e.detail)])
         _record(db, user, "-", "upload_refused", filename=filename[:200], size=len(data),
-                problems=e.problems[:20])
+                problems=probs[:20])
+        if isinstance(e, HTTPException):
+            raise
         raise _problems(422, "the upload was refused", e.problems) from e
-    c = _check(up.slug, up.files)
     sk = db.get(AwakSkill, up.slug)
     if sk is not None:
         if sk.source != "local":
@@ -245,13 +349,14 @@ async def upload_skill(file: UploadFile = File(...), replace: bool = Query(False
         if not replace:
             raise _problems(409, f"a local skill named {up.slug} exists", [], code="exists",
                             slug=up.slug, source=sk.source,
-                            version=sk.current_version)
-        v, disabled = _add_version(db, sk, up.files, c, user)
+                            version=sk.current_version, enabled=sk.enabled,
+                            used_by=skills.used_by(db).get(up.slug, []))
+        v, disabled, rise = _add_version(db, sk, up.files, c, user, accept_findings)
         if v is None:
             return {"skill": _detail(db, sk), "created": False, "unchanged": True,
                     "disabled": False, "warnings": list(up.warnings)}
         _record(db, user, sk.slug, "upload_version", filename=filename[:200],
-                disabled=disabled, **_version_detail(v))
+                disabled=disabled, **_version_detail(v), **_rise_detail(rise))
         return {"skill": _detail(db, sk), "created": False, "unchanged": False,
                 "disabled": disabled, "warnings": list(up.warnings)}
     v = _new_skill(db, up.slug, up.files, c, user,
@@ -287,10 +392,12 @@ def create_skill(body: AuthoredIn, user: TaigaUser = Depends(kemudi_admin),
 
 
 @router.put("/{slug}")
-def new_authored_version(slug: str, body: AuthoredIn, user: TaigaUser = Depends(kemudi_admin),
+def new_authored_version(slug: str, body: AuthoredIn, accept_findings: bool = Query(False),
+                         user: TaigaUser = Depends(kemudi_admin),
                          db: Session = Depends(get_db)):
     """The next version of a `local` skill from the editor. Binary files of
-    the current version (assets/) are kept: the editor only edits text."""
+    the current version (assets/) are kept: the editor only edits text. See
+    _add_version for `accept_findings`."""
     sk = _get(db, slug)
     if sk.source != "local":
         raise _problems(409, f"{slug} is a {sk.source} skill; only local skills are edited "
@@ -302,9 +409,10 @@ def new_authored_version(slug: str, body: AuthoredIn, user: TaigaUser = Depends(
             if p not in files and not skills._is_text(d):
                 files[p] = d
     c = _check(slug, files)
-    v, disabled = _add_version(db, sk, files, c, user)
+    v, disabled, rise = _add_version(db, sk, files, c, user, accept_findings)
     if v is not None:
-        _record(db, user, slug, "version", disabled=disabled, **_version_detail(v))
+        _record(db, user, slug, "version", disabled=disabled, **_version_detail(v),
+                **_rise_detail(rise))
     out = _detail(db, sk)
     out["unchanged"] = v is None
     out["disabled_now"] = disabled

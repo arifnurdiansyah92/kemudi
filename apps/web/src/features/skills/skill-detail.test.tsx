@@ -34,7 +34,7 @@ vi.mock('@/lib/kemudi-ai/skills', async (importOriginal) => ({
   useDeleteSkill: () => ({ mutate: state.deleteMutate, isPending: false }),
   useSkillFile: (...args: unknown[]) => {
     state.fileArgs.push(args)
-    const path = args[2] as string | null
+    const path = args[3] as string | null
     return path
       ? {
           data: { path, size: 40, text: 'Use short sentences.' },
@@ -93,6 +93,7 @@ describe('DetailBody', () => {
     await expect.element(screen.getByText('Use short sentences.')).toBeVisible()
     expect(state.fileArgs[state.fileArgs.length - 1]).toEqual([
       'release-notes',
+      'a'.repeat(64),
       2,
       'reference/style.md',
     ])

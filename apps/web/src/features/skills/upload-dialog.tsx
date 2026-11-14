@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { FindingList, ScanBadge } from './badges'
+import { FindingsRise, RolloutNote } from './rollout'
 
 /** The server's cap on the archive (skills.MAX_UPLOAD_BYTES). */
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024
@@ -26,7 +27,9 @@ const MAX_UPLOAD_BYTES = 4 * 1024 * 1024
 /**
  * Upload a .zip / .skill / SKILL.md. Shows the server's verdict: the
  * problems that refused it, or the stored version and its scan. A slug that
- * clashes with a local skill offers "Add as new version".
+ * clashes with a local skill offers "Add as new version" (with the roles that
+ * get it); a version whose scan is worse than the one roles run now is
+ * refused until "Use this version anyway".
  */
 export function UploadDialog({
   open,
@@ -56,11 +59,11 @@ export function UploadDialog({
     reset()
     setFile(f)
   }
-  const send = (replace: boolean) => {
+  const send = (replace: boolean, acceptFindings = false) => {
     if (!file) return
     setProblem(null)
     upload.mutate(
-      { file, replace },
+      { file, replace, acceptFindings },
       {
         onSuccess: (r) => setResult(r),
         onError: (e) => setProblem(skillProblem(e)),
@@ -166,6 +169,16 @@ export function UploadDialog({
                 {t('upload.open')}
               </Button>
             </>
+          ) : problem?.code === 'findings_rise' ? (
+            <Button
+              variant='destructive'
+              disabled={upload.isPending}
+              onClick={() => send(true, true)}
+            >
+              {upload.isPending
+                ? t('upload.uploading')
+                : t('rollout.useAnyway')}
+            </Button>
           ) : problem?.code === 'exists' ? (
             <Button disabled={upload.isPending} onClick={() => send(true)}>
               {upload.isPending
@@ -190,10 +203,15 @@ function ProblemView({ problem: p }: { problem: SkillProblem }) {
   const { t } = useTranslation('skills')
   if (p.code === 'exists')
     return (
-      <p className='rounded-lg border bg-muted/40 px-3 py-2 text-sm'>
-        {t('upload.exists', { slug: p.slug, version: p.version })}
-      </p>
+      <div className='grid gap-1.5 rounded-lg border bg-muted/40 px-3 py-2 text-sm'>
+        <p>{t('upload.exists', { slug: p.slug, version: p.version })}</p>
+        <RolloutNote
+          usedBy={p.used_by?.length ?? 0}
+          enabled={p.enabled ?? false}
+        />
+      </div>
     )
+  if (p.code === 'findings_rise') return <FindingsRise problem={p} />
   return (
     <div
       role='alert'

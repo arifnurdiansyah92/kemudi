@@ -214,6 +214,7 @@ export function DetailBody({
             <TabsContent value='files' className='pt-2'>
               <FileBrowser
                 slug={s.slug}
+                sha={cur.sha256}
                 version={cur.version}
                 files={cur.files}
               />
@@ -347,10 +348,12 @@ function Notice({
 
 function FileBrowser({
   slug,
+  sha,
   version,
   files,
 }: {
   slug: string
+  sha: string
   version: number
   files: SkillFileEntry[]
 }) {
@@ -359,6 +362,7 @@ function FileBrowser({
   const picked = files.find((f) => f.path === path) ?? null
   const file = useSkillFile(
     slug,
+    sha,
     version,
     picked && !picked.binary ? picked.path : null
   )

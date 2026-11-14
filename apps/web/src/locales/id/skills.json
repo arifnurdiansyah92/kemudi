@@ -166,5 +166,21 @@
     "findings_other": "Pindaian menemukan {{count}} hal yang perlu ditinjau.",
     "open": "Buka skill",
     "close": "Tutup"
+  },
+  "rollout": {
+    "next_zero": "Belum ada peran yang memakai skill ini.",
+    "next_one": "{{count}} peran akan mendapatkannya pada proses berikutnya.",
+    "next_other": "{{count}} peran akan mendapatkannya pada proses berikutnya.",
+    "waiting_one": "{{count}} peran mencantumkannya; versi baru diterima setelah skill diaktifkan.",
+    "waiting_other": "{{count}} peran mencantumkannya; versi baru diterima setelah skill diaktifkan.",
+    "rise_one": "Pindaian versi ini ({{worst}}) lebih buruk daripada versi saat ini ({{previous}}), dan {{count}} peran akan mendapatkannya pada proses berikutnya.",
+    "rise_other": "Pindaian versi ini ({{worst}}) lebih buruk daripada versi saat ini ({{previous}}), dan {{count}} peran akan mendapatkannya pada proses berikutnya.",
+    "useAnyway": "Tetap gunakan versi ini",
+    "level": {
+      "clean": "bersih",
+      "low": "rendah",
+      "medium": "sedang",
+      "high": "tinggi"
+    }
   }
 }

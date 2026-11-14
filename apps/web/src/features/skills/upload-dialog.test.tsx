@@ -122,6 +122,83 @@ describe('UploadDialog', () => {
       .toBeVisible()
   })
 
+  it('says which roles get the new version, and asks before a worse scan goes live', async () => {
+    const usedBy = [{ project: 'playfast', role: 'PF-FE', role_id: 3 }]
+    state.mutate.mockImplementationOnce((_vars, opts) =>
+      opts.onError(
+        apiError(409, {
+          message: 'a local skill named release-notes exists',
+          problems: [],
+          code: 'exists',
+          slug: 'release-notes',
+          source: 'local',
+          version: 2,
+          enabled: true,
+          used_by: usedBy,
+        })
+      )
+    )
+    const screen = await open()
+    await screen.getByRole('button', { name: 'Upload', exact: true }).click()
+    await expect
+      .element(screen.getByText('1 role will get it on its next run.'))
+      .toBeVisible()
+    state.mutate.mockImplementationOnce((_vars, opts) =>
+      opts.onError(
+        apiError(409, {
+          message: 'worse scan',
+          problems: ['SKILL.md:3 network_url'],
+          code: 'findings_rise',
+          slug: 'release-notes',
+          worst: 'low',
+          previous: '',
+          findings: [
+            {
+              rule: 'network_url',
+              severity: 'low',
+              path: 'SKILL.md',
+              line: 3,
+              excerpt: 'https://example.com',
+            },
+          ],
+          used_by: usedBy,
+        })
+      )
+    )
+    await screen.getByRole('button', { name: 'Add as new version' }).click()
+    await expect
+      .element(
+        screen.getByText(
+          "This version's scan (low) is worse than the current version's (clean), and 1 role will get it on its next run."
+        )
+      )
+      .toBeVisible()
+    await expect.element(screen.getByText('Network URL')).toBeVisible()
+    state.mutate.mockImplementationOnce((_vars, opts) =>
+      opts.onSuccess({
+        skill: { ...detailOf(notes), version: 3 },
+        created: false,
+        unchanged: false,
+        disabled: false,
+        warnings: [],
+      })
+    )
+    await screen
+      .getByRole('button', { name: 'Use this version anyway' })
+      .click()
+    expect(state.mutate.mock.calls[1][0]).toMatchObject({
+      replace: true,
+      acceptFindings: false,
+    })
+    expect(state.mutate.mock.calls[2][0]).toMatchObject({
+      replace: true,
+      acceptFindings: true,
+    })
+    await expect
+      .element(screen.getByText('release-notes is now at version 3'))
+      .toBeVisible()
+  })
+
   it('explains a clash with a built-in skill', async () => {
     state.mutate.mockImplementation((_vars, opts) =>
       opts.onError(

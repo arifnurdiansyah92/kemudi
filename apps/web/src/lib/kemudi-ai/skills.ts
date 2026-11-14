@@ -126,11 +126,25 @@ export type SkillProblem = {
   status: number
   message: string
   problems: string[]
-  code?: 'exists' | 'not_local' | 'high_finding' | 'in_use' | 'builtin' | string
+  code?:
+    | 'exists'
+    | 'not_local'
+    | 'high_finding'
+    | 'in_use'
+    | 'builtin'
+    | 'findings_rise'
+    | 'conflict'
+    | 'too_large'
+    | string
   slug?: string
   version?: number
+  /** `exists`: whether the skill is enabled (its roles get a new version). */
+  enabled?: boolean
   used_by?: SkillUse[]
   findings?: Finding[]
+  /** `findings_rise`: the new version's worst scan level and the current one's. */
+  worst?: ScanLevel
+  previous?: ScanLevel
 }
 
 export function skillProblem(error: unknown): SkillProblem {
@@ -185,13 +199,27 @@ export function filePath(path: string) {
   return path.split('/').map(encodeURIComponent).join('/')
 }
 
+/**
+ * A stored file's query key. Keyed by the version's sha too: a deleted and
+ * recreated slug starts again at version 1, with other files.
+ */
+export function skillFileKey(
+  slug: string,
+  sha: string,
+  version: number,
+  path: string
+) {
+  return [...detailKey(slug), 'file', sha, version, path] as const
+}
+
 export function useSkillFile(
   slug: string,
+  sha: string,
   version: number | null,
   path: string | null
 ) {
   return useQuery({
-    queryKey: [...detailKey(slug), 'file', version ?? 0, path ?? ''],
+    queryKey: skillFileKey(slug, sha, version ?? 0, path ?? ''),
     enabled: version !== null && !!path,
     queryFn: async () =>
       (
@@ -245,13 +273,26 @@ export function useDeleteSkill() {
 export function useUploadSkill() {
   const refresh = useRefresh()
   return useMutation({
-    mutationFn: async ({ file, replace }: { file: File; replace: boolean }) => {
+    mutationFn: async ({
+      file,
+      replace,
+      acceptFindings = false,
+    }: {
+      file: File
+      replace: boolean
+      /** Store a version whose scan is worse than the current one's, for roles that run it. */
+      acceptFindings?: boolean
+    }) => {
       const form = new FormData()
       form.append('file', file)
+      const params = {
+        ...(replace ? { replace: true } : {}),
+        ...(acceptFindings ? { accept_findings: true } : {}),
+      }
       return (
         await api.post<UploadResult>('/skills/upload', form, {
           ...base,
-          params: replace ? { replace: true } : undefined,
+          params: Object.keys(params).length ? params : undefined,
         })
       ).data
     },
@@ -266,15 +307,21 @@ export function useSaveSkill() {
     mutationFn: async ({
       draft,
       existing,
+      acceptFindings = false,
     }: {
       draft: SkillDraft
       existing: boolean
+      /** See useUploadSkill. */
+      acceptFindings?: boolean
     }) =>
       (existing
         ? await api.put<SkillDetail & { unchanged: boolean }>(
             `/skills/${draft.slug}`,
             draft,
-            base
+            {
+              ...base,
+              params: acceptFindings ? { accept_findings: true } : undefined,
+            }
           )
         : await api.post<SkillDetail>('/skills', draft, base)
       ).data,

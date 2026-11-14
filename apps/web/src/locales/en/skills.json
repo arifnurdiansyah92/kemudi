@@ -166,5 +166,21 @@
     "findings_other": "The scan found {{count}} things to review.",
     "open": "Open skill",
     "close": "Close"
+  },
+  "rollout": {
+    "next_zero": "No role uses this skill yet.",
+    "next_one": "{{count}} role will get it on its next run.",
+    "next_other": "{{count}} roles will get it on their next run.",
+    "waiting_one": "{{count}} role lists it; it gets the new version once the skill is enabled.",
+    "waiting_other": "{{count}} roles list it; they get the new version once the skill is enabled.",
+    "rise_one": "This version's scan ({{worst}}) is worse than the current version's ({{previous}}), and {{count}} role will get it on its next run.",
+    "rise_other": "This version's scan ({{worst}}) is worse than the current version's ({{previous}}), and {{count}} roles will get it on their next run.",
+    "useAnyway": "Use this version anyway",
+    "level": {
+      "clean": "clean",
+      "low": "low",
+      "medium": "medium",
+      "high": "high"
+    }
   }
 }

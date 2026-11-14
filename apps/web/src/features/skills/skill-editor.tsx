@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
   filePath,
+  skillFileKey,
   skillProblem,
   useCheckDraft,
   useSaveSkill,
@@ -13,6 +14,7 @@ import {
   type SkillDetail,
   type SkillDraft,
   type SkillFile,
+  type SkillProblem,
 } from '@/lib/kemudi-ai/skills'
 import { api } from '@/lib/taiga/client'
 import { cn } from '@/lib/utils'
@@ -25,6 +27,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { FindingList } from './badges'
 import { initialFrom, type EditorInitial } from './editor-initial'
 import { Markdown } from './markdown'
+import { FindingsRise, RolloutNote } from './rollout'
 
 /** The server's limits (kemudi_ai/awak/skills.py). */
 const DESCRIPTION_MAX = 1024
@@ -78,6 +81,11 @@ export function SkillEditor({
   )
   const [nextId, setNextId] = useState(initial.files.length)
   const [saveProblems, setSaveProblems] = useState<string[]>([])
+  /** A `findings_rise` refusal, for the draft it was about. */
+  const [rise, setRise] = useState<{
+    problem: SkillProblem
+    draft: SkillDraft
+  } | null>(null)
   const save = useSaveSkill()
 
   const duplicate = useMemo(() => {
@@ -108,11 +116,14 @@ export function SkillEditor({
   const binaries = existing?.current?.files.filter((f) => f.binary).length ?? 0
   const descCount = description.trim().length
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault()
+  // An edit after the refusal is a new draft: it needs its own check.
+  const riseNow = rise && rise.draft === draft ? rise.problem : null
+
+  const send = (acceptFindings: boolean) => {
     setSaveProblems([])
+    setRise(null)
     save.mutate(
-      { draft, existing: !!existing },
+      { draft, existing: !!existing, acceptFindings },
       {
         onSuccess: (d) => {
           const unchanged = 'unchanged' in d && d.unchanged
@@ -122,10 +133,15 @@ export function SkillEditor({
         },
         onError: (err) => {
           const p = skillProblem(err)
-          setSaveProblems(p.problems.length ? p.problems : [p.message])
+          if (p.code === 'findings_rise') setRise({ problem: p, draft })
+          else setSaveProblems(p.problems.length ? p.problems : [p.message])
         },
       }
     )
+  }
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    send(false)
   }
 
   return (
@@ -324,7 +340,26 @@ export function SkillEditor({
           </ul>
         )}
 
+        {riseNow && <FindingsRise problem={riseNow} />}
+
+        {existing && (
+          <RolloutNote
+            usedBy={existing.used_by.length}
+            enabled={existing.enabled}
+          />
+        )}
+
         <div className='flex flex-wrap gap-2'>
+          {riseNow && (
+            <Button
+              type='button'
+              variant='destructive'
+              disabled={save.isPending}
+              onClick={() => send(true)}
+            >
+              {t('rollout.useAnyway')}
+            </Button>
+          )}
           <Button
             type='submit'
             disabled={
@@ -478,14 +513,7 @@ export function VersionEditor({
     cur?.files.filter((f) => !f.binary && f.path !== 'SKILL.md') ?? []
   const files = useQueries({
     queries: textFiles.map((f) => ({
-      queryKey: [
-        'kemudi-ai',
-        'skill-library',
-        slug,
-        'file',
-        cur!.version,
-        f.path,
-      ],
+      queryKey: skillFileKey(slug, cur!.sha256, cur!.version, f.path),
       queryFn: async () =>
         (
           await api.get<SkillFile>(

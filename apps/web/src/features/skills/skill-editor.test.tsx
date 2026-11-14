@@ -120,6 +120,7 @@ describe('SkillEditor', () => {
           files: { 'reference/note-1.md': 'Short sentences.' },
         },
         existing: false,
+        acceptFindings: false,
       },
       expect.anything()
     )
@@ -181,5 +182,70 @@ describe('SkillEditor', () => {
     await expect
       .element(screen.getByRole('button', { name: 'Save version' }))
       .toBeVisible()
+    await expect
+      .element(screen.getByText('No role uses this skill yet.'))
+      .toBeVisible()
+  })
+
+  it('says who gets a new version, and asks before a worse scan goes live', async () => {
+    const skill = detailOf({ ...notes, enabled: true, scan_level: '' }, {})
+    skill.used_by = [
+      { project: 'playfast', role: 'PF-FE', role_id: 3 },
+      { project: 'playfast', role: 'PF-BE', role_id: 4 },
+    ]
+    const initial = initialFrom(skill, { 'reference/style.md': 'Short.' })
+    const onSaved = vi.fn()
+    state.save.mockImplementationOnce((_vars, opts) =>
+      opts.onError(
+        apiError(409, {
+          message: 'worse scan',
+          problems: ['SKILL.md:1 git_push'],
+          code: 'findings_rise',
+          worst: 'high',
+          previous: '',
+          findings: [
+            {
+              rule: 'git_push',
+              severity: 'high',
+              path: 'SKILL.md',
+              line: 1,
+              excerpt: 'git push',
+            },
+          ],
+          used_by: skill.used_by,
+        })
+      )
+    )
+    const screen = await render(
+      <SkillEditor initial={initial} existing={skill} onSaved={onSaved} />
+    )
+    await expect
+      .element(screen.getByText('2 roles will get it on their next run.'))
+      .toBeVisible()
+    await expect.element(screen.getByText('Ready to save')).toBeVisible()
+    await screen.getByRole('button', { name: 'Save version' }).click()
+    await expect
+      .element(
+        screen.getByText(
+          "This version's scan (high) is worse than the current version's (clean), and 2 roles will get it on their next run."
+        )
+      )
+      .toBeVisible()
+    await expect.element(screen.getByText('Runs git push')).toBeVisible()
+    state.save.mockImplementationOnce((_vars, opts) =>
+      opts.onSuccess({ ...skill, version: 3 })
+    )
+    await screen
+      .getByRole('button', { name: 'Use this version anyway' })
+      .click()
+    expect(state.save.mock.calls[0][0]).toMatchObject({
+      existing: true,
+      acceptFindings: false,
+    })
+    expect(state.save.mock.calls[1][0]).toMatchObject({
+      existing: true,
+      acceptFindings: true,
+    })
+    expect(onSaved).toHaveBeenCalledWith('release-notes')
   })
 })
