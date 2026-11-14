@@ -424,15 +424,32 @@ class Compose:
 
     @contextmanager
     def for_qa(self, plan: dict) -> Iterator[dict[str, str]]:
-        """Bring up QA's compose services, run init, then seed, wait for each
-        exposed service's health through the runner; yields name -> URL (as
-        the runner reaches it). Every started project goes down afterwards."""
+        """Bring up QA's compose services and yield name -> URL (as the runner
+        reaches it). Order: a service that `init` runs in starts first without
+        its exposed service (a fresh database must get its schema before the
+        app boots), init runs, then everything starts, each exposed service's
+        health is waited for through the runner, then seed. Every started
+        project goes down afterwards."""
         started: list[str] = []
         try:
+            init_in = {o["service"] for o in plan["init"]}
+            for name in plan["compose"]:
+                if name not in init_in:
+                    continue
+                s = self._service(name)
+                started.append(self.projects[name])
+                inner = s.expose_service()
+                res = self.up(s, self.path_of(s.repo), expose=False,
+                              up=[c for c in s.compose_services if c != inner])
+                if not res.get("ok"):
+                    raise self._start_failed(s, res)
+            for o in plan["init"]:
+                self._one_shot(o)
             urls: dict[str, str] = {}
             for name in plan["compose"]:
                 s = self._service(name)
-                started.append(self.projects[name])  # a failed start leaves things too
+                if self.projects[name] not in started:
+                    started.append(self.projects[name])  # a failed start leaves things too
                 res = self.up(s, self.path_of(s.repo))
                 if not res.get("ok"):
                     raise self._start_failed(s, res)
@@ -441,10 +458,6 @@ class Compose:
                         raise ServiceFailed(f"service compose {s.name}: {s.expose} tidak "
                                             "terpublikasi.", infra=False)
                     urls[name] = str(res["url"])
-            for o in plan["init"]:
-                self._one_shot(o)
-            if plan.get("seed"):
-                self._one_shot(plan["seed"])
             for name, url in urls.items():
                 s = self._service(name)
                 res = self.runner("health", url=url, path=s.health, timeout=s.ready_timeout)
@@ -459,6 +472,8 @@ class Compose:
                     raise ServiceFailed(f"service compose {name} tidak sehat di {s.health} "
                                         f"setelah {s.ready_timeout} detik "
                                         f"({str(res.get('error') or '')[:200]}).", logs=logs)
+            if plan.get("seed"):
+                self._one_shot(plan["seed"])
             yield urls
         finally:
             for project in reversed(started):

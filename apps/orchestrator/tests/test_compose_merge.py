@@ -31,7 +31,8 @@ def test_merge_regates_run_in_and_reruns_qa_against_compose(tmp_path, repo, remo
     assert job.merge_state == "merged", job.merge_error
     assert "QA ulang lulus" in taiga.texts(1)[-1]
     # story: gates (run_in) + QA; merge: gates (run_in) + QA re-run
-    assert order.count("svc_up") == order.count("svc_down") == 4
+    # each QA run starts its project twice (deps for init, then all)
+    assert order.count("svc_up") == 6 and order.count("svc_down") == 4
     assert order.count("health") == 2 and order.count("qa") == 2
     reran = [b for op, b in runner.payloads if op == "qa"][-1]
     assert reran["external"] == {"api": URL} and reran["login"]["path"] == "/login"
@@ -55,4 +56,4 @@ def test_merge_service_failure_fails_the_merge_with_the_reason(tmp_path, repo, r
     with sessions() as db:
         job = db.query(AwakJob).one()
     assert job.merge_state == "failed" and "tidak sehat" in job.merge_error
-    assert order.count("svc_up") == order.count("svc_down") == 2
+    assert order.count("svc_up") == 4 and order.count("svc_down") == 2

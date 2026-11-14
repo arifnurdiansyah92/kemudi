@@ -288,11 +288,14 @@ def test_browser_qa_runs_up_init_seed_health_qa_down_in_order(tmp_path, repo):
     w.tick()
     assert taiga.status_of(1) == "done", taiga.texts(1)
     start = order.index("svc_up")
-    assert order[start:start + 6] == [
-        "svc_up", "svc_exec:python scripts/init_qa.py",
-        "svc_exec:python scripts/seed_campaigns.py", "health", "qa", "svc_down"]
+    # init runs before the exposed service starts (a fresh database first gets
+    # its schema), seed after it is healthy
+    assert order[start:start + 7] == [
+        "svc_up", "svc_exec:python scripts/init_qa.py", "svc_up", "health",
+        "svc_exec:python scripts/seed_campaigns.py", "qa", "svc_down"]
 
-    [up] = w.svc.ops("svc_up")
+    first, up = w.svc.ops("svc_up")
+    assert first["up"] == ["postgres", "redis"] and "expose" not in first
     assert up["project"] == "kemudi-us12" and up["path"] == "kemudi/us-12/kemudi"
     assert up["services"] == ["postgres", "redis", "backend"] and up["expose"] == "backend:5000"
     assert up["env"] == {"JWT_SECRET_KEY": v["JWT_SECRET_KEY"]}  # MIDTRANS_* not set: left out
@@ -355,7 +358,8 @@ def test_failed_start_logs_reach_the_card_redacted(tmp_path, repo):
     w.svc.up = [{"ok": False, "stage": "up", "error": "backend exited (1)",
                  "logs_tail": f"backend | KeyError with key {v['JWT_SECRET_KEY']}"}]
     w.tick()
-    assert w.svc.order.count("svc_down") == w.svc.order.count("svc_up") == 2
+    # failed deps start (1 up), then the retry (deps + full): each project down
+    assert w.svc.order.count("svc_down") == 2 and w.svc.order.count("svc_up") == 3
     text = "\n".join(taiga.texts(1))
     assert "gagal start (up)" in text and "KeyError with key" in text
     assert v["JWT_SECRET_KEY"] not in text
