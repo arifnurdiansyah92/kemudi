@@ -347,6 +347,8 @@ def test_role_model_is_optional_and_overrides_in_listing(agent_client):
     assert (roles[own]["llm_source"], roles[own]["llm_model"]) == ("project", "other-m")
 
 
+PROXY = {"Authorization": "Bearer proxy-token"}
+
 # --- the /llm/v1 proxy ------------------------------------------------------------
 
 
@@ -369,6 +371,7 @@ def upstream(agent_client):
 
     app.dependency_overrides[llm_proxy.get_upstream_transport] = (
         lambda: httpx.MockTransport(handler))
+    agent_client.settings.llm_proxy_token = "proxy-token"
     return seen, replies
 
 
@@ -380,7 +383,7 @@ def test_proxy_swaps_model_and_key(agent_client, upstream):
                            "api_key": ROLE_KEY})
     alias = _alias(agent_client, role_id)
     r = agent_client.post("/llm/v1/chat/completions",
-                          headers={"Authorization": "Bearer whatever"},
+                          headers=PROXY,
                           json={"model": alias, "messages": [{"role": "user", "content": "x"}]})
     assert r.status_code == 200 and r.json()["choices"][0]["message"]["content"] == "hi"
     req = seen[-1]
@@ -391,8 +394,8 @@ def test_proxy_swaps_model_and_key(agent_client, upstream):
     # Server default for a role-less alias: the fallback model and server key.
     agent_client.settings.ai_base_url = "https://server.example/v1"
     agent_client.settings.ai_api_key = "server-key-123456"
-    r = agent_client.post("/llm/v1/chat/completions", json={"model": _alias(agent_client),
-                                                            "messages": []})
+    r = agent_client.post("/llm/v1/chat/completions", headers=PROXY,
+                          json={"model": _alias(agent_client), "messages": []})
     assert r.status_code == 200
     assert json.loads(seen[-1].content)["model"] == "fb-model"
     assert seen[-1].headers["authorization"] == "Bearer server-key-123456"
@@ -405,7 +408,7 @@ def test_proxy_streams_sse(agent_client, upstream):
            b'data: {"choices":[{"delta":{"content":"llo"}}]}\n\ndata: [DONE]\n\n')
     replies.append(httpx.Response(200, headers={"content-type": "text/event-stream"},
                                   content=sse))
-    with agent_client.stream("POST", "/llm/v1/chat/completions",
+    with agent_client.stream("POST", "/llm/v1/chat/completions", headers=PROXY,
                              json={"model": _alias(agent_client), "stream": True,
                                    "messages": []}) as r:
         assert r.status_code == 200
@@ -419,24 +422,23 @@ def test_proxy_refuses_unknown_expired_alias_and_bad_token(agent_client, upstrea
     seen, replies = upstream
     agent_client.settings.ai_base_url = "https://server.example/v1"
     url = "/llm/v1/chat/completions"
-    assert agent_client.post(url, json={"model": "awak-run-nope", "messages": []}
+    assert agent_client.post(url, headers=PROXY, json={"model": "awak-run-nope", "messages": []}
                              ).status_code == 403
-    assert agent_client.post(url, json={"model": "deepseek-flash", "messages": []}
+    assert agent_client.post(url, headers=PROXY, json={"model": "deepseek-flash", "messages": []}
                              ).status_code == 403
     alias = _alias(agent_client)
     with agent_client.S() as db:
         row = db.get(AwakLlmAlias, alias)
         row.expires_at = row.expires_at - timedelta(days=1)
         db.commit()
-    assert agent_client.post(url, json={"model": alias, "messages": []}).status_code == 403
+    assert agent_client.post(url, headers=PROXY, json={"model": alias, "messages": []}).status_code == 403
     # Dropped at the end of a run.
     alias = _alias(agent_client)
     with agent_client.S() as db:
         llm_conn.drop_alias(db, alias)
-    assert agent_client.post(url, json={"model": alias, "messages": []}).status_code == 403
+    assert agent_client.post(url, headers=PROXY, json={"model": alias, "messages": []}).status_code == 403
     assert seen == []
-    # The shared token, when configured.
-    agent_client.settings.llm_proxy_token = "proxy-token"
+    # The shared token is required (set by the fixture).
     alias = _alias(agent_client)
     assert agent_client.post(url, json={"model": alias, "messages": []}).status_code == 403
     assert agent_client.post(url, headers={"Authorization": "Bearer proxy-token"},
@@ -495,10 +497,10 @@ def test_proxy_counts_upstream_results(agent_client, upstream):
     alias = _alias(agent_client)
     url = "/llm/v1/chat/completions"
     replies.append(httpx.Response(500, json={"error": "down"}))
-    assert agent_client.post(url, json={"model": alias, "messages": []}).status_code == 500
+    assert agent_client.post(url, headers=PROXY, json={"model": alias, "messages": []}).status_code == 500
     with agent_client.S() as db:
         assert llm_conn.provider_failure(db, alias) == "provider answered HTTP 500"
-    assert agent_client.post(url, json={"model": alias, "messages": []}).status_code == 200
+    assert agent_client.post(url, headers=PROXY, json={"model": alias, "messages": []}).status_code == 200
     with agent_client.S() as db:  # one success: not the provider's fault any more
         assert llm_conn.provider_failure(db, alias) is None
 
@@ -614,18 +616,18 @@ def test_proxy_maps_non_alias_model_to_the_single_active_run(agent_client, upstr
     agent_client.settings.ai_base_url = "https://server.example/v1"
     url = "/llm/v1/chat/completions"
     first = _alias(agent_client)
-    r = agent_client.post(url, json={"model": "deepseek-flash", "messages": []})
+    r = agent_client.post(url, headers=PROXY, json={"model": "deepseek-flash", "messages": []})
     assert r.status_code == 200 and len(seen) == 1
     # A new run replaces a leftover alias, so the fallback is never ambiguous.
     second = _alias(agent_client)
     with agent_client.S() as db:
         assert llm_conn.lookup_alias(db, first) is None
         assert llm_conn.active_alias(db).alias == second
-    assert agent_client.post(url, json={"model": "deepseek-flash", "messages": []}
+    assert agent_client.post(url, headers=PROXY, json={"model": "deepseek-flash", "messages": []}
                              ).status_code == 200
     with agent_client.S() as db:
         llm_conn.drop_alias(db, second)
-    assert agent_client.post(url, json={"model": "deepseek-flash", "messages": []}
+    assert agent_client.post(url, headers=PROXY, json={"model": "deepseek-flash", "messages": []}
                              ).status_code == 403
 
 
@@ -730,7 +732,7 @@ def test_proxy_uses_a_saved_insecure_connection(agent_client, upstream):
     agent_client.put("/projects/demo/agent/llm", headers=ADMIN,
                      json={"base_url": "http://8.8.8.8/v1", "model": "m",
                            "allow_insecure_http": True})
-    r = agent_client.post("/llm/v1/chat/completions",
+    r = agent_client.post("/llm/v1/chat/completions", headers=PROXY,
                           json={"model": _alias(agent_client), "messages": []})
     assert r.status_code == 200
     assert str(seen[-1].url) == "http://8.8.8.8/v1/chat/completions"

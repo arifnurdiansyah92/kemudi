@@ -58,6 +58,7 @@ Every reply is JSON. `infra_error` is set when the step could not run at all
 (as opposed to the code failing a check).
 """
 
+import hmac
 import json
 import os
 import re
@@ -1173,7 +1174,8 @@ class Handler(BaseHTTPRequestHandler):
         self._reply(200 if self.path == "/health" else 404, {"ok": self.path == "/health"})
 
     def do_POST(self):  # noqa: N802
-        if not KEY or self.headers.get("Authorization") != f"Bearer {KEY}":
+        given = (self.headers.get("Authorization") or "").encode()
+        if not KEY or not hmac.compare_digest(given, f"Bearer {KEY}".encode()):
             return self._reply(401, {"error": "unauthorized"})
         op = OPS.get(self.path.strip("/"))
         if op is None:

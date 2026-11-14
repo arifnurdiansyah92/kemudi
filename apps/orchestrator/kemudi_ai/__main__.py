@@ -8,10 +8,17 @@ from pathlib import Path
 
 from .backtest import metrics, run_backtest
 from .baseline import draft_baseline
-from .config import get_settings
+from .config import InsecureConfig, check_production, get_settings
 from .documents import extract_sections
 from .llm import HermesLLM
-from .store import BacktestResult, BaselineVersion, Contract, make_session, record_decision
+from .store import (
+    BacktestResult,
+    BaselineVersion,
+    Contract,
+    ai_project,
+    make_session,
+    record_decision,
+)
 
 
 def _fmt(v: float | None) -> str:
@@ -51,6 +58,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     settings = get_settings()
+    try:
+        check_production(settings)
+    except InsecureConfig as e:
+        print(e, file=sys.stderr)
+        return 2
     S = make_session(settings.ai_db_url)
     llm = HermesLLM(settings, S)
 
@@ -102,7 +114,8 @@ def main(argv: list[str] | None = None) -> int:
             c.filename, c.lang, c.rate_card = path.name, args.lang, rc or c.rate_card
             c.sections = [x.model_dump() for x in sections]
             s.commit()
-            items = draft_baseline(llm, sections, args.lang)
+            with ai_project(args.project):
+                items = draft_baseline(llm, sections, args.lang)
             draft = s.query(BaselineVersion).filter_by(contract_id=c.id, status="draft").one_or_none()
             if draft is None:
                 draft = BaselineVersion(contract_id=c.id)

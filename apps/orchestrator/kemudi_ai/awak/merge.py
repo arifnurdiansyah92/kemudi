@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..audit import record_audit
 from ..store import AwakJob
 from . import config_store, runbook, secrets, ssh
 from . import checks as gate_checks
@@ -121,6 +122,7 @@ class Merger:
 
         w._set(job.id, merge_state="merged", merged_sha=target, merge_error="")
         w._event(job.id, "merged", {"sha": target, "checks": checks})
+        self._audit(job, "awak_merged", {"sha": target})
         try:
             st = w.taiga.story(story["id"])
             tags = sorted((set(tag_names(st)) - {DONE_TAG}) | {MERGED_TAG})
@@ -133,6 +135,17 @@ class Merger:
         if cfg.deploy_command.strip():
             self._deploy(cfg, job, story["id"], rc, repo, target, workdir)
         return MergeResult(True, target, checks)
+
+    def _audit(self, job: AwakJob, action: str, detail: dict) -> None:
+        """The audit trail: the worker acts (the request is its own event)."""
+        try:
+            with self.w.sessions() as db:
+                record_audit(db, actor_id=None, actor_username=self.w.s.awak_username,
+                             project=job.project_slug, action=action,
+                             detail={"story_ref": job.story_ref, "branch": job.branch,
+                                     "merge_mode": job.merge_mode, **detail})
+        except Exception:  # noqa: BLE001 - bookkeeping never undoes a merge
+            log.exception("could not record the audit event %s", action)
 
     def fail(self, job_id: int, story_id: int, reason: str) -> MergeResult:
         w = self.w
@@ -284,6 +297,7 @@ class Merger:
                                      *deploy_secrets(command)])[-1500:]
                 .strip() or "(tanpa output)")
         w._event(job.id, "deploy", {"ok": ok})
+        self._audit(job, "awak_deploy", {"sha": target, "ok": ok, "executor": cfg.executor})
         if ok:
             w._say(story_id, job.id, f"Deploy selesai:\n```\n{tail}\n```")
             return

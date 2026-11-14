@@ -55,7 +55,8 @@ def test_records_tokens_and_latency():
         row = s.query(AiCall).one()
     assert (row.purpose, row.prompt_tokens, row.completion_tokens) == ("classify", 10, 5)
     assert row.cost_idr == pytest.approx(1.5)
-    assert row.latency_ms >= 0 and "[user]\nuser" in row.prompt
+    # KEMUDI_AI_LOG_PROMPTS is off by default: a hash, not the text.
+    assert row.latency_ms >= 0 and row.prompt == "" and len(row.prompt_sha256) == 64
 
 
 def test_http_error_is_llmerror_and_logged():

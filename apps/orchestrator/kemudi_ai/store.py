@@ -1,14 +1,23 @@
 """Contract data, backtests and the append-only audit tables.
 
 `ai_calls` and `decisions` are written only through `record_ai_call` and
-`record_decision`; nothing in the service updates or deletes them.
+`record_decision`. `decisions` and `audit_events` are never updated or
+deleted; `ai_calls` rows are deleted only by the retention purge
+(kemudi_ai/retention.py) and with their project's contract, and keep the
+prompt text only when KEMUDI_AI_LOG_PROMPTS is on.
 """
 
+import hashlib
+import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import JSON, ForeignKey, String, Text, UniqueConstraint, create_engine, inspect, text
+from sqlalchemy.types import TypeDecorator
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -40,6 +49,9 @@ __all__ = [
     "AwakSkill",
     "AwakSkillVersion",
     "AwakSkillSet",
+    "AuditEvent",
+    "EncryptedText",
+    "ai_project",
     "record_event",
     "make_session",
     "init_db",
@@ -48,8 +60,90 @@ __all__ = [
 ]
 
 
+log = logging.getLogger(__name__)
+
+
 def now() -> datetime:
     return datetime.now(UTC)
+
+
+# --- encrypted columns -----------------------------------------------------------
+
+ENC_PREFIX = "enc:v1:"
+
+
+def _field_settings():
+    """The settings whose KEMUDI_SECRET_KEY encrypts columns (tests patch this)."""
+    from .config import get_settings
+
+    return get_settings()
+
+
+def _field_fernet():
+    """The Fernet for encrypted columns, or None without a usable key."""
+    from .awak.crypto import SecretKeyMissing, fernet
+
+    try:
+        return fernet(_field_settings())
+    except SecretKeyMissing:
+        return None
+
+
+def encrypt_field(value: str) -> str:
+    """`enc:v1:<Fernet token>` under KEMUDI_SECRET_KEY. Without a key (a dev
+    stack; production refuses to start without one) the value stays as is."""
+    if not value or value.startswith(ENC_PREFIX):
+        return value
+    f = _field_fernet()
+    if f is None:
+        return value
+    return ENC_PREFIX + f.encrypt(value.encode()).decode()
+
+
+def decrypt_field(value: str | None) -> str | None:
+    """The plain value. A token that does not decrypt reads as "" (logged), so
+    a changed key never breaks loading the row that holds it."""
+    if not value or not value.startswith(ENC_PREFIX):
+        return value
+    from cryptography.fernet import InvalidToken
+
+    f = _field_fernet()
+    if f is not None:
+        try:
+            return f.decrypt(value.removeprefix(ENC_PREFIX).encode()).decode()
+        except InvalidToken:
+            pass
+    log.error("an encrypted column does not decrypt with KEMUDI_SECRET_KEY; read as empty")
+    return ""
+
+
+class EncryptedText(TypeDecorator):
+    """Text encrypted at rest (Fernet, KEMUDI_SECRET_KEY); plain in Python."""
+
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        return encrypt_field(value) if isinstance(value, str) else value
+
+    def process_result_value(self, value, dialect):
+        return decrypt_field(value)
+
+
+# --- which project an AI call is for --------------------------------------------
+
+_ai_call_project: ContextVar[str] = ContextVar("ai_call_project", default="")
+
+
+@contextmanager
+def ai_project(slug: str) -> Iterator[None]:
+    """AI calls recorded inside are tagged with `slug`, so deleting the
+    project's contract deletes them too."""
+    token = _ai_call_project.set(slug)
+    try:
+        yield
+    finally:
+        _ai_call_project.reset(token)
 
 
 class Base(DeclarativeBase):
@@ -122,6 +216,11 @@ class AiCall(Base):
     # Awak runs: which level the model connection came from (agent|project|
     # server); '' for other calls. Never the key.
     llm_source: Mapped[str] = mapped_column(String(10), default="")
+    # The project the call was for ('' when unknown; `ai_project`).
+    project_slug: Mapped[str] = mapped_column(String(200), default="")
+    # Always set; prompt/response themselves are '' unless KEMUDI_AI_LOG_PROMPTS.
+    prompt_sha256: Mapped[str] = mapped_column(String(64), default="")
+    response_sha256: Mapped[str] = mapped_column(String(64), default="")
 
 
 class Decision(Base):
@@ -131,6 +230,21 @@ class Decision(Base):
     actor: Mapped[str] = mapped_column(String(200))
     action: Mapped[str] = mapped_column(String(50))
     subject: Mapped[str] = mapped_column(String(200))
+    detail: Mapped[dict[str, Any]] = mapped_column(default=dict)
+
+
+class AuditEvent(Base):
+    """Append-only audit trail of security-relevant changes (kemudi_ai/audit.py).
+    `project_slug` is '' for instance-level events (the skill library). The
+    detail never holds a secret value."""
+
+    __tablename__ = "audit_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ts: Mapped[datetime] = mapped_column(default=now, index=True)
+    actor_id: Mapped[int | None] = mapped_column(default=None)
+    actor_username: Mapped[str] = mapped_column(String(200), default="")
+    project_slug: Mapped[str] = mapped_column(String(200), default="", index=True)
+    action: Mapped[str] = mapped_column(String(50))
     detail: Mapped[dict[str, Any]] = mapped_column(default=dict)
 
 
@@ -193,7 +307,8 @@ class AwakProject(Base):
     # (`_set_qa_modes`) has not reached yet.
     qa_mode: Mapped[str] = mapped_column(String(10), default="gates",
                                          info={"migrate_default": False})
-    deploy_command: Mapped[str] = mapped_column(Text, default="")
+    # Encrypted at rest (it may hold a token); plain in Python.
+    deploy_command: Mapped[str] = mapped_column(EncryptedText, default="")
     executor: Mapped[str] = mapped_column(String(10), default="local")
     ssh_host: Mapped[str] = mapped_column(String(255), default="")
     ssh_port: Mapped[int] = mapped_column(default=22)
@@ -481,6 +596,29 @@ def init_db(engine, host_git: str | None = None) -> None:
     _migrate(engine)
     _setup_run_index(engine)
     _set_qa_modes(engine, host_git)
+    _encrypt_deploy_commands(engine)
+
+
+def _encrypt_deploy_commands(engine) -> int:
+    """Encrypts deploy commands stored in plain text (rows from before the
+    column was encrypted). Needs KEMUDI_SECRET_KEY; without one they stay as
+    they are and are encrypted on a later start that has it."""
+    if _field_fernet() is None:
+        return 0
+    n = 0
+    with engine.begin() as conn:
+        rows = conn.execute(text(
+            "SELECT slug, deploy_command FROM awak_projects "
+            "WHERE deploy_command IS NOT NULL AND deploy_command != ''")).all()
+        for slug, value in rows:
+            if value.startswith(ENC_PREFIX):
+                continue
+            conn.execute(text("UPDATE awak_projects SET deploy_command = :v WHERE slug = :s"),
+                         {"v": encrypt_field(value), "s": slug})
+            n += 1
+    if n:
+        log.info("encrypted %d stored deploy command(s)", n)
+    return n
 
 
 # The setup run states that hold a project (kemudi_ai/awak/setup.py ACTIVE).
@@ -569,7 +707,24 @@ def _migrate(engine) -> dict[str, set[str]]:
     return added
 
 
-def record_ai_call(session: Session, **fields: Any) -> AiCall:
+def sha256_text(value: str) -> str:
+    return hashlib.sha256((value or "").encode()).hexdigest()
+
+
+def record_ai_call(session: Session, *, log_prompts: bool | None = None,
+                   **fields: Any) -> AiCall:
+    """Hashes of the prompt and response always; the texts only when
+    `log_prompts` (default: KEMUDI_AI_LOG_PROMPTS) is on. The project comes
+    from `ai_project` unless given."""
+    if log_prompts is None:
+        log_prompts = _field_settings().ai_log_prompts
+    if not fields.get("project_slug"):
+        fields["project_slug"] = _ai_call_project.get()
+    prompt, response = fields.get("prompt") or "", fields.get("response") or ""
+    fields["prompt_sha256"] = sha256_text(prompt)
+    fields["response_sha256"] = sha256_text(response)
+    if not log_prompts:
+        fields["prompt"], fields["response"] = "", ""
     row = AiCall(**fields)
     session.add(row)
     session.commit()
@@ -579,7 +734,11 @@ def record_ai_call(session: Session, **fields: Any) -> AiCall:
 def record_decision(
     session: Session, actor: str, action: str, subject: str, detail: dict
 ) -> Decision:
+    """Decisions the audit trail covers are mirrored to `audit_events`."""
     row = Decision(actor=actor, action=action, subject=subject, detail=detail)
     session.add(row)
     session.commit()
+    from .audit import mirror_decision
+
+    mirror_decision(session, row)
     return row

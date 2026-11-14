@@ -10,7 +10,7 @@ from .baseline import BaselineItem
 from .classify import LABELS, classify
 from .llm import LLM, LLMError
 from .pricing import RateCard
-from .store import BacktestResult, BacktestRun, BaselineVersion, Contract
+from .store import BacktestResult, BacktestRun, BaselineVersion, Contract, ai_project
 
 CAUGHT = ("cr_candidate", "needs_clarification")  # both stop work before it starts
 
@@ -127,7 +127,8 @@ def run_backtest(
             expected=t.get("expected", {}),
         )
         try:
-            row.predicted = classify(llm, t["text"], items, rc, contract.lang).model_dump()
+            with ai_project(contract.project_slug):
+                row.predicted = classify(llm, t["text"], items, rc, contract.lang).model_dump()
             row.status = "ok"
         except LLMError as e:
             row.predicted = {"error": str(e), "raw": e.raw[:2000]}

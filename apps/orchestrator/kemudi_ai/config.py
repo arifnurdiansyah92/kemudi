@@ -9,6 +9,15 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="KEMUDI_", extra="ignore")
 
+    # dev (default) | production. In production the service refuses to start
+    # with an empty or placeholder secret (`check_production`).
+    env: str = "dev"
+    # ai_calls keeps the full prompt and response only when this is on; off
+    # (the default) keeps their SHA-256, token counts, cost and model.
+    ai_log_prompts: bool = False
+    # ai_calls older than this are deleted at start and daily; 0 keeps them.
+    ai_log_retention_days: int = 90
+
     hermes_url: str = "http://localhost:8642/v1"
     hermes_api_key: str = ""
     ai_model: str = "deepseek-flash"
@@ -67,8 +76,8 @@ class Settings(BaseSettings):
     # /llm/v1 proxy, which adds the key.
     ai_base_url: str = ""
     ai_api_key: str = ""
-    # Shared bearer token Awak sends to /llm/v1 (infra/awak/config.yaml). Empty
-    # = the per-run alias alone admits a request (dev only).
+    # Shared bearer token Awak sends to /llm/v1 (infra/awak/config.yaml).
+    # Required: empty closes the proxy (503).
     llm_proxy_token: str = ""
     # Upstream read timeout of the proxy (what kemudi-llm-proxy used).
     llm_proxy_timeout_s: float = 600.0
@@ -108,6 +117,54 @@ class Settings(BaseSettings):
 
     def awak_project_slugs(self) -> list[str]:
         return [s.strip() for s in self.awak_projects.split(",") if s.strip()]
+
+
+# Values that are never a real secret: .env.example placeholders and the like.
+_PLACEHOLDERS = {"unset", "none", "null", "secret", "password", "default", "test", "dev",
+                 "example", "xxx", "todo"}
+_PLACEHOLDER_PREFIXES = ("change-me", "changeme", "change_me", "replace-me", "replaceme",
+                         "your-", "<")
+
+
+def is_placeholder(value: str) -> bool:
+    v = (value or "").strip().lower()
+    return not v or v in _PLACEHOLDERS or v.startswith(_PLACEHOLDER_PREFIXES)
+
+
+class InsecureConfig(RuntimeError):
+    """A production start with a missing or placeholder secret."""
+
+
+def production_problems(settings: Settings) -> list[str]:
+    """Why this configuration must not run in production; [] outside it."""
+    if settings.env.strip().lower() not in ("production", "prod"):
+        return []
+    problems = []
+    if is_placeholder(settings.secret_key):
+        problems.append("KEMUDI_SECRET_KEY is empty or a placeholder (generate a Fernet key: "
+                        "python -c \"from cryptography.fernet import Fernet; "
+                        "print(Fernet.generate_key().decode())\")")
+    else:
+        from cryptography.fernet import Fernet
+
+        try:
+            Fernet(settings.secret_key.strip().encode())
+        except (ValueError, TypeError):
+            problems.append("KEMUDI_SECRET_KEY is not a valid Fernet key")
+    if is_placeholder(settings.llm_proxy_token):
+        problems.append("KEMUDI_LLM_PROXY_TOKEN is empty or a placeholder "
+                        "(openssl rand -hex 32)")
+    return problems
+
+
+def check_production(settings: Settings) -> None:
+    """Raises InsecureConfig (and logs it) when KEMUDI_ENV=production and a
+    required secret is empty or a known placeholder."""
+    problems = production_problems(settings)
+    if problems:
+        message = ("refusing to start with KEMUDI_ENV=production: " + "; ".join(problems))
+        logging.getLogger(__name__).critical(message)
+        raise InsecureConfig(message)
 
 
 @lru_cache
