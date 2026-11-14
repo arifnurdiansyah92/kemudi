@@ -3,9 +3,13 @@ import { createFileRoute } from '@tanstack/react-router'
 import { SkillsPage } from '@/features/skills'
 
 const searchSchema = z.object({
-  tab: z.enum(['installed', 'create']).optional().catch(undefined),
+  tab: z
+    .enum(['installed', 'marketplace', 'create'])
+    .optional()
+    .catch(undefined),
   skill: z.string().optional(),
   edit: z.string().optional(),
+  market: z.coerce.number().int().positive().optional().catch(undefined),
 })
 
 export const Route = createFileRoute('/_authenticated/skills')({

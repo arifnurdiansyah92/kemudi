@@ -27,6 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { FindingList, ScanBadge, SourceBadge } from './badges'
 import { Markdown } from './markdown'
+import { MarketplaceOrigin } from './marketplace-update'
 import { EnableSwitch } from './skill-list'
 
 /** A skill from the library, in a sheet from the right (like the item sheet). */
@@ -165,6 +166,7 @@ export function DetailBody({
         {s.scan_level === 'high' && (
           <Notice danger>{t('detail.highWarning')}</Notice>
         )}
+        {s.source === 'marketplace' && <MarketplaceOrigin skill={s} />}
 
         {cur ? (
           <Tabs defaultValue='skill-md'>
