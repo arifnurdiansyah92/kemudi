@@ -82,6 +82,19 @@ class Settings(BaseSettings):
     # Upstream read timeout of the proxy (what kemudi-llm-proxy used).
     llm_proxy_timeout_s: float = 600.0
 
+    # --- Awak usage and budget (kemudi_ai/awak/usage.py)
+    # Model prices per 1M tokens, JSON, merged over the built-in table:
+    # {"<model>": {"input": 0.28, "cached_input": 0.028, "output": 0.42,
+    #  "currency": "USD"}}. currency USD or IDR. A model with no price has an
+    # unknown cost (shown as such, never as 0).
+    llm_prices: str = ""
+    # USD prices are stored in Rupiah at this rate.
+    usd_idr_rate: float = 16500.0
+    # Ask the provider for usage in streamed answers (stream_options.include_usage).
+    llm_stream_usage: bool = True
+    # What the Agent settings suggest as a monthly budget when none is set.
+    token_budget_recommended: int = 50_000_000
+
     # --- Awak skills (docs/superpowers/specs/2026-11-14-awak-skills-design.md)
     # Kemudi instance admins: they manage the skill library (project admins
     # only assign enabled skills). Taiga user ids (comma-separated; `GET
