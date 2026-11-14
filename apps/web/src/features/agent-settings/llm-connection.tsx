@@ -19,8 +19,14 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { KeyField, ModelPicker, ProviderFields } from './connection-fields'
+import {
+  InsecureHttpNotice,
+  KeyField,
+  ModelPicker,
+  ProviderFields,
+} from './connection-fields'
 import { hostOf } from './providers'
+import { useInsecureHttp } from './use-insecure-http'
 
 /** "From this agent" / "From project" / "Kemudi server default". */
 export function LlmSourceBadge({ source }: { source: LlmSource }) {
@@ -32,6 +38,20 @@ export function LlmSourceBadge({ source }: { source: LlmSource }) {
   )
 }
 
+/** A saved connection that sends the key and prompts over plain http. */
+export function InsecureBadge() {
+  const { t } = useTranslation('agent')
+  return (
+    <Badge
+      variant='destructive'
+      className='font-normal'
+      title={t('llm.insecure.badgeHint')}
+    >
+      {t('llm.insecure.badge')}
+    </Badge>
+  )
+}
+
 /** The badge, then model and host: what a run would use right now. */
 function InUse({ effective }: { effective: LlmEffective }) {
   const { t } = useTranslation('agent')
@@ -39,6 +59,7 @@ function InUse({ effective }: { effective: LlmEffective }) {
     <p className='flex flex-wrap items-center gap-x-2 gap-y-1 text-sm'>
       <span className='text-muted-foreground'>{t('llm.inUse')}</span>
       <LlmSourceBadge source={effective.llm_source} />
+      {effective.llm_insecure_http && <InsecureBadge />}
       <span className='font-mono text-xs'>{effective.llm_model}</span>
       <span className='text-xs text-muted-foreground'>
         {effective.llm_host || t('llm.noHost')}
@@ -93,6 +114,10 @@ export function LlmConnectionForm({
   const dirty =
     url !== level.base_url || name !== level.model || typedKey !== ''
   const filled = url !== '' && name !== ''
+  const insecure = useInsecureHttp(url, {
+    url: level.base_url,
+    insecure: level.insecure_http ?? false,
+  })
 
   // A kept key follows the level to a new address; say so before saving.
   const keyMoves =
@@ -107,7 +132,14 @@ export function LlmConnectionForm({
     model: name,
     // Empty means "keep the stored key": never send it as a new one.
     ...(typedKey ? { api_key: typedKey } : {}),
+    ...insecure.flag,
   })
+
+  function failed(e: unknown) {
+    const message = agentError(e)
+    insecure.noteError(message)
+    setError(message)
+  }
 
   async function run(kind: 'save' | 'clear', action: () => Promise<unknown>) {
     setBusy(kind)
@@ -122,7 +154,7 @@ export function LlmConnectionForm({
         setModel('')
       }
     } catch (e) {
-      setError(agentError(e))
+      failed(e)
     } finally {
       setBusy(null)
     }
@@ -135,7 +167,7 @@ export function LlmConnectionForm({
     try {
       setResult(await onTest(filled ? body() : null))
     } catch (e) {
-      setError(agentError(e))
+      failed(e)
     } finally {
       setBusy(null)
     }
@@ -146,7 +178,8 @@ export function LlmConnectionForm({
       className='grid gap-4'
       onSubmit={(e) => {
         e.preventDefault()
-        if (dirty && filled && !off) void run('save', () => onSave(body()))
+        if (dirty && filled && !off && !insecure.blocked)
+          void run('save', () => onSave(body()))
       }}
     >
       <div className='grid items-start gap-4 sm:grid-cols-2'>
@@ -173,11 +206,16 @@ export function LlmConnectionForm({
           request={
             url === level.base_url && !typedKey
               ? {}
-              : { base_url: url, ...(typedKey ? { api_key: typedKey } : {}) }
+              : {
+                  base_url: url,
+                  ...(typedKey ? { api_key: typedKey } : {}),
+                  ...insecure.flag,
+                }
           }
           canFetch={
             canEdit &&
-            (url === '' || url === level.base_url || hostOf(url) !== '')
+            (url === '' || url === level.base_url || hostOf(url) !== '') &&
+            !insecure.blocked
           }
           hint={t('llm.modelHint')}
           value={model}
@@ -194,6 +232,15 @@ export function LlmConnectionForm({
         />
       </div>
 
+      {insecure.shown && (
+        <InsecureHttpNotice
+          id={id}
+          checked={insecure.ack}
+          onCheckedChange={insecure.setAck}
+          disabled={off}
+        />
+      )}
+
       {keyMoves && (
         <p className='text-xs text-muted-foreground'>
           {t('llm.keyMoves', { last4: level.key_last4 })}
@@ -201,7 +248,11 @@ export function LlmConnectionForm({
       )}
 
       <div className='flex flex-wrap items-center gap-2'>
-        <Button type='submit' size='sm' disabled={off || !dirty || !filled}>
+        <Button
+          type='submit'
+          size='sm'
+          disabled={off || !dirty || !filled || insecure.blocked}
+        >
           {busy === 'save' && <Loader2 className='animate-spin' />}
           {t('common:actions.save')}
         </Button>
@@ -209,7 +260,7 @@ export function LlmConnectionForm({
           type='button'
           size='sm'
           variant='outline'
-          disabled={off}
+          disabled={off || (filled && insecure.blocked)}
           onClick={() => void test()}
         >
           {busy === 'test' && <Loader2 className='animate-spin' />}

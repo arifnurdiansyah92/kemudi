@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, ChevronsUpDown, Loader2, RefreshCw } from 'lucide-react'
+import {
+  Check,
+  ChevronsUpDown,
+  Loader2,
+  RefreshCw,
+  ShieldAlert,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
   agentError,
@@ -8,7 +14,9 @@ import {
   type LlmSource,
 } from '@/lib/kemudi-ai/agent'
 import { cn } from '@/lib/utils'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Command,
   CommandGroup,
@@ -100,6 +108,57 @@ export function ProviderFields({
         </p>
       </div>
     </>
+  )
+}
+
+/**
+ * Plain http to a public address: the risk, and the acknowledgement the
+ * server needs before it accepts the URL.
+ */
+export function InsecureHttpNotice({
+  id,
+  checked,
+  onCheckedChange,
+  disabled,
+}: {
+  id: string
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+  disabled: boolean
+}) {
+  const { t } = useTranslation('agent')
+  return (
+    <Alert
+      variant='destructive'
+      role='group'
+      aria-labelledby={`${id}-insecure-title`}
+      className='sm:col-span-2'
+    >
+      <ShieldAlert />
+      <AlertTitle id={`${id}-insecure-title`} className='line-clamp-none'>
+        {t('llm.insecure.title')}
+      </AlertTitle>
+      <AlertDescription className='grid gap-3'>
+        <p>{t('llm.insecure.body')}</p>
+        <div className='flex items-start gap-2'>
+          <Checkbox
+            id={`${id}-insecure-ack`}
+            checked={checked}
+            disabled={disabled}
+            required
+            aria-required
+            onCheckedChange={(c) => onCheckedChange(c === true)}
+            className='mt-0.5'
+          />
+          <Label
+            htmlFor={`${id}-insecure-ack`}
+            className='leading-snug font-medium text-foreground'
+          >
+            {t('llm.insecure.ack')}
+          </Label>
+        </div>
+      </AlertDescription>
+    </Alert>
   )
 }
 
