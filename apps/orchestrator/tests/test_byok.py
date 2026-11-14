@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, inspect, text
 
 from kemudi_ai.api import app
 from kemudi_ai.awak import agent_api, crypto, llm_conn, llm_proxy
-from kemudi_ai.awak.agent import HermesAgent
+from kemudi_ai.awak.agent import AgentError, HermesAgent
 from kemudi_ai.awak.worker import Worker
 from kemudi_ai.config import Settings
 from kemudi_ai.store import (
@@ -464,6 +464,39 @@ def test_hermes_agent_sends_alias_and_logs_real_model():
         call = db.query(AiCall).one()
         assert (call.model, call.llm_source) == ("proj-model", "project")
         assert KEY not in call.prompt and KEY not in call.response
+
+
+def test_proxy_counts_upstream_results(agent_client, upstream):
+    _, replies = upstream
+    agent_client.settings.ai_base_url = "https://server.example/v1"
+    alias = _alias(agent_client)
+    url = "/llm/v1/chat/completions"
+    replies.append(httpx.Response(500, json={"error": "down"}))
+    assert agent_client.post(url, json={"model": alias, "messages": []}).status_code == 500
+    with agent_client.S() as db:
+        assert llm_conn.provider_failure(db, alias) == "provider answered HTTP 500"
+    assert agent_client.post(url, json={"model": alias, "messages": []}).status_code == 200
+    with agent_client.S() as db:  # one success: not the provider's fault any more
+        assert llm_conn.provider_failure(db, alias) is None
+
+
+def test_hermes_agent_raises_infra_when_every_model_call_failed():
+    s = _settings()
+    S = make_session("sqlite:///:memory:")
+
+    def hermes(req: httpx.Request) -> httpx.Response:
+        alias = json.loads(req.content)["model"]
+        with S() as db:  # what the proxy records while Hermes retries a dead provider
+            llm_conn.note_upstream(db, alias, False, "provider unreachable: ConnectError")
+        return httpx.Response(200, json={"choices": [{"message": {
+            "content": "custom returned a server error on all 3 attempts"}}]})
+
+    agent = HermesAgent(s, S, transport=httpx.MockTransport(hermes))
+    with pytest.raises(AgentError, match="ConnectError"):
+        agent.run("awak.code", "m", "sys", "task", slug="demo")
+    with S() as db:
+        assert db.query(AwakLlmAlias).count() == 0
+        assert db.query(AiCall).one().ok is False
 
 
 def test_worker_scans_for_stored_keys():

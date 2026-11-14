@@ -277,6 +277,11 @@ class AwakLlmAlias(Base):
     fallback_model: Mapped[str] = mapped_column(String(100), default="")
     purpose: Mapped[str] = mapped_column(String(50), default="")
     expires_at: Mapped[datetime] = mapped_column()
+    # What the proxy saw upstream during the run: a run whose every model call
+    # failed is the provider's fault, not the story's (an infra error).
+    upstream_ok: Mapped[int] = mapped_column(default=0)
+    upstream_errors: Mapped[int] = mapped_column(default=0)
+    upstream_error: Mapped[str] = mapped_column(Text, default="")
 
 
 class AwakWorkerLease(Base):
@@ -353,7 +358,8 @@ def _set_qa_modes(engine, host_git: str) -> None:
 
 # Tables that existed before a column was added to them. `create_all` never
 # alters an existing table, so missing columns are added here.
-_MIGRATED_TABLES = ("awak_jobs", "awak_projects", "awak_roles", "ai_calls")
+_MIGRATED_TABLES = ("awak_jobs", "awak_projects", "awak_roles", "ai_calls",
+                    "awak_llm_aliases")
 
 
 def _sql_literal(value: Any) -> str:
