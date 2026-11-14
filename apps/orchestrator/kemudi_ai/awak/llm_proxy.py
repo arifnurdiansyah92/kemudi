@@ -4,8 +4,8 @@ kemudi-sandbox network.
 Awak holds no provider key. Each run's model name is a short-lived alias
 (`awak-run-<hex>`); this route maps it to the run's resolved connection, swaps
 in the real model and key, and forwards the request, streaming included. No
-Taiga token: a request is admitted by the shared proxy token (when configured)
-plus a live alias. The public gateway does not route here.
+Taiga token: a request is admitted by the shared proxy token (required: an
+empty KEMUDI_LLM_PROXY_TOKEN closes the proxy) plus a live alias. The public gateway does not route here.
 """
 
 import hmac
@@ -38,10 +38,13 @@ def get_upstream_transport() -> httpx.AsyncBaseTransport | None:
 
 
 def _check_token(request: Request, settings: Settings) -> None:
-    if not settings.llm_proxy_token:
-        return
+    """The shared bearer token, compared in constant time. Without a configured
+    token the proxy is closed (503), never open."""
+    token = (settings.llm_proxy_token or "").strip()
+    if not token:
+        raise HTTPException(503, "the model proxy is not configured (KEMUDI_LLM_PROXY_TOKEN)")
     given = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
-    if not hmac.compare_digest(given.encode(), settings.llm_proxy_token.encode()):
+    if not hmac.compare_digest(given.encode(), token.encode()):
         raise HTTPException(403, "not allowed")
 
 
@@ -82,7 +85,8 @@ async def chat_completions(
     with sessions() as db:
         # Hermes' API server may answer with its configured default model instead
         # of the alias it was asked for. Awak runs one job at a time (worker
-        # lease), so a non-alias model name maps to the single active run.
+        # lease), so a non-alias model name maps to the single active run. Only
+        # reached after the shared token was checked above.
         row = (llm_conn.lookup_alias(db, body.get("model"))
                or llm_conn.active_alias(db))
         if row is None:
