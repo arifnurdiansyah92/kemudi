@@ -509,3 +509,15 @@ def test_only_one_worker_holds_the_lease(tmp_path, repo):
     w2.run_forever(stop_flag=lambda: next(loops))
     assert taiga.status_of(1) == "done"
     assert w1.claim_lease()  # w2 released the lease when its loop ended
+
+
+def test_human_feedback_is_the_latest_human_comment(tmp_path, repo):
+    w, taiga, _ = make_worker(tmp_path, repo, FakeAgent(), FakeRunner(tmp_path / "ws"))
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    # Newest first, as Taiga's history endpoint returns it.
+    taiga.comments_by_id[1] = [
+        {"user": {"username": "awak"}, "comment": "bot", "created_at": "2026-11-14T02:05:00Z"},
+        {"user": {"username": "pm"}, "comment": "new", "created_at": "2026-11-14T02:01:00Z"},
+        {"user": {"username": "pm"}, "comment": "old", "created_at": "2026-11-13T09:00:00Z"},
+    ]
+    assert w._human_feedback(1) == "new"

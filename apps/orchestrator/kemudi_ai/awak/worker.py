@@ -366,7 +366,12 @@ class Worker:
 
     def _human_feedback(self, story_id: int) -> str:
         bot = {self.taiga.username, self.s.qa_username}
-        for h in reversed(self.taiga.comments(story_id)):
+        history = self.taiga.comments(story_id)
+        # Taiga lists history newest first; order by time so the latest human
+        # comment wins (the oldest one used to, e.g. a stale infra note).
+        if history and all(h.get("created_at") for h in history):
+            history = sorted(history, key=lambda h: h["created_at"])
+        for h in reversed(history):
             user = (h.get("user") or {}).get("username")
             if user not in bot:
                 return h["comment"]
