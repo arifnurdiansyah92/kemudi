@@ -1,6 +1,6 @@
 [project]
 name = "kemudi-ai"
-version = "0.1.0"
+version = "1.0.0"
 description = "Kemudi AI service: contract baseline, CR classification, backtests"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.11"

@@ -32,6 +32,32 @@ uv run python -m kemudi_ai approve <project-slug> --by "PM name"
 uv run python -m kemudi_ai backtest <project-slug> data/pilot/backtest.json
 ```
 
+## Backtest dataset
+
+A backtest replays past requests against the approved baseline. The dataset is
+a JSON file:
+
+```json
+{
+  "rate_card": {"currency": "IDR", "per_day": {"pm": 1500000, "backend": 1500000, "frontend": 1250000, "qa": 1000000}},
+  "tickets": [
+    {
+      "id": "R1",
+      "source": "real",
+      "date": "2026-07-08",
+      "text": "The client's request, as received.",
+      "expected": {"label": "cr_candidate", "price_idr": 6000000}
+    }
+  ]
+}
+```
+
+- `rate_card` is used when the contract has none of its own.
+- `expected.label` is what the project manager decided: `in_baseline`,
+  `cr_candidate` or `needs_clarification`. `expected.price_idr` is optional.
+- `source` and `date` are shown in the report and are free text.
+
+
 ## Configuration
 
 These come from the environment, normally `infra/.env`:
