@@ -124,6 +124,25 @@ describe('RunbookCard', () => {
     await expect.element(screen.getByText('QA_ADMIN_EMAIL')).toBeVisible()
   })
 
+  it('shows the server defaults for a service without health or timeout', async () => {
+    state.runbook = {
+      ...playfast,
+      runbook: {
+        ...playfast.runbook!,
+        services: [
+          {
+            name: 'web',
+            kind: 'process',
+            app: 'web',
+            command: 'pnpm exec next dev --port {port}',
+          },
+        ],
+      },
+    }
+    const screen = await render(wrap(<RunbookCard slug='pf' canEdit />))
+    await expect.element(screen.getByText('/ within 120 s')).toBeVisible()
+  })
+
   it('keeps unknown fields when editing', async () => {
     state.runbook = playfast
     const screen = await render(wrap(<RunbookCard slug='pf' canEdit />))

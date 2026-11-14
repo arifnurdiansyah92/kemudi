@@ -13,6 +13,8 @@ from .runbook import SERVICE_URL_RE, App, Runbook, changed_exts
 
 # Per command, in seconds (the runner caps at 1800).
 TIMEOUTS = {"install": 900, "checks": 900, "build": 600}
+# More changed files than this: `{changed:...}` becomes `.` (argv stays small).
+MAX_CHANGED_ARGS = 200
 _FIELDS = {"install_cmd": "install", "check_cmd": "checks", "build_cmd": "build"}
 
 
@@ -101,7 +103,9 @@ def select_apps(apps: list[App], changed: list[str]) -> list[App]:
 
 def _expand(argv: list[str], app: App, changed: list[str], workdir: Path | None) -> list[str] | None:
     """`{changed:<exts>}` -> the story's changed files in the app dir (relative to
-    it, deleted ones left out); None when a placeholder expands to nothing."""
+    it as `./<path>`, so a name starting with `-` is never read as an option;
+    deleted ones left out); None when a placeholder expands to nothing. Above
+    MAX_CHANGED_ARGS files the placeholder becomes `.` (the whole app dir)."""
     out: list[str] = []
     for a in argv:
         exts = changed_exts(a)
@@ -116,10 +120,10 @@ def _expand(argv: list[str], app: App, changed: list[str], workdir: Path | None)
                 continue
             if workdir is not None and not (workdir / f).is_file():
                 continue  # deleted by the story
-            files.append(f[len(app.dir) + 1:] if app.dir else f)
+            files.append("./" + (f[len(app.dir) + 1:] if app.dir else f))
         if not files:
             return None
-        out += sorted(files)
+        out += sorted(files) if len(files) <= MAX_CHANGED_ARGS else ["."]
     return out
 
 

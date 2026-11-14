@@ -81,6 +81,8 @@ def test_runbook_problems_are_all_listed():
     (lambda r: r["services"].reverse(), "must come before"),
     (lambda r: r["services"][1].update(app="ghost"), "app 'ghost'"),
     (lambda r: r["services"][1].update(health="ready"), "health"),
+    (lambda r: r["services"][1].update(health="/a b"), "health"),
+    (lambda r: r["services"][1].update(health="/a"), "health"),
     (lambda r: r["services"][1].update(ready_timeout=900), "ready_timeout"),
     (lambda r: r.update(extra=1), "extra"),
     (lambda r: r.update(seed={"service": "web", "command": "x"}), "compose service"),
@@ -148,12 +150,36 @@ def test_gate_payloads_expand_changed_files(tmp_path):
     assert web["env"] == {"NEXT_PUBLIC_API_URL": "/api"}  # no service is up for gates
     assert [c["argv"] for c in web["commands"]] == [
         ["npx", "--no-install", "tsc", "--noEmit"],
-        ["npx", "--no-install", "eslint", "app/page.tsx", "util.js"]]
+        ["npx", "--no-install", "eslint", "./app/page.tsx", "./util.js"]]
     assert web["skipped"] == []
     [web] = checks.gate_payloads(RC, _rb(), ["frontend/styles.css"], tmp_path)
     assert len(web["commands"]) == 1
     assert web["skipped"] == ["npx --no-install eslint '{changed:.ts,.tsx,.js,.jsx}' "
                               "(no changed files)"]
+
+
+def test_changed_files_never_read_as_options_and_are_capped(tmp_path):
+    (tmp_path / "frontend").mkdir()
+    (tmp_path / "frontend" / "-rf.ts").write_text("x")
+    [web] = checks.gate_payloads(RC, _rb(), ["frontend/-rf.ts"], tmp_path)
+    assert web["commands"][1]["argv"][-1] == "./-rf.ts"
+    many = [f"frontend/f{i}.ts" for i in range(checks.MAX_CHANGED_ARGS + 1)]
+    [web] = checks.gate_payloads(RC, _rb(), many)
+    assert web["commands"][1]["argv"] == ["npx", "--no-install", "eslint", "."]
+    few = many[:checks.MAX_CHANGED_ARGS]
+    [web] = checks.gate_payloads(RC, _rb(), few)
+    assert len(web["commands"][1]["argv"]) == 3 + checks.MAX_CHANGED_ARGS
+
+
+def test_saved_runbook_keeps_set_defaults_and_drops_unset(agent_client):
+    _repo(agent_client)
+    spec = copy.deepcopy(PLAYFAST)
+    spec["services"][0]["health"] = "/"  # set explicitly, though the default
+    body = agent_client.put("/projects/demo/agent/runbook", headers=ADMIN,
+                            json={"runbook": spec}).json()["runbook"]
+    assert body["services"][0]["health"] == "/"
+    assert "ready_timeout" not in body["services"][0]
+    assert body["services"][1]["ready_timeout"] == 240
 
 
 def test_without_a_runbook_the_repo_row_commands_are_used():
@@ -299,7 +325,7 @@ def test_worker_gates_from_the_runbook(tmp_path, repo):
     assert install["commands"][0]["argv"][:2] == ["npm", "ci"] and install["env"] == {
         "MODE": "test"}
     gates = next(b for op, b in runner.payloads if op == "gates")
-    assert gates["commands"][1]["argv"] == ["npx", "--no-install", "eslint", "feature1.txt"]
+    assert gates["commands"][1]["argv"] == ["npx", "--no-install", "eslint", "./feature1.txt"]
     assert "web: tsc" in taiga.texts(1)[-1]
 
 
@@ -352,7 +378,7 @@ def test_merge_recheck_uses_the_runbook_gates(tmp_path, remote):
     job = job_of(sessions)
     assert job.merge_state == "merged" and rev(remote) == job.merged_sha
     gates = [b for op, b in runner.payloads[n:] if op == "gates"]
-    assert gates and gates[0]["commands"][1]["argv"][-1] == "feature1.txt"
+    assert gates and gates[0]["commands"][1]["argv"][-1] == "./feature1.txt"
 
 
 def test_unparseable_runbook_command_stops_the_story(tmp_path, repo):

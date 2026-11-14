@@ -318,12 +318,10 @@ function ServiceRow({
           [
             t('runbook.services.health'),
             [
-              s.ready_timeout
-                ? t('runbook.services.healthWithin', {
-                    path: s.health,
-                    seconds: s.ready_timeout,
-                  })
-                : s.health,
+              t('runbook.services.healthWithin', {
+                path: s.health ?? '/',
+                seconds: s.ready_timeout ?? 120,
+              }),
             ],
           ],
           [t('runbook.services.seed'), seed ? [seed] : []],

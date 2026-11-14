@@ -236,8 +236,10 @@ def _problems(rb: Runbook, repo_names: set[str]) -> list[str]:
     for i, s in enumerate(rb.services):
         w = f"services.{s.name}"
         earlier = services[:i]
-        if not s.health.startswith("/"):
-            out.append(f"{w}: health must be a path starting with '/'")
+        if (not s.health.startswith("/") or s.health.startswith("//")
+                or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in s.health)):
+            out.append(f"{w}: health must be a path starting with '/' (no spaces or "
+                       "control characters)")
         if s.kind == "process":
             app = rb.app(s.app)
             if app is None:
@@ -347,7 +349,9 @@ def save(db: Session, slug: str, rb: Runbook, by: str) -> AwakRunbook:
         row = AwakRunbook(project_slug=slug, version=0)
         db.add(row)
     t = now()
-    row.spec = rb.model_dump(mode="json", exclude_defaults=True)
+    # What the admin wrote, defaults included when written; unset fields are
+    # left out (readers fill in the defaults).
+    row.spec = rb.model_dump(mode="json", exclude_unset=True)
     row.version = (row.version or 0) + 1
     row.approved_by, row.approved_at = by, t
     row.updated_by, row.updated_at = by, t

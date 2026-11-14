@@ -535,7 +535,9 @@ export type RunbookService = {
   file?: string
   compose_services?: string[]
   expose?: string
-  health: string
+  /** Left out when the runbook does not set it: the server uses '/'. */
+  health?: string
+  /** Left out when the runbook does not set it: the server uses 120. */
   ready_timeout?: number
   env?: string[] | Record<string, string>
   [key: string]: unknown
