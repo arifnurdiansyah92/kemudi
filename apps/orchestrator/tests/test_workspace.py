@@ -126,24 +126,7 @@ def test_story_checkout_has_sibling_repos_and_runner_gets_paths(tmp_path):
         assert db.query(AwakJob).one().state == "passed"
 
 
-def test_sibling_clone_failure_is_an_infra_error(tmp_path):
-    web = make_remote(tmp_path, "web", {"README.md": "web"})
-    settings = Settings(awak_projects="", ai_db_url="sqlite:///:memory:",
-                        repos_dir=str(tmp_path / "repos"), workspace_dir=str(tmp_path / "ws"),
-                        awak_uid=0, max_infra_errors=1)
-    sessions = make_session(settings.ai_db_url)
-    _project(sessions, "demo", [("web", str(web)), ("api", str(tmp_path / "missing.git"))])
-    taiga = FakeTaiga()
-    agent = FakeAgent()
-    w = Worker(settings, sessions, taiga, FakeTaiga("awak-qa"), agent, FakeRunner(tmp_path / "ws"),
-               None, secret_values=[], sleep=lambda s: None)
-    taiga.add(1, 12, "Badge jumlah", DESC)
-    w.tick()
-    with sessions() as db:
-        job = db.query(AwakJob).one()
-        assert job.infra_errors == 1 and job.attempts == 0
-    assert not agent.calls  # the coding run never started
-    assert taiga.story(1)["is_blocked"]
+# An unreachable sibling: tests/test_siblings.py (left out, not an infra error).
 
 
 def test_recover_sweeps_old_job_folders_once(tmp_path):

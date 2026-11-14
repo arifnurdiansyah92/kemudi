@@ -32,7 +32,7 @@ from .intake import TAG, story_areas
 from .merge import DONE_TAG, HUMAN_TAG, Merger, effective_mode, save_spec
 from .runbook import Runbook
 from .prompts import RoleScope, out_of_scope, prompt_version, render, render_role
-from .runner import Runner, RunnerError
+from .runner import Runner, RunnerError, RunnerRejected
 from .stories import code_task, criteria, qa_task
 from .taiga import Project, Taiga, TaigaError, tag_names
 from .verdict import Verdict, evaluate, safe_screenshot
@@ -432,16 +432,17 @@ class Worker:
             base_sha = (repo.sha(job.branch) if repo.has_branch(job.branch)
                         else main_sha)
             workdir = repo.prepare(job.branch)
-            siblings = [sib.checkout_default(job.branch) for sib in self._siblings(route)]
+            siblings, unavailable = self._siblings(route, job)
             self._event(job.id, "prepared", {"base": base_sha})
+            self._check_qa_repos(route)
             checks.run_install(self._runner, self._path(workdir),
-                               checks.install_payloads(rc, route.runbook))
+                               checks.install_payloads(rc, route.runbook), workdir, rc.name)
 
             # code
             self._set(job.id, phase="code")
             task = code_task(str(workdir), job.story_ref, story["subject"],
                              story.get("description") or "", job.feedback,
-                             siblings=[str(d) for d in siblings])
+                             siblings=[str(d) for d in siblings], unavailable=unavailable)
             system = render_role(role, route.config.repos)
             report, cost = self.agent.run("awak.code", role.model, system, task,
                                           slug=route.config.slug, role_id=role.id)
@@ -621,6 +622,8 @@ class Worker:
             _, cost = self.agent.run("awak.qa", model, system, task, slug=route.config.slug,
                                      role_id=qa_role.id if qa_role else None)
             self._add_cost(job.id, cost)
+            if plan is not None:
+                self.qa_siblings(route.config, route.rc, route.runbook, job.branch)
             report = self._runner("qa", path=self._path(workdir),
                                   **self.qa_payload(plan, token, route.rc))
             verdict = evaluate(report, texts)
@@ -690,18 +693,62 @@ class Worker:
             return self.repo
         return repo_for(cfg, rc, self.s, key)
 
-    def _siblings(self, route: Route) -> list[Repo]:
-        """The project's other repos, synced, for checkout beside the story's.
-        Never the injected repo: that one is the story's own."""
+    def _siblings(self, route: Route, job: AwakJob) -> tuple[list[Path], list[str]]:
+        """The project's other repos checked out at their default branch beside
+        the story's (read-only context), and the names of those that could not
+        be fetched (no key, unreachable...): left out, so one broken repo does
+        not hold up every story. Never the injected repo: that one is the
+        story's own."""
         with self.sessions() as db:
             rows = [(r, config_store.key_row(db, r.key_id))
                     for r in route.config.repos if r.id != route.rc.id]
-        out = []
+        out, unavailable = [], []
         for r, key in rows:
-            sib = repo_for(route.config, r, self.s, key)
-            sib.sync_default()
-            out.append(sib)
-        return out
+            try:
+                sib = repo_for(route.config, r, self.s, key)
+                sib.sync_default()
+                out.append(sib.checkout_default(job.branch))
+            except GitError as e:
+                log.warning("awak: sibling repo %s of %s unavailable: %s",
+                            r.name, route.config.slug, e)
+                self._event(job.id, "sibling_unavailable",
+                            {"repo": r.name, "error": str(e)[:300]})
+                unavailable.append(r.name)
+        return out, unavailable
+
+    def _check_qa_repos(self, route: Route) -> None:
+        """Before paying for a coding run: every repo browser QA starts a
+        service from must still be one of the project's repos."""
+        if route.runbook is None or self._qa_mode(route)[0] != "browser" \
+                or runbook_qa(route.runbook) is None:
+            return
+        names = {r.name for r in route.config.repos}
+        for name in checks.qa_repos(route.runbook):
+            if name not in names:
+                raise checks.Unsupported(_gone_repo(name))
+
+    def qa_siblings(self, cfg: ProjectConfig, rc: RepoConfig, rb: Runbook, branch: str) -> None:
+        """Right before a QA run: the other repos the QA services start from,
+        checked out again at their default branch and installed. Whatever the
+        agents did to their read-only copies, or an older checkout (the merge
+        re-run), never reaches QA."""
+        for name in checks.qa_repos(rb):
+            if name == rc.name:
+                continue
+            r = next((x for x in cfg.repos if x.name == name), None)
+            if r is None:
+                raise checks.Unsupported(_gone_repo(name))
+            with self.sessions() as db:
+                key = config_store.key_row(db, r.key_id)
+            sib = repo_for(cfg, r, self.s, key)
+            try:
+                sib.sync_default()
+            except GitError as e:
+                raise Infra(f"repo {name} yang dibutuhkan service QA tidak bisa diambil "
+                            f"({e}).") from e
+            d = sib.checkout_default(branch)
+            checks.run_install(self._runner, self._path(d), checks.qa_install_payloads(rb, name),
+                               d, name)
 
     def _path(self, workdir: Path) -> str:
         return runner_path(self.s.workspace_dir, workdir)
@@ -741,7 +788,14 @@ class Worker:
         return out[:20]
 
     def _runner(self, op: str, **payload) -> dict:
-        res = self.runner.call(op, **payload)
+        try:
+            res = self.runner.call(op, **payload)
+        except RunnerRejected as e:
+            # The same request is refused again: a folder, command or env from
+            # the runbook or the repo settings the runner cannot accept.
+            raise checks.Unsupported(
+                f"runner menolak langkah {op}: {e}. Periksa runbook (repo, folder, perintah, "
+                "env) dan pengaturan repo di Pengaturan proyek → Agen.") from e
         if res.get("infra_error"):
             raise Infra(f"{op}: {res['infra_error']}")
         return res
@@ -927,6 +981,11 @@ def build_output(status: str, path: str, subdir: str | list[str] = "") -> bool:
         return True
     dirs = [subdir] if isinstance(subdir, str) else subdir
     return name in BUILD_DIRS and parent in {"", *(d.strip("/") for d in dirs)}
+
+
+def _gone_repo(name: str) -> str:
+    return (f"service QA di runbook berjalan dari repo {name}, yang tidak ada lagi di "
+            "pengaturan Agen; perbaiki runbook di Pengaturan proyek → Agen.")
 
 
 def _unclean_feedback(unclean: list[str]) -> str:

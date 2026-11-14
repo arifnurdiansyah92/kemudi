@@ -94,6 +94,7 @@ class Merger:
     def __init__(self, worker: Worker):
         self.w = worker
         self._runbook: runbook.Runbook | None = None
+        self._cfg: config_store.ProjectConfig | None = None
 
     # ----------------------------------------------------------------- entry
     def merge(self, job: AwakJob, project: Project, story: dict,
@@ -166,6 +167,7 @@ class Merger:
                     f"menjalankannya ulang.")
             key = config_store.key_row(db, rc.key_id)
             self._runbook = runbook.load(db, job.project_slug)
+        self._cfg = cfg
         return cfg, rc, self.w._repo_of(cfg, rc, key)
 
     def _merge(self, job: AwakJob, story: dict, rc, repo: Repo,
@@ -199,7 +201,7 @@ class Merger:
                 # The same gate selection as the story's: the branch's changed files.
                 rb = self._runbook
                 gate_checks.run_install(w._runner, w._path(workdir),
-                                        gate_checks.install_payloads(rc, rb))
+                                        gate_checks.install_payloads(rc, rb), workdir, rc.name)
                 gates = gate_checks.run_gates(
                     w._runner, w._path(workdir),
                     gate_checks.gate_payloads(rc, rb, repo.changed_files(job.branch), workdir))
@@ -239,6 +241,10 @@ class Merger:
         from .worker import runbook_qa
 
         plan = runbook_qa(self._runbook)
+        if plan is not None:
+            # The story's QA ran its siblings at their default branch then;
+            # this one gets them fresh at the default branch now.
+            w.qa_siblings(self._cfg, rc, self._runbook, job.branch)
         token = w.qa_taiga.login() if plan is None else ""
         report = w._runner("qa", path=w._path(workdir), **w.qa_payload(plan, token, rc))
         verdict = evaluate(report, texts)

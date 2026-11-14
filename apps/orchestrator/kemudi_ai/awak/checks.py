@@ -71,7 +71,7 @@ def static_env(app: App) -> dict[str, str]:
     return {k: v for k, v in app.env.items() if not SERVICE_URL_RE.search(v)}
 
 
-def _split(line: str, rc: RepoConfig, app: App) -> list[str]:
+def _split(line: str, app: App) -> list[str]:
     try:
         return shlex.split(line)
     except ValueError as e:
@@ -83,9 +83,12 @@ def install_payloads(rc: RepoConfig, rb: Runbook | None) -> list[dict]:
     apps = _apps(rc, rb)
     if apps is None:
         return [_legacy(rc, "install")]
-    return [{"app": a.name, "subdir": a.dir, "env": static_env(a), "skipped": [],
-             "commands": [_cmd(_split(line, rc, a), TIMEOUTS["install"]) for line in a.install]}
-            for a in apps]
+    return [_install_payload(a) for a in apps]
+
+
+def _install_payload(a: App) -> dict:
+    return {"app": a.name, "subdir": a.dir, "env": static_env(a), "skipped": [],
+            "commands": [_cmd(_split(line, a), TIMEOUTS["install"]) for line in a.install]}
 
 
 def _inside(path: str, d: str) -> bool:
@@ -137,7 +140,7 @@ def gate_payloads(rc: RepoConfig, rb: Runbook | None, changed: list[str],
         cmds, skipped = [], []
         for field in ("checks", "build"):
             for line in getattr(a, field):
-                argv = _split(line, rc, a)
+                argv = _split(line, a)
                 expanded = _expand(argv, a, changed, workdir)
                 if expanded is None:
                     skipped.append(f"{shlex.join(argv)} (no changed files)")
@@ -158,7 +161,21 @@ def _runner_payload(p: dict) -> dict:
     return body
 
 
-def run_install(call: Call, path: str, payloads: list[dict]) -> None:
+def missing_dirs(payloads: list[dict], workdir: Path, repo: str) -> None:
+    """Unsupported when a runbook app's folder is not in the checkout: the
+    runbook names a folder the repo does not have. (The repo row's subdir is
+    the runner's to refuse; a refusal stops the story too.)"""
+    for p in payloads:
+        if p["app"] and p["subdir"] and not (workdir / p["subdir"]).is_dir():
+            raise Unsupported(f"app {p['app']} di runbook memakai folder `{p['subdir']}`, yang "
+                              f"tidak ada di repo {repo} (branch default); perbaiki runbook di "
+                              "Pengaturan proyek → Agen.")
+
+
+def run_install(call: Call, path: str, payloads: list[dict], workdir: Path | None = None,
+                repo: str = "") -> None:
+    if workdir is not None:
+        missing_dirs(payloads, workdir, repo)
     for p in payloads:
         call("install", path=path, **_runner_payload(p))
 
@@ -208,3 +225,19 @@ def qa_plan(rb: Runbook) -> dict:
     dirs = sorted({f"{a.repo}/{a.dir}" if a.dir else a.repo for a in rb.apps})
     return {"services": services, "base_service": qa.name,
             "warm": list(rb.qa.routes if rb.qa else []), "app_dirs": dirs}
+
+
+def qa_repos(rb: Runbook) -> list[str]:
+    """The repos the QA services run from (their apps' repos), in order."""
+    out: list[str] = []
+    for s in rb.qa_needs():
+        app = rb.app(s.app) if s.kind == "process" else None
+        if app is not None and app.repo not in out:
+            out.append(app.repo)
+    return out
+
+
+def qa_install_payloads(rb: Runbook, repo: str) -> list[dict]:
+    """Install payloads of the apps of `repo` that back a QA service."""
+    names = {s.app for s in rb.qa_needs() if s.kind == "process"}
+    return [_install_payload(a) for a in rb.apps_of(repo) if a.name in names]

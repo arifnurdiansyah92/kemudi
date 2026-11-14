@@ -49,7 +49,8 @@ Reply with one JSON object: {"stories": [{"subject", "description", "criteria", 
 
 
 def code_task(workspace: str, ref: int, subject: str, description: str,
-              feedback: str = "", siblings: list[str] | None = None) -> str:
+              feedback: str = "", siblings: list[str] | None = None,
+              unavailable: list[str] | None = None) -> str:
     parts = [
         f"Workspace: {workspace}",
         f"User story #{ref}: {subject}",
@@ -64,6 +65,12 @@ def code_task(workspace: str, ref: int, subject: str, description: str,
             "how they call this repo). Changes there are discarded; commit only in the "
             "workspace:",
             *[f"- {s}" for s in siblings],
+        ]
+    if unavailable:
+        parts += [
+            "",
+            "These repositories of the project could not be fetched and are not checked "
+            "out; do not rely on reading them: " + ", ".join(unavailable),
         ]
     if feedback:
         parts += [

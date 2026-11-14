@@ -14,6 +14,11 @@ class RunnerError(Exception):
     """The runner could not do the job (down, timeout). An infra error."""
 
 
+class RunnerRejected(RunnerError):
+    """The runner refused the request (HTTP 400): a path, folder, command or
+    env it cannot accept. Retrying sends the same request: not an infra error."""
+
+
 class Runner(Protocol):
     def call(self, op: str, **payload: Any) -> dict: ...
 
@@ -30,6 +35,13 @@ class HttpRunner:
     def call(self, op: str, **payload: Any) -> dict:
         try:
             r = self.client.post(f"/{op}", json=payload)
+            if r.status_code == 400:
+                try:
+                    body = r.json()
+                except ValueError:
+                    body = None
+                why = str(body.get("error") or r.text) if isinstance(body, dict) else r.text
+                raise RunnerRejected(f"runner {op} refused: {why[:500]}")
             r.raise_for_status()
             return r.json()
         except (httpx.HTTPError, ValueError) as e:
