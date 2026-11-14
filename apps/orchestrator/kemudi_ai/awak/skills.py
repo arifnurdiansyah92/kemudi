@@ -655,13 +655,13 @@ _STATE_DIRS = frozenset({"sessions", "logs", "cache", "audio_cache", "image_cach
 _EMPTY_DIRS = frozenset({"hooks", "plugins", "memories"})
 # Folder -> the entries Hermes itself keeps there.
 _KEEP_INSIDE = {
-    "skills": frozenset({".hub"}),
+    "skills": frozenset({".hub", ".usage.json", ".usage.json.lock"}),
     "cron": frozenset({"executions.db", ".jobs.lock", ".tick.lock", "ticker_heartbeat",
                        "ticker_last_success", "output"}),
 }
 # Caches Hermes rebuilds: removed before every run without a report (a
 # planted skills-prompt snapshot would reach the next run's skills index).
-_ALWAYS_DROP = frozenset({".skills_prompt_snapshot.json"})
+_ALWAYS_DROP = frozenset({".skills_prompt_snapshot.json", "lsp"})  # lsp: language-server cache
 
 
 def _remove(p: Path) -> None:
