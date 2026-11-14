@@ -34,6 +34,8 @@ class Connection:
     api_key: str = ""
     model: str = ""
     source: str = "server"  # agent | project | server
+    # Plain http to a public address, saved with an explicit acknowledgement.
+    insecure: bool = False
 
     @property
     def host(self) -> str:
@@ -41,7 +43,8 @@ class Connection:
 
     def public(self) -> dict:
         """What the API may show: never the key."""
-        return {"llm_source": self.source, "llm_model": self.model, "llm_host": self.host}
+        return {"llm_source": self.source, "llm_model": self.model, "llm_host": self.host,
+                "llm_insecure_http": self.insecure}
 
 
 # --- base URL ------------------------------------------------------------------
@@ -63,9 +66,18 @@ def _private(host: str, resolve: bool) -> bool:
     return bool(addrs) and all(a.is_private or a.is_loopback for a in addrs)
 
 
-def validate_base_url(url: str, resolve: bool = True) -> str:
+def is_insecure(url: str, resolve: bool = True) -> bool:
+    """Plain http to an address that is not private or loopback: the key and
+    the prompts would cross the internet unencrypted."""
+    parts = urlsplit(url.strip())
+    return parts.scheme == "http" and bool(parts.hostname)         and not _private(parts.hostname, resolve)
+
+
+def validate_base_url(url: str, resolve: bool = True, allow_insecure: bool = False) -> str:
     """`https://...`, or `http://` to a private or loopback address (a
-    self-hosted model). Returns it without a trailing slash."""
+    self-hosted model); `http://` to a public address only with
+    `allow_insecure` (an admin's explicit acknowledgement). Returns it without
+    a trailing slash."""
     url = url.strip()
     if not url or any(c.isspace() for c in url) or len(url) > 500:
         raise ValueError("enter a base URL such as https://api.openai.com/v1")
@@ -76,9 +88,10 @@ def validate_base_url(url: str, resolve: bool = True) -> str:
         raise ValueError("put the key in the API key field, not in the URL")
     if parts.query or parts.fragment:
         raise ValueError("the base URL cannot have a query or fragment")
-    if parts.scheme == "http" and not _private(parts.hostname, resolve):
+    if parts.scheme == "http" and not allow_insecure and not _private(parts.hostname, resolve):
         raise ValueError("http:// is only allowed to a private or loopback address; "
-                         "use https://")
+                         "use https://, or tick \"allow unencrypted http\" to send the key "
+                         "and prompts unencrypted")
     return url.rstrip("/")
 
 
@@ -101,13 +114,17 @@ def level_out(row) -> dict:
         "model": (row.llm_model if row is not None else "") or "",
         "key_set": bool(row is not None and row.llm_api_key_enc),
         "key_last4": (row.llm_key_last4 if row is not None and row.llm_api_key_enc else None),
+        "insecure_http": bool(_is_set(row) and row.llm_insecure_http),
     }
 
 
-def set_level(settings: Settings, row, base_url: str, model: str, api_key: str) -> bool:
+def set_level(settings: Settings, row, base_url: str, model: str, api_key: str,
+              insecure: bool = False) -> bool:
     """Write a level onto a project or role row; an empty key keeps the stored
-    one. Returns whether the key changed."""
+    one. `insecure` records that the URL is plain http to a public address
+    (accepted with an acknowledgement). Returns whether the key changed."""
     row.llm_base_url, row.llm_model = base_url, model
+    row.llm_insecure_http = insecure
     if api_key:
         row.llm_api_key_enc = crypto.encrypt(settings, api_key)
         row.llm_key_last4 = api_key[-4:]
@@ -121,6 +138,7 @@ LEVEL_FIELDS = ("llm_base_url", "llm_model", "llm_api_key_enc", "llm_key_last4")
 def clear_level(row) -> None:
     for field in LEVEL_FIELDS:
         setattr(row, field, "")
+    row.llm_insecure_http = None
 
 
 def server_default(settings: Settings, model: str) -> Connection:
@@ -145,7 +163,8 @@ def resolve(db: Session, settings: Settings, slug: str, role_id: int | None,
     for row, source in ((role, "agent"), (p, "project")):
         if _is_set(row):
             key = stored_key(settings, row) if decrypt else ""
-            return Connection(row.llm_base_url, key, own_model or row.llm_model, source)
+            return Connection(row.llm_base_url, key, own_model or row.llm_model, source,
+                              bool(row.llm_insecure_http))
     conn = server_default(settings, own_model or fallback_model or settings.awak_model)
     return conn if decrypt else Connection(conn.base_url, "", conn.model, conn.source)
 

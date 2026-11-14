@@ -183,6 +183,8 @@ export type LlmEffective = {
   llm_source: LlmSource
   llm_model: string
   llm_host: string
+  /** Plain http to a public address, saved with an acknowledgement. */
+  llm_insecure_http?: boolean
 }
 
 /** One level (project or agent) as the API shows it. The key is write-only:
@@ -193,6 +195,8 @@ export type LlmLevel = {
   model: string
   key_set: boolean
   key_last4: string | null
+  /** The saved base URL is plain http to a public address. */
+  insecure_http?: boolean
   effective: LlmEffective
   server_default: { model: string; host: string }
   updated_by: string | null
@@ -205,6 +209,9 @@ export type LlmIn = {
   model: string
   api_key?: string
   clear?: boolean
+  /** The admin accepts plain http to a public address (key and prompts
+   * unencrypted). Without it the server refuses such a URL. */
+  allow_insecure_http?: boolean
 }
 
 export type LlmTest = {
@@ -221,6 +228,7 @@ export type LlmModelsIn = {
   role_id?: number
   base_url?: string
   api_key?: string
+  allow_insecure_http?: boolean
 }
 
 export type LlmModels = {
@@ -1087,7 +1095,8 @@ export function useLlmModels(
       'llm-models',
       body.role_id ?? 0,
       body.base_url ?? '',
-      body.api_key ? keyTag(body.api_key) : ''
+      body.api_key ? keyTag(body.api_key) : '',
+      body.allow_insecure_http ? 'insecure' : ''
     ),
     enabled,
     staleTime: 5 * 60_000,

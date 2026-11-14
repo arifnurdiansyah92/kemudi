@@ -1111,6 +1111,9 @@ class LlmIn(BaseModel):
     # Removes the level (the agent then uses the project default, the project
     # the server default).
     clear: bool = False
+    # The admin's acknowledgement that the key and prompts may travel over
+    # plain http to a public address. Without it such a URL is refused.
+    allow_insecure_http: bool = False
 
     @field_validator("api_key")
     @classmethod
@@ -1124,7 +1127,8 @@ class LlmIn(BaseModel):
     def _level(self):
         if self.clear:
             return self
-        self.base_url = llm_conn.validate_base_url(self.base_url)
+        self.base_url = llm_conn.validate_base_url(
+            self.base_url, allow_insecure=self.allow_insecure_http)
         self.model = self.model.strip()
         if not self.model or any(c.isspace() for c in self.model):
             raise ValueError("enter the provider's model name, e.g. gpt-4o-mini")
@@ -1154,13 +1158,18 @@ def _put_level(db: Session, settings: Settings, user: TaigaUser, slug: str, row,
         detail = {"op": "clear"}
     else:
         try:
+            insecure = body.allow_insecure_http and llm_conn.is_insecure(body.base_url)
             key_changed = llm_conn.set_level(settings, row, body.base_url, body.model,
-                                             body.api_key)
+                                             body.api_key, insecure)
         except SecretKeyMissing as e:
             db.rollback()
             raise _no_secret_key(e) from e
         detail = {"op": "set", "base_url": body.base_url, "model": body.model,
                   "key_changed": key_changed}
+        if insecure:
+            # Who accepted an unencrypted connection, and when (the decision
+            # row's time); never the key.
+            detail["insecure_http"] = True
     row.updated_by, row.updated_at = actor(user), config_store.now()
     db.commit()
     record_decision(db, actor(user), "awak_llm", slug,
@@ -1176,8 +1185,9 @@ def _test(db: Session, settings: Settings, slug: str, row, role_id: int | None,
             key = body.api_key
             if not key and row is not None and row.llm_base_url == body.base_url:
                 key = llm_conn.stored_key(settings, row)
-            conn = llm_conn.Connection(body.base_url, key, body.model,
-                                       "agent" if role_id else "project")
+            conn = llm_conn.Connection(
+                body.base_url, key, body.model, "agent" if role_id else "project",
+                body.allow_insecure_http and llm_conn.is_insecure(body.base_url))
         else:
             conn = llm_conn.resolve(db, settings, slug, role_id)
     except SecretKeyMissing as e:
@@ -1211,6 +1221,8 @@ class ModelsIn(BaseModel):
     # Unsaved values; without base_url the saved connection that applies is used.
     base_url: str = Field("", max_length=500)
     api_key: str = Field("", max_length=1000)
+    # As LlmIn's: plain http to a public address needs the acknowledgement.
+    allow_insecure_http: bool = False
 
     @field_validator("api_key")
     @classmethod
@@ -1220,10 +1232,14 @@ class ModelsIn(BaseModel):
             raise ValueError("the API key cannot contain spaces")
         return v
 
-    @field_validator("base_url")
-    @classmethod
-    def _url(cls, v: str) -> str:
-        return llm_conn.validate_base_url(v) if v.strip() else ""
+    @model_validator(mode="after")
+    def _url(self):
+        if self.base_url.strip():
+            self.base_url = llm_conn.validate_base_url(
+                self.base_url, allow_insecure=self.allow_insecure_http)
+        else:
+            self.base_url = ""
+        return self
 
 
 @router.post("/llm/models")

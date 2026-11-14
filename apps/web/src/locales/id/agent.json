@@ -122,6 +122,13 @@
     "keyHintStored": "Disimpan terenkripsi. Hanya 4 karakter terakhir yang ditampilkan.",
     "keyHintReplace": "Menggantikan kunci tersimpan saat Anda menyimpan.",
     "keyMoves": "Kunci tersimpan berakhiran {{last4}} akan dikirim ke alamat baru ini. Ganti kuncinya jika milik penyedia lain.",
+    "insecure": {
+      "title": "Koneksi tidak terenkripsi",
+      "body": "Alamat ini memakai http biasa lewat internet. Kunci API dan setiap prompt, termasuk kode milik klien Anda, dikirim tanpa enkripsi, sehingga siapa pun di jalur tersebut bisa membaca atau mengubahnya. Sebaiknya gunakan https: pasang reverse proxy dengan TLS di depan model, pakai tunnel, atau akses lewat jaringan privat.",
+      "ack": "Saya mengerti, tetap gunakan http tanpa enkripsi",
+      "badge": "Tidak terenkripsi",
+      "badgeHint": "http biasa ke alamat publik: kunci API dan prompt dikirim tanpa enkripsi."
+    },
     "test": "Uji koneksi",
     "testing": "Menguji…",
     "testOk": "Terhubung dalam {{ms}} md",

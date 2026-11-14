@@ -1,4 +1,5 @@
 import type { ComponentProps } from 'react'
+import { AxiosError, AxiosHeaders } from 'axios'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
@@ -229,5 +230,135 @@ describe('LlmSourceBadge', () => {
     await expect
       .element(screen.getByText('Kemudi server default'))
       .toBeVisible()
+  })
+})
+
+describe('ProjectLlm over plain http', () => {
+  const PUBLIC_HTTP = 'http://203.0.113.5:8000/v1'
+  const ACK = 'I understand, use unencrypted http'
+
+  it('asks for the acknowledgement before saving http to a public address', async () => {
+    const h = handlers()
+    const screen = await render(<Project level={saved} canEdit {...h} />)
+    await screen.getByRole('textbox', { name: 'Base URL' }).fill(PUBLIC_HTTP)
+    await expect
+      .element(screen.getByText('Unencrypted connection'))
+      .toBeVisible()
+    const save = screen.getByRole('button', { name: 'Save' })
+    await expect.element(save).toBeDisabled()
+    await expect
+      .element(screen.getByRole('button', { name: 'Test connection' }))
+      .toBeDisabled()
+    await screen.getByRole('checkbox', { name: ACK }).click()
+    await expect.element(save).toBeEnabled()
+    await save.click()
+    expect(h.onSave).toHaveBeenCalledWith({
+      base_url: PUBLIC_HTTP,
+      model: 'gpt-4o-mini',
+      allow_insecure_http: true,
+    })
+  })
+
+  it('asks again when the address changes', async () => {
+    const screen = await render(
+      <Project level={saved} canEdit {...handlers()} />
+    )
+    const url = screen.getByRole('textbox', { name: 'Base URL' })
+    await url.fill(PUBLIC_HTTP)
+    await screen.getByRole('checkbox', { name: ACK }).click()
+    await url.fill('http://198.51.100.7/v1')
+    await expect
+      .element(screen.getByRole('checkbox', { name: ACK }))
+      .not.toBeChecked()
+    await expect
+      .element(screen.getByRole('button', { name: 'Save' }))
+      .toBeDisabled()
+  })
+
+  it('leaves http to a private address alone', async () => {
+    const h = handlers()
+    const screen = await render(<Project level={saved} canEdit {...h} />)
+    for (const url of [
+      'http://192.168.1.20:11434/v1',
+      'http://host.docker.internal:11434/v1',
+      'http://172.20.0.4/v1',
+      'http://ollama:11434/v1',
+    ]) {
+      await screen.getByRole('textbox', { name: 'Base URL' }).fill(url)
+      expect(
+        screen.getByText('Unencrypted connection').elements()
+      ).toHaveLength(0)
+    }
+    await screen.getByRole('button', { name: 'Save' }).click()
+    expect(h.onSave).toHaveBeenCalledWith({
+      base_url: 'http://ollama:11434/v1',
+      model: 'gpt-4o-mini',
+    })
+  })
+
+  it('shows the notice when the server refuses a URL the client took as private', async () => {
+    const h = handlers()
+    h.onSave.mockImplementationOnce(() =>
+      Promise.reject(
+        new AxiosError('Unprocessable Entity', '422', undefined, undefined, {
+          status: 422,
+          statusText: 'Unprocessable Entity',
+          headers: {},
+          config: { headers: new AxiosHeaders() },
+          data: {
+            detail: [
+              {
+                loc: ['body'],
+                msg: 'Value error, http:// is only allowed to a private or loopback address; use https://, or tick "allow unencrypted http" to send the key and prompts unencrypted',
+              },
+            ],
+          },
+        })
+      )
+    )
+    const screen = await render(<Project level={saved} canEdit {...h} />)
+    await screen
+      .getByRole('textbox', { name: 'Base URL' })
+      .fill('http://llm-gateway:8000/v1')
+    await screen.getByRole('button', { name: 'Save' }).click()
+    await expect
+      .element(screen.getByText('Unencrypted connection'))
+      .toBeVisible()
+    await screen.getByRole('checkbox', { name: ACK }).click()
+    await screen.getByRole('button', { name: 'Save' }).click()
+    expect(h.onSave).toHaveBeenLastCalledWith({
+      base_url: 'http://llm-gateway:8000/v1',
+      model: 'gpt-4o-mini',
+      allow_insecure_http: true,
+    })
+  })
+
+  it('marks a saved insecure connection and keeps its acknowledgement', async () => {
+    const h = handlers()
+    const insecure: LlmLevel = {
+      ...saved,
+      base_url: PUBLIC_HTTP,
+      insecure_http: true,
+      effective: {
+        ...saved.effective,
+        llm_host: '203.0.113.5',
+        llm_insecure_http: true,
+      },
+    }
+    const screen = await render(<Project level={insecure} canEdit {...h} />)
+    await expect
+      .element(screen.getByText('Unencrypted', { exact: true }))
+      .toBeVisible()
+    await expect
+      .element(screen.getByRole('checkbox', { name: ACK }))
+      .toBeChecked()
+    await screen.getByRole('combobox', { name: 'Model' }).click()
+    await screen.getByRole('option', { name: 'gpt-4o', exact: true }).click()
+    await screen.getByRole('button', { name: 'Save' }).click()
+    expect(h.onSave).toHaveBeenCalledWith({
+      base_url: PUBLIC_HTTP,
+      model: 'gpt-4o',
+      allow_insecure_http: true,
+    })
   })
 })

@@ -203,6 +203,9 @@ class AwakProject(Base):
     llm_model: Mapped[str] = mapped_column(String(100), default="")
     llm_api_key_enc: Mapped[str] = mapped_column(Text, default="")
     llm_key_last4: Mapped[str] = mapped_column(String(4), default="")
+    # True when llm_base_url is plain http to a public address, saved with an
+    # admin's explicit acknowledgement; NULL on rows from before the column.
+    llm_insecure_http: Mapped[bool | None] = mapped_column(default=None)
     # The worker's last failure for this project (e.g. the bot cannot open it);
     # cleared on the next pass that reaches the board.
     last_error: Mapped[str] = mapped_column(Text, default="")
@@ -252,6 +255,9 @@ class AwakRole(Base):
     llm_model: Mapped[str] = mapped_column(String(100), default="")
     llm_api_key_enc: Mapped[str] = mapped_column(Text, default="")
     llm_key_last4: Mapped[str] = mapped_column(String(4), default="")
+    # True when llm_base_url is plain http to a public address, saved with an
+    # admin's explicit acknowledgement; NULL on rows from before the column.
+    llm_insecure_http: Mapped[bool | None] = mapped_column(default=None)
     updated_by: Mapped[str] = mapped_column(String(200), default="")
     updated_at: Mapped[datetime] = mapped_column(default=now)
 

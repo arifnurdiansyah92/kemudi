@@ -23,9 +23,15 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { KeyField, ModelPicker, ProviderFields } from './connection-fields'
+import {
+  InsecureHttpNotice,
+  KeyField,
+  ModelPicker,
+  ProviderFields,
+} from './connection-fields'
 import { TestResult } from './llm-connection'
 import { hostOf } from './providers'
+import { useInsecureHttp } from './use-insecure-http'
 
 const lines = (text: string) =>
   text
@@ -37,7 +43,12 @@ const lines = (text: string) =>
  * the role's model) or clear it. An empty `api_key` keeps the stored key. */
 export type ConnChange =
   | { clear: true }
-  | { clear?: false; base_url: string; api_key?: string }
+  | {
+      clear?: false
+      base_url: string
+      api_key?: string
+      allow_insecure_http?: boolean
+    }
 
 function blankRole(): RoleIn {
   return {
@@ -122,10 +133,14 @@ export function RoleEditor({
   const typedKey = key.trim()
   const savedLevel = level?.set ?? false
   const inherited = projectLevel?.effective
+  const insecure = useInsecureHttp(url, {
+    url: level?.base_url ?? '',
+    insecure: level?.insecure_http ?? false,
+  })
   const valid =
     name.trim() !== '' &&
     over <= 0 &&
-    (!custom || (url !== '' && model.trim() !== ''))
+    (!custom || (url !== '' && model.trim() !== '' && !insecure.blocked))
 
   function connChange(): ConnChange | null {
     if (!custom) return savedLevel ? { clear: true } : null
@@ -135,7 +150,11 @@ export function RoleEditor({
       model.trim() === level.model &&
       !typedKey
     if (same) return null
-    return { base_url: url, ...(typedKey ? { api_key: typedKey } : {}) }
+    return {
+      base_url: url,
+      ...(typedKey ? { api_key: typedKey } : {}),
+      ...insecure.flag,
+    }
   }
 
   async function test() {
@@ -149,10 +168,13 @@ export function RoleEditor({
           base_url: url,
           model: model.trim(),
           ...(typedKey ? { api_key: typedKey } : {}),
+          ...insecure.flag,
         })
       )
     } catch (e) {
-      setTestError(agentError(e))
+      const message = agentError(e)
+      insecure.noteError(message)
+      setTestError(message)
     } finally {
       setTesting(false)
     }
@@ -285,6 +307,14 @@ export function RoleEditor({
                 onReplacing={setReplacing}
                 disabled={ro}
               />
+              {insecure.shown && (
+                <InsecureHttpNotice
+                  id='role-llm'
+                  checked={insecure.ack}
+                  onCheckedChange={insecure.setAck}
+                  disabled={ro}
+                />
+              )}
             </>
           )}
           <ModelPicker
@@ -296,10 +326,13 @@ export function RoleEditor({
                     ...(role ? { role_id: role.id } : {}),
                     base_url: url,
                     ...(typedKey ? { api_key: typedKey } : {}),
+                    ...insecure.flag,
                   }
                 : {}
             }
-            canFetch={canEdit && (!custom || hostOf(url) !== '')}
+            canFetch={
+              canEdit && (!custom || (hostOf(url) !== '' && !insecure.blocked))
+            }
             value={model}
             onChange={setModel}
             disabled={ro}

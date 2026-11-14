@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
-import { LlmSourceBadge } from './llm-connection'
+import { InsecureBadge, LlmSourceBadge } from './llm-connection'
 import { RoleEditor, type ConnChange } from './role-editor'
 
 export function Roles({
@@ -86,6 +86,7 @@ export function Roles({
                     title={r.llm_host || undefined}
                   >
                     <LlmSourceBadge source={r.llm_source} />
+                    {r.llm_insecure_http && <InsecureBadge />}
                     <span className='font-mono'>{r.llm_model}</span>
                   </span>
                   <span>

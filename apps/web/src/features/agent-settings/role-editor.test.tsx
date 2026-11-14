@@ -244,6 +244,38 @@ describe('RoleEditor', () => {
     ).toHaveLength(1)
   })
 
+  it('needs the acknowledgement for its own connection over public http', async () => {
+    const onSave = vi.fn()
+    const screen = await renderEditor(onSave)
+    await screen.getByRole('switch', { name: 'Use project default' }).click()
+    await screen
+      .getByRole('textbox', { name: 'Base URL' })
+      .fill('http://203.0.113.9/v1')
+    await expect
+      .element(screen.getByText('Unencrypted connection'))
+      .toBeVisible()
+    const save = screen.getByRole('button', { name: 'Save changes' })
+    await expect.element(save).toBeDisabled()
+    await screen
+      .getByRole('checkbox', { name: 'I understand, use unencrypted http' })
+      .click()
+    // Only acknowledged, the model list is fetched (with the flag).
+    await screen.getByRole('combobox', { name: 'Model' }).click()
+    await expect
+      .poll(() => calls[calls.length - 1])
+      .toEqual({
+        role_id: 3,
+        base_url: 'http://203.0.113.9/v1',
+        allow_insecure_http: true,
+      })
+    await screen.getByRole('option', { name: 'llama3.3' }).click()
+    await save.click()
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'llama3.3' }),
+      { base_url: 'http://203.0.113.9/v1', allow_insecure_http: true }
+    )
+  })
+
   it('clears a saved own connection when switched back to the project default', async () => {
     const onSave = vi.fn()
     const own: LlmLevel = {
