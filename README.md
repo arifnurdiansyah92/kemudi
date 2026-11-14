@@ -1,13 +1,106 @@
-# Kemudi
+<div align="center">
 
-Kemudi is an open-source project management platform built on the
-[Taiga](https://taiga.io) backend, with a new web UI and an AI agent ("Awak")
-that works alongside the team.
+# ☸ Kemudi
 
-> Status: early. The backend runs, and the new web UI covers what
-> taiga-front does (see [docs/web-feature-coverage.md](docs/web-feature-coverage.md)).
-> The AI service runs the contract baseline / CR check POC and the Awak dev
-> loop (iteration 1). See [Roadmap](#roadmap).
+**The delivery control system for IT vendors working under contract.**
+
+Kemudi turns your contract into a baseline, flags every out-of-scope request as a
+billable change, and lets an AI crew ship the work, all inside your own infrastructure.
+
+[Capabilities](#capabilities) · [Screenshots](#a-closer-look) · [Quick start](#quick-start-development) · [Roadmap](#roadmap)
+
+<img src="docs/screenshots/contract-backtest.png" alt="Contract backtest: Kemudi AI agreed with the PM on 19 of 20 requests and caught every change request" width="100%">
+
+<sub>CR check backtest on a real pilot contract: 19 of 20 requests labelled the way the PM decided, every Change Request caught, no in-scope request flagged.</sub>
+
+</div>
+
+---
+
+Kemudi is open source and built on the [Taiga](https://taiga.io) backend, with a
+new web UI and an AI agent, **Awak**, that works alongside the team.
+
+> **Status: early.** The web UI covers everything taiga-front does
+> ([coverage](docs/web-feature-coverage.md)). The contract baseline, the CR check
+> backtest, intake and the Awak dev loop run end to end. See [Roadmap](#roadmap).
+
+## Capabilities
+
+| | |
+|---|---|
+| 📄 **Contract → baseline** | Upload the signed SOW or SPK (PDF or DOCX). Kemudi reads it into numbered sections and drafts a baseline of modules, features, obligations and terms, each citing its clause and carrying its contract price. A PM edits it, then approves it as a locked version. |
+| 🚩 **CR check** | Every request is classified against the baseline: *in baseline*, *CR candidate* (with an effort and price estimate from your rate card), or *needs clarification*, with the reasoning shown. Kemudi AI suggests; a project admin decides. |
+| 🔁 **Backtest** | Replay past requests through the CR check and compare with what the PM actually decided, before you trust it on live work. |
+| 📥 **Intake** | Paste a brief, meeting notes or a client email, or drop a document. Kemudi drafts user stories with acceptance criteria, in English or Bahasa Indonesia, for you to check before they land in the backlog. |
+| 🤖 **Awak, the AI developer** | Tag a Ready story `agent-ready` and Awak picks it up: it writes the code on its own branch, runs your install, lint, type and test gates, then checks every acceptance criterion in a real browser with Playwright and attaches the screenshots to the story. Failures go back to *In progress* with the reasons, up to 3 attempts. |
+| 🛡️ **Merge policy you control** | Per project: *Manual* (Awak stops at the branch), *Approve* (an admin clicks Merge; Kemudi reruns the checks, pushes and deploys) or *Auto* for throwaway projects. QA can be off, gates only, or full browser QA. |
+| 🧰 **Skills library and marketplace** | Give Awak reference material: write or upload skills, or install them from GitHub marketplaces pinned to an exact commit. Every skill is scanned, licence-checked and enabled per role; updates wait for approval. |
+| 🔌 **Bring your own model** | Awak runs on [Hermes](https://github.com/NousResearch/hermes-agent) with any OpenAI-compatible endpoint (OpenAI, OpenRouter, DeepSeek, Groq, or a local model through Ollama), so nothing has to leave your network. |
+| 🗂️ **Full agile PM** | Epics, backlog and sprints, taskboard with burndown, kanban, issues, wiki, timeline, saved filters, roles and permissions, sprint access per role, webhooks, Git integrations, and importers for Jira, Trello, GitHub and Asana. |
+| 🇮🇩 **Bilingual** | The UI speaks English and Bahasa Indonesia, switchable per user, with local formats for dates, Rupiah and WIB/WITA/WIT. |
+
+## A closer look
+
+### Contract, intake and CR check
+
+Kemudi measures every request against what was signed. Paste the client's message
+in whatever form it arrives and Kemudi drafts the stories.
+
+<img src="docs/screenshots/intake.png" alt="Intake: paste meeting notes and Kemudi drafts user stories" width="100%">
+
+### Awak ships the story, with proof
+
+Each story Awak finishes carries the QA screenshots for its acceptance criteria,
+so a reviewer sees what was checked without running anything.
+
+<img src="docs/screenshots/awak-story.png" alt="A story Awak finished, with its acceptance criteria and QA screenshot attached" width="100%">
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/agent-settings.png" alt="Agent settings: Awak on/off, QA level and merge policy"></td>
+    <td width="50%"><img src="docs/screenshots/skills.png" alt="Skills library with scan results and licences"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Agent settings</b>: switch Awak on, choose the QA level and merge policy</sub></td>
+    <td align="center"><sub><b>Skills</b>: scanned, licence-checked and assigned per role</sub></td>
+  </tr>
+</table>
+
+<img src="docs/screenshots/skills-marketplace.png" alt="Skills marketplace backed by GitHub repositories" width="100%">
+
+### Everyday project management
+
+The full Taiga feature set in a fast, modern UI.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/backlog.png" alt="Backlog and open sprints"></td>
+    <td width="50%"><img src="docs/screenshots/taskboard.png" alt="Sprint taskboard with burndown"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Backlog</b> with sprint planning</sub></td>
+    <td align="center"><sub><b>Taskboard</b> with burndown</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/kanban.png" alt="Kanban board"></td>
+    <td width="50%"><img src="docs/screenshots/epics.png" alt="Epics with progress"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Kanban</b> with saved filters and card density</sub></td>
+    <td align="center"><sub><b>Epics</b> with progress across sprints</sub></td>
+  </tr>
+</table>
+
+## Why Kemudi
+
+Jira and Linear already own "AI on a kanban board". Kemudi is built for the
+vendor delivering under a contract:
+
+1. **It understands the contract.** The SOW becomes the baseline, and scope drift
+   shows up as billable change instead of lost margin.
+2. **It runs where the data must stay.** Self-hosted or on-prem, with a swappable
+   AI engine and local models for banks, BUMN and government clients.
+3. **It speaks the client's language.** Bahasa Indonesia and English, side by side.
 
 ## Repository layout
 
