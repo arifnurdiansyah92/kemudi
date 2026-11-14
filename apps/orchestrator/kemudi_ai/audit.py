@@ -41,6 +41,9 @@ PROJECT_ACTIONS = frozenset({
     "upload_contract",
     "approve_baseline",
     "delete_contract",
+    "contract_settings",        # show_prices
+    "cr_check",                 # a CR check run on a ticket (label, never the text)
+    "cr_verdict",               # the PM's agree/disagree on a CR check
 })
 # Decision actions about the instance (the skill library): the subject is the
 # skill or marketplace, kept in the detail; project_slug is ''.

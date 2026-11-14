@@ -19,9 +19,10 @@ import { Main } from '@/components/layout/main'
 import { useProject } from '@/features/project/use-project'
 import { BacktestReport } from './backtest-report'
 import { BaselineReview } from './baseline-review'
+import { ChecksTab } from './checks-tab'
 import { ContractUpload } from './contract-upload'
 
-type Tab = 'contract' | 'baseline' | 'backtest'
+type Tab = 'contract' | 'baseline' | 'checks' | 'backtest'
 
 export function Contract() {
   const { t } = useTranslation('contract')
@@ -34,7 +35,7 @@ export function Contract() {
     (!state.data?.contract
       ? 'contract'
       : state.data.baseline?.approved
-        ? 'backtest'
+        ? 'checks'
         : 'baseline')
 
   return (
@@ -69,6 +70,7 @@ export function Contract() {
             <TabsList>
               <TabsTrigger value='contract'>{t('tabs.contract')}</TabsTrigger>
               <TabsTrigger value='baseline'>{t('tabs.baseline')}</TabsTrigger>
+              <TabsTrigger value='checks'>{t('tabs.checks')}</TabsTrigger>
               <TabsTrigger value='backtest'>{t('tabs.backtest')}</TabsTrigger>
             </TabsList>
             <TabsContent value='contract' className='mt-6'>
@@ -84,6 +86,9 @@ export function Contract() {
                 state={state.data}
                 isAdmin={project.i_am_admin}
               />
+            </TabsContent>
+            <TabsContent value='checks' className='mt-6'>
+              <ChecksTab slug={project.slug} />
             </TabsContent>
             <TabsContent value='backtest' className='mt-6'>
               <BacktestTab
@@ -193,7 +198,7 @@ function BacktestTab({
               <Loader2 className='size-4 animate-spin' />
               {t('backtest.running', {
                 done: run.data.results.length,
-                total: '…',
+                total: 'â€¦',
               })}
             </p>
           )}
@@ -205,6 +210,7 @@ function BacktestTab({
           <BacktestReport
             data={run.data}
             canReview={isAdmin}
+            showPrices={!!state.contract?.show_prices}
             onVerdict={(resultId, v) =>
               verdict.mutate({ resultId, verdict: v })
             }

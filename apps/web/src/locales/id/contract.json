@@ -4,7 +4,8 @@
   "tabs": {
     "contract": "Kontrak",
     "baseline": "Baseline",
-    "backtest": "Backtest"
+    "backtest": "Backtest",
+    "checks": "Pemeriksaan"
   },
   "suggestion": "Saran AI",
   "adminOnly": "Hanya admin proyek yang dapat mengubah ini.",
@@ -79,7 +80,7 @@
       "crCaughtDetail": "ditandai sebagai CR atau perlu klarifikasi",
       "falseCr": "CR keliru",
       "falseCrDetail": "permintaan dalam lingkup yang ditandai CR",
-      "value": "Nilai di luar lingkup yang ditemukan",
+      "value": "Nilai di luar lingkup (indikatif)",
       "valueDetail": "Angka PM {{expected}}",
       "verdicts": "Tinjauan PM: {{right}} benar, {{wrong}} salah, {{pending}} belum ditinjau"
     },
@@ -103,6 +104,58 @@
       "markRight": "Tandai saran benar",
       "markWrong": "Tandai saran salah",
       "error": "Galat AI: {{error}}"
+    }
+  },
+  "prices": {
+    "title": "Harga",
+    "description": "Estimasi effort bersifat indikatif: pada backtest pilot, pemeriksaan CR menaksir effort terlalu tinggi. Sembunyikan nominal Rupiah sampai tim memercayai rate card dan baseline.",
+    "label": "Tampilkan nominal Rupiah pada pemeriksaan CR",
+    "hint": "Jika nonaktif, hasil pemeriksaan dan baris backtest hanya menampilkan hari-orang."
+  },
+  "check": {
+    "title": "Pemeriksaan kontrak",
+    "run": "Periksa terhadap kontrak",
+    "rerun": "Periksa ulang",
+    "running": "Memeriksa terhadap baseline v{{version}}…",
+    "noBaseline": "Proyek ini belum memiliki baseline kontrak yang disetujui.",
+    "setUp": "Siapkan kontrak",
+    "empty": "Belum diperiksa.",
+    "emptyMember": "Belum diperiksa. Admin proyek dapat menjalankan pemeriksaan.",
+    "suggestion": "Saran AI · baseline v{{version}}",
+    "cited": "Rujukan dari baseline",
+    "question": "Tanyakan ke klien: {{question}}",
+    "effort": "Effort",
+    "days": "{{days}} hari-orang",
+    "indicative": "indikatif",
+    "price": "Harga",
+    "checkedBy": "Diperiksa oleh {{by}} pada {{date}} · {{model}}",
+    "agree": "Setuju",
+    "disagree": "Tidak setuju",
+    "agreed": "{{by}} setuju pada {{date}}",
+    "disagreed": "{{by}} tidak setuju pada {{date}}",
+    "correctedTo": "Label yang benar: {{label}}",
+    "correctLabel": "Label yang benar",
+    "noCorrection": "Belum pasti",
+    "note": "Catatan",
+    "notePlaceholder": "Alasan saran ini keliru (opsional)",
+    "saveVerdict": "Simpan keputusan",
+    "pending": "Menunggu tinjauan PM",
+    "history": "Pemeriksaan sebelumnya ({{count}})"
+  },
+  "checks": {
+    "description": "Setiap pemeriksaan kontrak pada story atau isu, beserta keputusan PM. Label dari AI tetap berupa saran sampai PM menyetujuinya.",
+    "export": "Ekspor CSV",
+    "empty": "Belum ada pemeriksaan. Buka story atau isu, lalu pilih Periksa terhadap kontrak.",
+    "ticket": "Tiket",
+    "suggested": "Saran",
+    "effort": "Effort",
+    "price": "Harga",
+    "verdict": "Keputusan PM",
+    "checked": "Diperiksa",
+    "verdicts": {
+      "agree": "Disetujui",
+      "disagree": "Tidak disetujui",
+      "pending": "Belum ditinjau"
     }
   },
   "labels": {

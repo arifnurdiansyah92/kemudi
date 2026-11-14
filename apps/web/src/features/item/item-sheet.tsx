@@ -11,6 +11,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ContractCheck } from '@/features/contract/contract-check'
 import { can, useProject, useRefParam } from '@/features/project/use-project'
 import { Attachments } from './attachments'
 import { Conversation } from './conversation'
@@ -296,6 +297,10 @@ function ItemBody({
         <Section title={t('common:terms.description')}>
           <Description {...field} />
         </Section>
+
+        {(kind === 'userstory' || kind === 'issue') && (
+          <ContractCheck project={project} kind={kind} itemRef={item.ref} />
+        )}
 
         {kind === 'epic' && (
           <Section title={t('common:terms.story', { count: 2 })}>

@@ -5,7 +5,7 @@
   earlier configuration are reduced to their SHA-256. Runs at start and daily
   (`purge_loop`, started by the API's lifespan).
 - `DELETE /projects/{slug}/contract`: a project admin deletes the contract,
-  its baselines, backtests and the AI calls made for the project.
+  its baselines, backtests, CR checks and the AI calls made for the project.
 """
 
 import asyncio
@@ -25,6 +25,7 @@ from .store import (
     BacktestRun,
     BaselineVersion,
     Contract,
+    CrCheck,
     record_decision,
     sha256_text,
 )
@@ -89,7 +90,11 @@ def delete_contract_data(db: Session, slug: str) -> dict[str, int]:
     decisions and audit trail stay (they hold no contract text)."""
     c = db.query(Contract).filter_by(project_slug=slug).one_or_none()
     counts = {"contracts": 0, "baseline_versions": 0, "backtest_runs": 0,
-              "backtest_results": 0, "ai_calls": 0}
+              "backtest_results": 0, "cr_checks": 0, "ai_calls": 0}
+    # CR checks hold ticket text and AI reasoning against this contract; the
+    # PM verdicts on them stay in the decisions and audit trail.
+    counts["cr_checks"] = (db.query(CrCheck).filter_by(project_slug=slug)
+                           .delete(synchronize_session=False))
     if c is not None:
         run_ids = [r.id for r in db.query(BacktestRun.id).filter_by(contract_id=c.id)]
         if run_ids:
@@ -114,7 +119,8 @@ def delete_contract_data(db: Session, slug: str) -> dict[str, int]:
 
 @router.delete("/projects/{slug}/contract")
 def delete_contract(slug: str, user: TaigaUser = Depends(admin), db: Session = Depends(get_db)):
-    """Project admins: delete the contract, its baselines, backtests and AI calls."""
+    """Project admins: delete the contract, its baselines, backtests, CR checks
+    and AI calls."""
     if db.query(Contract).filter_by(project_slug=slug).one_or_none() is None:
         raise HTTPException(404, "no contract for this project")
     counts = delete_contract_data(db, slug)

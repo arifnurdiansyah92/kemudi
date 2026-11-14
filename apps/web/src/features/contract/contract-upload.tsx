@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PriceSetting } from './price-setting'
 
 const defaultRates: RateCard = {
   currency: 'IDR',
@@ -139,6 +140,13 @@ export function ContractUpload({
           initial={
             contract.rate_card?.per_day ? contract.rate_card : defaultRates
           }
+          isAdmin={isAdmin}
+        />
+      )}
+      {contract && (
+        <PriceSetting
+          slug={slug}
+          showPrices={contract.show_prices}
           isAdmin={isAdmin}
         />
       )}

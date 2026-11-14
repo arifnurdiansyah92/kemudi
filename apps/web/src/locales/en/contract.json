@@ -4,7 +4,8 @@
   "tabs": {
     "contract": "Contract",
     "baseline": "Baseline",
-    "backtest": "Backtest"
+    "backtest": "Backtest",
+    "checks": "Checks"
   },
   "suggestion": "AI suggestion",
   "adminOnly": "Only project admins can change this.",
@@ -80,7 +81,7 @@
       "crCaughtDetail": "flagged as CR or for clarification",
       "falseCr": "False CR",
       "falseCrDetail": "in-scope requests flagged as CR",
-      "value": "Out-of-scope value found",
+      "value": "Out-of-scope value (indicative)",
       "valueDetail": "PM's figure {{expected}}",
       "verdicts": "PM review: {{right}} right, {{wrong}} wrong, {{pending}} to review"
     },
@@ -104,6 +105,58 @@
       "markRight": "Mark suggestion right",
       "markWrong": "Mark suggestion wrong",
       "error": "AI error: {{error}}"
+    }
+  },
+  "prices": {
+    "title": "Prices",
+    "description": "Effort estimates are indicative: in the pilot backtest the CR check overestimated effort. Keep Rupiah amounts hidden until the team trusts the rate card and the baseline.",
+    "label": "Show Rupiah amounts in CR checks",
+    "hint": "When off, checks and backtest rows show person-days only."
+  },
+  "check": {
+    "title": "Contract check",
+    "run": "Check against contract",
+    "rerun": "Check again",
+    "running": "Checking against baseline v{{version}}…",
+    "noBaseline": "This project has no approved contract baseline yet.",
+    "setUp": "Set up the contract",
+    "empty": "Not checked yet.",
+    "emptyMember": "Not checked yet. A project admin can run the check.",
+    "suggestion": "AI suggestion · baseline v{{version}}",
+    "cited": "Cited from the baseline",
+    "question": "Ask the client: {{question}}",
+    "effort": "Effort",
+    "days": "{{days}} person-days",
+    "indicative": "indicative",
+    "price": "Price",
+    "checkedBy": "Checked by {{by}} on {{date}} · {{model}}",
+    "agree": "Agree",
+    "disagree": "Disagree",
+    "agreed": "{{by}} agreed on {{date}}",
+    "disagreed": "{{by}} disagreed on {{date}}",
+    "correctedTo": "Correct label: {{label}}",
+    "correctLabel": "Correct label",
+    "noCorrection": "Not sure",
+    "note": "Note",
+    "notePlaceholder": "Why the suggestion is wrong (optional)",
+    "saveVerdict": "Save verdict",
+    "pending": "Awaiting PM review",
+    "history": "Earlier checks ({{count}})"
+  },
+  "checks": {
+    "description": "Every contract check run on a story or issue, with the PM's verdict. AI labels are suggestions until a PM agrees.",
+    "export": "Export CSV",
+    "empty": "No checks yet. Open a story or issue and choose Check against contract.",
+    "ticket": "Ticket",
+    "suggested": "Suggested",
+    "effort": "Effort",
+    "price": "Price",
+    "verdict": "PM verdict",
+    "checked": "Checked",
+    "verdicts": {
+      "agree": "Agreed",
+      "disagree": "Disagreed",
+      "pending": "To review"
     }
   },
   "labels": {

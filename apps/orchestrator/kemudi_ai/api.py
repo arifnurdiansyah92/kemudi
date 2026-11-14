@@ -14,13 +14,14 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Response,
     UploadFile,
 )
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .auth import TaigaUser, current_user
-from . import audit, retention
+from . import audit, cr_check, retention
 from .awak import agent_api, llm_proxy, marketplace_api, skills_api, usage_api
 from .backtest import metrics, run_backtest
 from .baseline import BaselineItem, draft_baseline
@@ -43,6 +44,7 @@ from .store import (
     BacktestRun,
     BaselineVersion,
     Contract,
+    CrCheck,
     ai_project,
     record_decision,
 )
@@ -175,6 +177,7 @@ def get_contract(slug: str, _: TaigaUser = Depends(member), db: Session = Depend
             "rate_card": c.rate_card,
             "sections": c.sections,
             "created_at": c.created_at,
+            "show_prices": bool(c.show_prices),
         },
         "baseline": {
             "draft": _version(_draft(db, c)),
@@ -372,6 +375,132 @@ def set_verdict(
     db.commit()
     record_decision(db, actor(user), "verdict", f"{slug}#{run.id}/{r.ticket_id}", {"verdict": body.verdict})
     return _result(r)
+
+
+# --- CR check on one ticket ---------------------------------------------------
+# docs/superpowers/specs/2026-11-11-contract-baseline-cr-design.md, goal 3.
+# Members read, project admins run checks and record verdicts.
+
+
+class ContractSettingsBody(BaseModel):
+    show_prices: bool
+
+
+@app.put("/projects/{slug}/contract/settings")
+def set_contract_settings(slug: str, body: ContractSettingsBody, user: TaigaUser = Depends(admin),
+                          db: Session = Depends(get_db)):
+    c = _contract(db, slug)
+    c.show_prices = body.show_prices
+    db.commit()
+    record_decision(db, actor(user), "contract_settings", slug, {"show_prices": body.show_prices})
+    return {"show_prices": c.show_prices}
+
+
+def _show_prices(db: Session, slug: str) -> bool:
+    c = db.query(Contract).filter_by(project_slug=slug).one_or_none()
+    return bool(c and c.show_prices)
+
+
+class CrCheckBody(BaseModel):
+    kind: cr_check.TicketKind
+    ref: int = Field(gt=0)
+    # Optional: check this text instead of reading the ticket from Taiga.
+    subject: str | None = Field(None, max_length=500)
+    text: str | None = Field(None, max_length=cr_check.MAX_TEXT)
+
+
+@app.post("/projects/{slug}/cr-check")
+def run_cr_check(
+    slug: str,
+    body: CrCheckBody,
+    user: TaigaUser = Depends(admin),
+    db: Session = Depends(get_db),
+    llm: LLM = Depends(get_llm),
+    settings: Settings = Depends(get_settings),
+):
+    c, b = cr_check.latest_baseline(db, slug)
+    if body.text and body.text.strip():
+        subject = (body.subject or "").strip()
+        text = cr_check.ticket_text(subject, body.text)
+    else:
+        t = cr_check.fetch_ticket(settings, user, slug, body.kind, body.ref)
+        subject = t["subject"]
+        text = cr_check.ticket_text(t["subject"], t["description"])
+    if not text.strip():
+        raise HTTPException(422, "the ticket has no subject or description to check")
+    try:
+        with ai_project(slug):
+            row = cr_check.run_check(db, llm, settings.ai_model, c, b, slug=slug, kind=body.kind,
+                                     ref=body.ref, subject=subject, text=text,
+                                     checked_by=actor(user))
+    except LLMError as e:
+        raise HTTPException(502, f"AI call failed: {e}") from e
+    record_decision(db, actor(user), "cr_check", slug,
+                    {"check": row.id, "ticket": f"{body.kind}#{body.ref}",
+                     "label": row.label, "baseline": b.number})
+    return cr_check.serialize(row, bool(c.show_prices))
+
+
+@app.get("/projects/{slug}/cr-checks")
+def list_cr_checks(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(get_db)):
+    rows = (db.query(CrCheck).filter_by(project_slug=slug)
+            .order_by(CrCheck.checked_at.desc(), CrCheck.id.desc()).all())
+    show = _show_prices(db, slug)
+    return {"show_prices": show, "checks": [cr_check.serialize(r, show) for r in rows]}
+
+
+@app.get("/projects/{slug}/cr-checks/export")
+def export_cr_checks(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(get_db)):
+    rows = (db.query(CrCheck).filter_by(project_slug=slug)
+            .order_by(CrCheck.checked_at.desc(), CrCheck.id.desc()).all())
+    body = cr_check.to_csv(rows, _show_prices(db, slug))
+    stamp = datetime.now(UTC).strftime("%Y%m%d")
+    return Response(
+        content=cr_check.BOM + body,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{slug}-cr-checks-{stamp}.csv"'},
+    )
+
+
+@app.get("/projects/{slug}/cr-checks/{kind}/{ref}")
+def ticket_cr_checks(slug: str, kind: cr_check.TicketKind, ref: int,
+                     _: TaigaUser = Depends(member), db: Session = Depends(get_db)):
+    """A ticket's checks, newest first, and whether a check can run at all."""
+    c = db.query(Contract).filter_by(project_slug=slug).one_or_none()
+    b = None
+    if c is not None:
+        approved = _approved(db, c)
+        b = approved[0] if approved else None
+    rows = (db.query(CrCheck).filter_by(project_slug=slug, ticket_kind=kind, ticket_ref=ref)
+            .order_by(CrCheck.checked_at.desc(), CrCheck.id.desc()).all())
+    show = bool(c and c.show_prices)
+    return {
+        "baseline": {"number": b.number} if b else None,
+        "show_prices": show,
+        "checks": [cr_check.serialize(r, show) for r in rows],
+    }
+
+
+class CrVerdictBody(BaseModel):
+    verdict: Literal["agree", "disagree"]
+    corrected_label: Literal["in_baseline", "cr_candidate", "needs_clarification"] | None = None
+    note: str = Field("", max_length=2000)
+
+
+@app.post("/projects/{slug}/cr-checks/{check_id}/verdict")
+def cr_check_verdict(slug: str, check_id: int, body: CrVerdictBody,
+                     user: TaigaUser = Depends(admin), db: Session = Depends(get_db)):
+    r = db.get(CrCheck, check_id)
+    if r is None or r.project_slug != slug:
+        raise HTTPException(404, "no such check")
+    if body.verdict == "disagree" and body.corrected_label == r.label:
+        raise HTTPException(422, "the corrected label is the label the check gave")
+    cr_check.decide(r, body.verdict, body.corrected_label, body.note.strip(), actor(user))
+    db.commit()
+    record_decision(db, actor(user), "cr_verdict", slug,
+                    {"check": r.id, "ticket": f"{r.ticket_kind}#{r.ticket_ref}", "label": r.label, "verdict": r.verdict,
+                     "corrected_label": r.corrected_label, "note": r.verdict_note})
+    return cr_check.serialize(r, _show_prices(db, slug))
 
 
 # --- Awak dev loop -------------------------------------------------------------
