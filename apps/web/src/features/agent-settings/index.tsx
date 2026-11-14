@@ -30,6 +30,7 @@ import { DeployCommand, MergePolicy, QaModeControl } from './merge-policy'
 import { Repos } from './repos'
 import { Roles } from './roles'
 import { RunbookCard } from './runbook'
+import { UsageBudgetCard } from './usage-budget'
 
 /** Project settings → Agent: how Awak works on this project. */
 export function AgentSettingsPage() {
@@ -243,6 +244,13 @@ function SettingsBlocks({
         description={t('llm.description')}
       >
         <ProjectLlmSection slug={slug} canEdit={canEdit} />
+      </SettingsSection>
+
+      <SettingsSection
+        title={t('usage.title')}
+        description={t('usage.description')}
+      >
+        <UsageBudgetCard slug={slug} canEdit={canEdit} />
       </SettingsSection>
 
       <SettingsSection

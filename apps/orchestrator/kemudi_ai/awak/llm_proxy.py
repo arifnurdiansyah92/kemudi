@@ -5,7 +5,14 @@ Awak holds no provider key. Each run's model name is a short-lived alias
 (`awak-run-<hex>`); this route maps it to the run's resolved connection, swaps
 in the real model and key, and forwards the request, streaming included. No
 Taiga token: a request is admitted by the shared proxy token (required: an
-empty KEMUDI_LLM_PROXY_TOKEN closes the proxy) plus a live alias. The public gateway does not route here.
+empty KEMUDI_LLM_PROXY_TOKEN closes the proxy) plus a live alias. The public
+gateway does not route here.
+
+Every answered call is accounted (kemudi_ai/awak/usage.py): the provider's
+usage, streamed answers included (the proxy asks for it with
+`stream_options.include_usage`), and its cost. A project over its token
+budget (or a story over its cap) gets 402 instead of a model call (not 429:
+OpenAI clients retry that).
 """
 
 import hmac
@@ -20,7 +27,7 @@ from starlette.background import BackgroundTask
 
 from ..config import Settings, get_settings
 from ..deps import get_sessions
-from . import llm_conn
+from . import llm_conn, usage
 from .crypto import SecretKeyMissing
 
 log = logging.getLogger(__name__)
@@ -61,6 +68,38 @@ def _note(sessions: sessionmaker[Session], alias: str, ok: bool, error: str = ""
         log.exception("could not record the upstream result")
 
 
+def _record(sessions: sessionmaker[Session], settings: Settings, meta: usage.CallMeta,
+            conn: llm_conn.Connection, data) -> None:
+    try:
+        with sessions() as db:
+            usage.record_call(db, settings, meta, conn.model, conn.source, data)
+    except Exception:  # noqa: BLE001 - bookkeeping must never break a model call
+        log.exception("could not record the model usage")
+
+
+def _sse_usage(line: bytes):
+    """The `usage` of one SSE `data:` line, if it carries one."""
+    line = line.strip()
+    if not line.startswith(b"data:"):
+        return None
+    payload = line[5:].strip()
+    if not payload or payload == b"[DONE]" or b'"usage"' not in payload:
+        return None
+    try:
+        data = json.loads(payload)
+    except ValueError:
+        return None
+    return data.get("usage") if isinstance(data, dict) and data.get("usage") else None
+
+
+def _body_usage(content: bytes):
+    try:
+        data = json.loads(content)
+    except ValueError:
+        return None
+    return data.get("usage") if isinstance(data, dict) else None
+
+
 @router.get("/models")
 def models(request: Request, settings: Settings = Depends(get_settings)):
     """Aliases are not listed: they are capabilities."""
@@ -92,6 +131,14 @@ async def chat_completions(
         if row is None:
             return _error(403, "unknown or expired model alias")
         alias = row.alias
+        meta = usage.CallMeta.of(row)
+        over = usage.problem(db, row.project_slug, row.job_id)
+        if over is not None:
+            # Not the provider's fault: not counted as an upstream error.
+            row.budget_stop = str(over)
+            db.commit()
+            return JSONResponse({"error": {"message": str(over), "type": "kemudi_budget",
+                                           "code": "budget_exceeded"}}, status_code=402)
         try:
             conn = llm_conn.resolve(db, settings, row.project_slug, row.role_id,
                                     row.fallback_model)
@@ -101,6 +148,9 @@ async def chat_completions(
         return _error(503, "no model connection: set one in Project settings -> Agent, "
                            "or KEMUDI_AI_BASE_URL on the server")
     body["model"] = conn.model
+    streaming = bool(body.get("stream"))
+    if streaming and settings.llm_stream_usage and "stream_options" not in body:
+        body["stream_options"] = {"include_usage": True}
     client = httpx.AsyncClient(
         transport=transport, follow_redirects=False,
         timeout=httpx.Timeout(settings.llm_proxy_timeout_s, connect=15.0))
@@ -127,11 +177,28 @@ async def chat_completions(
         await upstream.aclose()
         await client.aclose()
 
-    if body.get("stream"):
-        return StreamingResponse(upstream.aiter_bytes(), status_code=upstream.status_code,
+    if streaming:
+        async def relay():
+            buf, found = b"", None
+            try:
+                async for chunk in upstream.aiter_bytes():
+                    yield chunk
+                    if not ok:
+                        continue
+                    buf += chunk
+                    while b"\n" in buf:
+                        line, buf = buf.split(b"\n", 1)
+                        found = _sse_usage(line) or found
+            finally:
+                if ok:
+                    _record(sessions, settings, meta, conn, found or _sse_usage(buf))
+
+        return StreamingResponse(relay(), status_code=upstream.status_code,
                                  headers=headers, background=BackgroundTask(close))
     try:
         content = await upstream.aread()
     finally:
         await close()
+    if ok:
+        _record(sessions, settings, meta, conn, _body_usage(content))
     return Response(content, status_code=upstream.status_code, headers=headers)

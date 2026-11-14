@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .auth import TaigaUser, current_user
 from . import audit, retention
-from .awak import agent_api, llm_proxy, marketplace_api, skills_api
+from .awak import agent_api, llm_proxy, marketplace_api, skills_api, usage_api
 from .backtest import metrics, run_backtest
 from .baseline import BaselineItem, draft_baseline
 from .config import Settings, check_production, get_settings
@@ -86,6 +86,7 @@ app.include_router(agent_api.intake_router)
 app.include_router(skills_api.router)
 app.include_router(marketplace_api.router)
 # Internal only (kemudi-sandbox): the gateway does not route /llm/.
+app.include_router(usage_api.router)
 app.include_router(llm_proxy.router)
 app.include_router(audit.router)
 app.include_router(retention.router)

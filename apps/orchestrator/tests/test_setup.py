@@ -29,7 +29,7 @@ class SetupAgent:
         self.tasks: list[str] = []
         self.runs: list[dict] = []
 
-    def run(self, purpose, model, system, task, slug="", role_id=None, *, profile):
+    def run(self, purpose, model, system, task, slug="", role_id=None, *, profile, **_kw):
         assert purpose == "awak.setup"
         self.tasks.append(task)
         self.runs.append({"model": model, "system": system, "slug": slug, "role_id": role_id,
@@ -730,7 +730,7 @@ def test_a_plain_vault_value_is_neither_refused_nor_redacted(tmp_path, repo, pro
 
 def test_a_runbook_json_folder_goes_back_to_the_agent(tmp_path, repo, project_host):
     class FolderAgent(SetupAgent):
-        def run(self, purpose, model, system, task, slug="", role_id=None, *, profile):
+        def run(self, purpose, model, system, task, slug="", role_id=None, *, profile, **_kw):
             if not self.tasks:
                 self.tasks.append(task)
                 root = Path(task.splitlines()[0].removeprefix("Workspace: ").strip())

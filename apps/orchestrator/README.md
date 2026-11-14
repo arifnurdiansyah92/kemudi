@@ -91,6 +91,10 @@ move it to In progress and write what is wrong in a comment.
 | `KEMUDI_AWAK_MODEL`, `KEMUDI_QA_MODEL` | `deepseek-flash` | server-default models |
 | `KEMUDI_AI_BASE_URL`, `KEMUDI_AI_API_KEY` | | server-default model connection |
 | `KEMUDI_LLM_PROXY_TOKEN` | (empty: alias only) | Awak's token for `/llm/v1` |
+| `KEMUDI_LLM_PRICES` | (built-in DeepSeek prices) | JSON price table per model, per 1M tokens: `{"<model>": {"input": 0.28, "cached_input": 0.028, "output": 0.42, "currency": "USD"}}`; a model with no price has an unknown cost |
+| `KEMUDI_USD_IDR_RATE` | `16500` | USD prices are stored in Rupiah at this rate |
+| `KEMUDI_LLM_STREAM_USAGE` | `true` | the proxy asks for usage in streamed answers (`stream_options.include_usage`) |
+| `KEMUDI_TOKEN_BUDGET_RECOMMENDED` | `50000000` | the monthly token budget Project settings → Agent suggests when none is set |
 | `KEMUDI_MAX_ATTEMPTS` | `3` | |
 
 ### Boundaries

@@ -46,6 +46,7 @@ __all__ = [
     "AwakSetupRun",
     "AwakWorkerLease",
     "AwakLlmAlias",
+    "AwakLlmUsage",
     "AwakSkill",
     "AwakSkillVersion",
     "AwakSkillSet",
@@ -328,6 +329,17 @@ class AwakProject(Base):
     # cleared on the next pass that reaches the board.
     last_error: Mapped[str] = mapped_column(Text, default="")
     last_error_at: Mapped[datetime | None] = mapped_column(default=None)
+    # Usage limits (kemudi_ai/awak/usage.py). NULL or 0 = unlimited. The
+    # monthly budget counts every proxied model token of the project in the
+    # calendar month (UTC); the story cap counts one story's run (job).
+    token_budget_monthly: Mapped[int | None] = mapped_column(default=None)
+    token_cap_story: Mapped[int | None] = mapped_column(default=None)
+    # Price override for this project's model calls, per 1M tokens, in
+    # `price_currency` (USD | IDR). NULL = the price table (KEMUDI_LLM_PRICES).
+    price_input_per_1m: Mapped[float | None] = mapped_column(default=None)
+    price_cached_input_per_1m: Mapped[float | None] = mapped_column(default=None)
+    price_output_per_1m: Mapped[float | None] = mapped_column(default=None)
+    price_currency: Mapped[str | None] = mapped_column(String(3), default=None)
     updated_by: Mapped[str] = mapped_column(String(200), default="")
     updated_at: Mapped[datetime] = mapped_column(default=now)
 
@@ -468,6 +480,38 @@ class AwakLlmAlias(Base):
     # The Hermes profile (sk-<setid>) the run goes through: the skill-set
     # sweep never removes a set a live alias names.
     profile: Mapped[str] = mapped_column(String(40), default="")
+    # What the run is for: a story's job or a Setup Assistant run (usage
+    # accounting and the per-story token cap).
+    job_id: Mapped[int | None] = mapped_column(default=None)
+    setup_run_id: Mapped[int | None] = mapped_column(default=None)
+    # Set when the proxy refused a call over the project's token budget.
+    budget_stop: Mapped[str] = mapped_column(Text, default="")
+
+
+class AwakLlmUsage(Base):
+    """One proxied model call: the tokens the provider reported and what they
+    cost (kemudi_ai/awak/usage.py). `cost_idr` NULL = the price is unknown
+    (no price for the model), never a silent 0. Naive UTC times."""
+
+    __tablename__ = "awak_llm_usage"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(index=True)
+    project_slug: Mapped[str] = mapped_column(String(200), index=True)
+    # The run's alias (the alias row itself is deleted when the run ends).
+    alias: Mapped[str] = mapped_column(String(64), default="", index=True)
+    purpose: Mapped[str] = mapped_column(String(50), default="")
+    job_id: Mapped[int | None] = mapped_column(default=None, index=True)
+    setup_run_id: Mapped[int | None] = mapped_column(default=None)
+    model: Mapped[str] = mapped_column(String(100), default="")
+    llm_source: Mapped[str] = mapped_column(String(10), default="")
+    prompt_tokens: Mapped[int] = mapped_column(default=0)
+    cached_tokens: Mapped[int] = mapped_column(default=0)
+    completion_tokens: Mapped[int] = mapped_column(default=0)
+    # False when the provider's answer carried no usage (tokens unknown).
+    usage_reported: Mapped[bool] = mapped_column(default=True)
+    cost_idr: Mapped[float | None] = mapped_column(default=None)
+    # Where the price came from: project | table | flat | '' (unknown).
+    price_source: Mapped[str] = mapped_column(String(10), default="")
 
 
 class AwakSkill(Base):

@@ -56,6 +56,7 @@ from sqlalchemy.orm import Session
 from ..config import Settings
 from ..store import SETUP_ACTIVE, AwakEnvVar, AwakSetupRun
 from . import checks, config_store, detect, runbook, secrets, skills, vault
+from . import usage as awak_usage
 from .agent import AgentError
 from .gitops import GitError
 from .prompts import RoleScope, render
@@ -439,6 +440,9 @@ class SetupRunner:
             return
         except SetupBlocked as e:
             self._set(run_id, state, state="failed", error=self._redact(slug, str(e)))
+        except awak_usage.BudgetExceeded as e:
+            # Stops like a blocked run: retrying would only be refused again.
+            self._set(run_id, state, state="failed", error=str(e))
         except (SetupInfra, AgentError, GitError, RunnerError, SvcError) as e:
             self._infra(run_id, state, slug, e)
         except Exception as e:  # noqa: BLE001 - the worker must go on
@@ -504,10 +508,13 @@ class SetupRunner:
                 kit = skills.prepare_set(self.s, db, [])
             except (OSError, ValueError) as e:
                 raise SetupInfra(f"skill set could not be prepared: {e}") from e
+        with self.w.sessions() as db:
+            awak_usage.check(db, slug)
         try:
             report, cost = self.w.agent.run(PURPOSE, self.s.awak_model, system, task,
-                                            slug=slug, profile=kit.profile)
-        except AgentError as e:
+                                            slug=slug, profile=kit.profile,
+                                            setup_run_id=run.id)
+        except (AgentError, awak_usage.BudgetExceeded) as e:
             # a turn that broke off was paid for all the same
             self._add_cost(run.id, getattr(e, "cost_idr", 0.0))
             raise

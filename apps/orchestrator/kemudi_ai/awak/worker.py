@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import Settings
 from ..store import AwakJob, AwakKey, AwakProject, AwakWorkerLease, record_event
-from . import checks, config_store, llm_conn, runbook, secrets, skills, ssh, vault
+from . import checks, config_store, llm_conn, runbook, secrets, skills, ssh, usage, vault
 from .config_store import QA_MODES, ProjectConfig, RepoConfig, RoleConfig
 from .crypto import SecretKeyMissing
 from .agent import Agent, AgentError
@@ -354,6 +354,11 @@ class Worker:
         """Pick and process one story of the first project that has one."""
         for slug in slugs:
             try:
+                self._check_budget(slug)
+            except usage.BudgetExceeded as e:
+                self._project_failed(slug, e)
+                continue
+            try:
                 project = self._project(slug)
                 picked = self._pick(project)
             except Exception as e:  # noqa: BLE001
@@ -564,6 +569,13 @@ class Worker:
             except (NeedsHuman, checks.Unsupported) as e:
                 self._block(project, story, job_id, f"Berhenti: {e}")
                 return
+            except usage.BudgetExceeded as e:
+                # A run cut off by the budget was paid for all the same.
+                self._add_cost(job_id, e.cost_idr)
+                self._event(job_id, "budget", {"kind": e.kind, "used": e.used,
+                                               "limit": e.limit})
+                self._block(project, story, job_id, e.comment())
+                return
             except checks.ServiceFailed as e:
                 # A compose service, init/seed or the QA login: the redacted
                 # logs go to the event and the card.
@@ -662,9 +674,10 @@ class Worker:
             kit = self._skill_set(job.id, role.skills, "code")
             self._pin_prompt_version(job.id, route, kit)
             system = render_role(role, route.config.repos, bool(kit.entries))
+            self._check_budget(route.config.slug, job.id)
             report, cost = self.agent.run("awak.code", role.model, system, task,
                                           slug=route.config.slug, role_id=role.id,
-                                          profile=kit.profile)
+                                          profile=kit.profile, job_id=job.id)
             self._add_cost(job.id, cost)
             self._set(job.id, phase="collect")
             self._runner("commit", path=self._path(workdir),
@@ -852,9 +865,10 @@ class Worker:
                                env_names=plan["qa_env"],
                                login_path=(plan["login"] or {}).get("path"),
                                backing=plan["compose"])
+            self._check_budget(route.config.slug, job.id)
             _, cost = self.agent.run("awak.qa", model, system, task, slug=route.config.slug,
                                      role_id=qa_role.id if qa_role else None,
-                                     profile=kit.profile)
+                                     profile=kit.profile, job_id=job.id)
             self._add_cost(job.id, cost)
             if plan is not None:
                 self.qa_siblings(route.config, route.rc, route.runbook, job.branch)
@@ -1199,6 +1213,12 @@ class Worker:
     def _add_cost(self, job_id: int, cost: float) -> None:
         job = self._job(job_id)
         self._set(job_id, cost_idr=job.cost_idr + cost)
+
+    def _check_budget(self, slug: str, job_id: int | None = None) -> None:
+        """Before a model run: raises usage.BudgetExceeded over the project's
+        monthly budget or the story's cap."""
+        with self.sessions() as db:
+            usage.check(db, slug, job_id)
 
     def _last_event(self, job_id: int, kind: str) -> dict | None:
         from ..store import AwakEvent

@@ -17,8 +17,9 @@ import httpx
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import Settings
-from ..store import record_ai_call
+from ..store import AwakLlmAlias, record_ai_call
 from . import llm_conn, skills
+from . import usage as awak_usage
 
 log = logging.getLogger(__name__)
 
@@ -34,10 +35,14 @@ class AgentError(Exception):
 class Agent(Protocol):
     def run(self, purpose: str, model: str, system: str, task: str, *,
             slug: str = "", role_id: int | None = None,
-            profile: str) -> tuple[str, float]:
+            profile: str, job_id: int | None = None,
+            setup_run_id: int | None = None) -> tuple[str, float]:
         """Run to completion; returns (final text, cost in IDR). `model` is the
         server-default model; `slug`/`role_id` pick the BYOK connection;
-        `profile` is the run's skill-set profile (skills.prepare_set)."""
+        `profile` is the run's skill-set profile (skills.prepare_set);
+        `job_id`/`setup_run_id` name what the run is for (usage, budgets).
+        Raises usage.BudgetExceeded when the proxy refused a model call over
+        the project's budget or the story's cap."""
         ...
 
 
@@ -66,13 +71,15 @@ class HermesAgent:
 
     def run(self, purpose: str, model: str, system: str, task: str, *,
             slug: str = "", role_id: int | None = None,
-            profile: str) -> tuple[str, float]:
+            profile: str, job_id: int | None = None,
+            setup_run_id: int | None = None) -> tuple[str, float]:
         if not skills.PROFILE_RE.match(profile or ""):
             raise AgentError(f"not a skill-set profile: {profile!r}")
         with self.sessions() as db:
             conn = llm_conn.describe(db, self.settings, slug, role_id, model)
             alias = llm_conn.register_alias(db, self.settings, slug, role_id, model, purpose,
-                                            profile=profile)
+                                            profile=profile, job_id=job_id,
+                                            setup_run_id=setup_run_id)
         body = {
             "model": alias,
             "messages": [
@@ -94,22 +101,33 @@ class HermesAgent:
             data = r.json()
             content = data["choices"][0]["message"].get("content") or ""
             usage = data.get("usage") or {}
+            with self.sessions() as s:
+                stopped = self._budget_stop(s, alias, slug, job_id)
+                failure = llm_conn.provider_failure(s, alias)
+            if stopped is not None:
+                # The proxy refused a call over the budget: the run's answer
+                # is not the story's work.
+                stopped.cost_idr = self._cost(alias, usage, slug, conn.model)
+                raise stopped
             # Hermes turns a dead provider into a chatty final message; without
             # this the story would lose an attempt to an outage.
-            with self.sessions() as s:
-                failure = llm_conn.provider_failure(s, alias)
             if failure:
                 raise AgentError(f"model provider failed for the whole run: {failure}",
-                                 self._cost(usage))
+                                 self._cost(alias, usage, slug, conn.model))
             ok = True
-            return content, self._cost(usage)
+            return content, self._cost(alias, usage, slug, conn.model)
         except (httpx.HTTPError, KeyError, ValueError) as e:
             content = content or f"{type(e).__name__}: {e}"
             raise AgentError(f"Awak run failed: {type(e).__name__}: {e}",
-                             self._cost(usage)) from e
+                             self._cost(alias, usage, slug, conn.model)) from e
         finally:
             pt = int(usage.get("prompt_tokens") or 0)
             ct = int(usage.get("completion_tokens") or 0)
+            with self.sessions() as s:
+                proxied = awak_usage.run_cost(s, alias)
+            if proxied.calls and not (pt or ct):
+                pt, ct = proxied.prompt_tokens, proxied.completion_tokens
+            cost = self._cost(alias, usage, slug, conn.model)
             with self.sessions() as s:
                 llm_conn.drop_alias(s, alias)
                 record_ai_call(
@@ -117,12 +135,13 @@ class HermesAgent:
                     purpose=purpose,
                     model=conn.model,
                     llm_source=conn.source,
+                    project_slug=slug,
                     prompt=f"[system]\n{system}\n\n[user]\n{task}",
                     response=content,
                     prompt_tokens=pt,
                     completion_tokens=ct,
                     latency_ms=int((time.monotonic() - t0) * 1000),
-                    cost_idr=self._cost(usage),
+                    cost_idr=cost,
                     ok=ok,
                 )
 
@@ -168,6 +187,24 @@ class HermesAgent:
                 return served, r
             self.sleep(3.0)
 
-    def _cost(self, usage: dict) -> float:
-        tokens = int(usage.get("prompt_tokens") or 0) + int(usage.get("completion_tokens") or 0)
-        return tokens / 1000 * self.settings.token_price_idr_per_1k
+    def _budget_stop(self, db: Session, alias: str, slug: str,
+                     job_id: int | None) -> awak_usage.BudgetExceeded | None:
+        row = db.get(AwakLlmAlias, alias)
+        if row is None or not row.budget_stop:
+            return None
+        return (awak_usage.problem(db, slug, job_id)
+                or awak_usage.BudgetExceeded("monthly", 0, 0))
+
+    def _cost(self, alias: str, usage: dict, slug: str, model: str) -> float:
+        """What the run cost in IDR: the calls the proxy accounted (priced per
+        model); without any, the usage Hermes reported, priced the same way.
+        An unknown price counts as 0 here (the usage table keeps it unknown)."""
+        with self.sessions() as db:
+            proxied = awak_usage.run_cost(db, alias)
+            if proxied.calls:
+                return proxied.cost_idr
+            parsed = awak_usage.parse_usage(usage)
+            if parsed is None:
+                return 0.0
+            price, _ = awak_usage.price_for(db, self.settings, slug, model)
+        return awak_usage.cost_idr(self.settings, price, *parsed) or 0.0
