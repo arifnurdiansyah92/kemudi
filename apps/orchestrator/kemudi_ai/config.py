@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     awak_timeout_s: float = 1500.0
     runner_url: str = "http://kemudi-runner:8800"
     runner_key: str = ""
+    # kemudi-svc (infra/svc): the only client of the sandboxed Docker daemon
+    # (kemudi-dind); starts a project's compose services. Own key.
+    svc_url: str = "http://kemudi-svc:8810"
+    svc_key: str = ""
     workspace_dir: str = "/workspace"
     bare_repo: str = "/var/lib/kemudi-ai/awak.git"
     host_git: str = "/host-git"

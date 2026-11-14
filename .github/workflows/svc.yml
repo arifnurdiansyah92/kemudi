@@ -1,0 +1,22 @@
+name: svc
+
+on:
+  push:
+    branches: [main]
+    paths: ['infra/svc/**', '.github/workflows/svc.yml']
+  pull_request:
+    paths: ['infra/svc/**', '.github/workflows/svc.yml']
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          # kemudi-svc's image (docker:27-cli + apk python3) runs 3.12.
+          python-version: '3.12'
+      - run: pip install pytest==8.3.5
+      # svc.py and the sanitizer are stdlib only; the Docker integration test
+      # skips unless KEMUDI_SVC_DOCKER_TEST is set.
+      - run: python -m pytest infra/svc -q
