@@ -18,7 +18,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .auth import TaigaUser, current_user
-from .awak import agent_api, llm_proxy, skills_api
+from .awak import agent_api, llm_proxy, marketplace_api, skills_api
 from .backtest import metrics, run_backtest
 from .baseline import BaselineItem, draft_baseline
 from .config import Settings, get_settings
@@ -53,11 +53,12 @@ async def _lifespan(_app: FastAPI):
     # opens the real database file.
     override = _app.dependency_overrides.get(get_sessions)
     sessions = override() if override else _sessions(settings.ai_db_url)
-    from .awak import config_store, skills
+    from .awak import config_store, marketplace, skills
 
     with sessions() as db:
         config_store.seed_from_env(db, settings)
         skills.seed_builtin(db)
+        marketplace.seed_builtin_marketplaces(db)
         enabled = config_store.enabled_slugs(db)
     if settings.awak_project_slugs() or enabled:
         agent_api.start_worker_once(settings, sessions)
@@ -69,6 +70,7 @@ app = FastAPI(title="Kemudi AI", lifespan=_lifespan)
 app.include_router(agent_api.router)
 app.include_router(agent_api.intake_router)
 app.include_router(skills_api.router)
+app.include_router(marketplace_api.router)
 # Internal only (kemudi-sandbox): the gateway does not route /llm/.
 app.include_router(llm_proxy.router)
 
