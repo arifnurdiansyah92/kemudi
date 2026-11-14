@@ -216,7 +216,8 @@ class PartlyBlindTaiga(FakeTaiga):
 
 
 def test_one_broken_project_does_not_stop_the_others(tmp_path, repo):
-    settings = Settings(awak_projects="", ai_db_url="sqlite:///:memory:")
+    settings = Settings(awak_projects="", ai_db_url="sqlite:///:memory:",
+                        workspace_dir=str(tmp_path / "ws"))
     sessions = make_session(settings.ai_db_url)
     with sessions() as db:
         for slug in ("aaa-playfast", "kemudi"):

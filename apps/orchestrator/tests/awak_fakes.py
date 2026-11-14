@@ -176,7 +176,7 @@ class FakeRunner:
             entry = self.qa.pop(0)
             if isinstance(entry, str):
                 shots = []
-                qa = self.workspace / payload["job"] / ".qa" / "results"
+                qa = self.workspace / payload["path"] / ".qa" / "results"
                 qa.mkdir(parents=True, exist_ok=True)
                 for i in range(1, self.n + 1):
                     f = qa / f"ac{i}.png"

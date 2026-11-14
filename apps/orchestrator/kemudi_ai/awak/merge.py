@@ -195,8 +195,8 @@ class Merger:
                                       f"selesaikan manual. ({e})") from e
                 w._event(job.id, "merge_commit", {"sha": target, "onto": default_sha})
                 workdir = repo.prepare_at(job.branch, ref, target)
-                w._runner("install", job=workdir.name, **_commands(rc, "install"))
-                gates = (w._runner("gates", job=workdir.name, **_commands(rc, "gates"))
+                w._runner("install", path=w._path(workdir), **_commands(rc, "install"))
+                gates = (w._runner("gates", path=w._path(workdir), **_commands(rc, "gates"))
                          .get("gates") or [])
                 failed = [g["name"] for g in gates if not g.get("ok")]
                 if failed:
@@ -226,13 +226,13 @@ class Merger:
         if not saved.exists():
             raise MergeFailed("spec QA yang lulus tidak tersimpan; QA ulang tidak bisa jalan.")
         texts = criteria(story.get("description") or "")
-        w._runner("qa_reset", job=workdir.name)
+        w._runner("qa_reset", path=w._path(workdir))
         spec_dir = workdir / ".qa" / "spec"
         spec_dir.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(saved, spec_dir / SPEC_NAME)
         _chown(workdir / ".qa", repo.uid)
         token = w.qa_taiga.login()
-        report = w._runner("qa", job=workdir.name, token=token, user=w.qa_taiga.me,
+        report = w._runner("qa", path=w._path(workdir), token=token, user=w.qa_taiga.me,
                            project=w.s.qa_project, subdir=rc.subdir)
         verdict = evaluate(report, texts)
         w._event(job.id, "qa_rerun", {"outcome": verdict.outcome, "reason": verdict.reason})
@@ -251,7 +251,7 @@ class Merger:
                     job_now = w._job(job.id)
                     workdir = repo.prepare_at(job_now.branch, f"refs/heads/{job_now.branch}",
                                               target)
-                res = w.runner.call("deploy", job=workdir.name, command=command)
+                res = w.runner.call("deploy", path=w._path(workdir), command=command)
                 if res.get("infra_error"):
                     ok, out = False, str(res["infra_error"])
                 else:

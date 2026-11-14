@@ -49,13 +49,22 @@ Reply with one JSON object: {"stories": [{"subject", "description", "criteria", 
 
 
 def code_task(workspace: str, ref: int, subject: str, description: str,
-              feedback: str = "") -> str:
+              feedback: str = "", siblings: list[str] | None = None) -> str:
     parts = [
         f"Workspace: {workspace}",
         f"User story #{ref}: {subject}",
         "",
         description.strip(),
     ]
+    if siblings:
+        parts += [
+            "",
+            "The project's other repositories are checked out next to the workspace, "
+            "at their default branch, as read-only context (contracts, shared types, "
+            "how they call this repo). Changes there are discarded; commit only in the "
+            "workspace:",
+            *[f"- {s}" for s in siblings],
+        ]
     if feedback:
         parts += [
             "",

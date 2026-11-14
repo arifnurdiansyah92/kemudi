@@ -7,6 +7,7 @@ job row only remembers attempts, feedback and cost between ticks.
 import logging
 import os
 import shlex
+import shutil
 import socket
 import threading
 import time
@@ -27,7 +28,7 @@ from . import config_store, llm_conn, secrets, ssh
 from .config_store import ProjectConfig, RepoConfig, RoleConfig
 from .crypto import SecretKeyMissing
 from .agent import Agent, AgentError
-from .gitops import GitError, Repo, branch_for
+from .gitops import GitError, Repo, _force_remove, branch_for
 from .intake import TAG, story_areas
 from .merge import DONE_TAG, HUMAN_TAG, Merger, effective_mode, save_spec
 from .prompts import RoleScope, out_of_scope, prompt_version, render, render_role
@@ -102,6 +103,7 @@ class Worker:
         self.sleep = sleep
         self.command_runner = command_runner  # deploy over SSH
         self._seeded = False
+        self._swept = False
         self.holder = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 
     @property
@@ -122,6 +124,8 @@ class Worker:
         """A job left running by a crash becomes queued again (infra error)."""
         self._seed()
         with self.sessions() as db:
+            if not self._swept and not db.query(AwakJob).filter_by(state="running").count():
+                self._sweep_old_workspaces()
             for job in db.query(AwakJob).filter_by(state="running"):
                 job.state = "queued"
                 job.infra_errors += 1
@@ -133,6 +137,22 @@ class Worker:
                 job.merge_state = "requested"
                 db.commit()
                 record_event(db, job.id, "recovered", {"merge": True})
+
+    def _sweep_old_workspaces(self) -> None:
+        """Delete the pre-stage-1 `<workspace>/awak-us-<n>` folders, once: they
+        were shared between projects, so nothing in them is trusted. Stories
+        that used one start again from the coding step (branches survive in the
+        bare repos)."""
+        self._swept = True
+        root = Path(self.s.workspace_dir)
+        for d in sorted(root.glob("awak-us-*")) if root.is_dir() else []:
+            try:
+                if d.is_symlink() or d.is_file():
+                    d.unlink()
+                elif d.is_dir():
+                    shutil.rmtree(d, onerror=_force_remove)
+            except OSError as e:
+                log.warning("awak: could not delete old workspace %s: %s", d, e)
 
     def tick(self) -> bool:
         """Process at most one story. Returns True if it did any work.
@@ -403,19 +423,21 @@ class Worker:
             base_sha = (repo.sha(job.branch) if repo.has_branch(job.branch)
                         else main_sha)
             workdir = repo.prepare(job.branch)
+            siblings = [sib.checkout_default(job.branch) for sib in self._siblings(route)]
             self._event(job.id, "prepared", {"base": base_sha})
-            self._runner("install", job=workdir.name, **_commands(rc, "install"))
+            self._runner("install", path=self._path(workdir), **_commands(rc, "install"))
 
             # code
             self._set(job.id, phase="code")
             task = code_task(str(workdir), job.story_ref, story["subject"],
-                             story.get("description") or "", job.feedback)
+                             story.get("description") or "", job.feedback,
+                             siblings=[str(d) for d in siblings])
             system = render_role(role, route.config.repos)
             report, cost = self.agent.run("awak.code", role.model, system, task,
                                           slug=route.config.slug, role_id=role.id)
             self._add_cost(job.id, cost)
             self._set(job.id, phase="collect")
-            self._runner("commit", job=workdir.name,
+            self._runner("commit", path=self._path(workdir),
                          message=f"awak: uncommitted changes from attempt {n} "
                                  f"(US #{job.story_ref})")
         self._ours(story["id"], {"in-progress"}, project)
@@ -451,7 +473,7 @@ class Worker:
 
         # gates
         self._set(job.id, phase="gates")
-        gates = (self._runner("gates", job=workdir.name, **_commands(rc, "gates"))
+        gates = (self._runner("gates", path=self._path(workdir), **_commands(rc, "gates"))
                  .get("gates") or [])
         failed = [g for g in gates if not g.get("ok")]
         table = "\n".join(f"- {'✅' if g.get('ok') else '❌'} {g['name']}" for g in gates)
@@ -529,13 +551,13 @@ class Worker:
         token = self.qa_taiga.login()
         spec_feedback = ""
         for _ in range(2):
-            self._runner("qa_reset", job=workdir.name)
+            self._runner("qa_reset", path=self._path(workdir))
             task = qa_task(str(workdir), job.story_ref, story["subject"], texts,
                            self.s.qa_project, spec_feedback, app_dir=route.rc.subdir)
             _, cost = self.agent.run("awak.qa", model, system, task, slug=route.config.slug,
                                      role_id=qa_role.id if qa_role else None)
             self._add_cost(job.id, cost)
-            report = self._runner("qa", job=workdir.name, token=token,
+            report = self._runner("qa", path=self._path(workdir), token=token,
                                   user=self.qa_taiga.me, project=self.s.qa_project,
                                   subdir=route.rc.subdir)
             verdict = evaluate(report, texts)
@@ -591,8 +613,26 @@ class Worker:
 
     def _repo_of(self, cfg: ProjectConfig, rc: RepoConfig, key: AwakKey | None) -> Repo:
         if self.repo is not None and rc.url == self.s.host_git:
-            return self.repo  # the injected Kemudi repo (iteration 1 wiring, tests)
+            # The injected Kemudi repo (tests); placed like a configured one.
+            self.repo.slug, self.repo.name = cfg.slug, rc.name
+            return self.repo
         return repo_for(cfg, rc, self.s, key)
+
+    def _siblings(self, route: Route) -> list[Repo]:
+        """The project's other repos, synced, for checkout beside the story's.
+        Never the injected repo: that one is the story's own."""
+        with self.sessions() as db:
+            rows = [(r, config_store.key_row(db, r.key_id))
+                    for r in route.config.repos if r.id != route.rc.id]
+        out = []
+        for r, key in rows:
+            sib = repo_for(route.config, r, self.s, key)
+            sib.sync_default()
+            out.append(sib)
+        return out
+
+    def _path(self, workdir: Path) -> str:
+        return runner_path(self.s.workspace_dir, workdir)
 
     def _requested_merge(self, project: Project, job: AwakJob) -> None:
         """A human clicked Merge (approve mode). Re-checks the mode first."""
@@ -608,7 +648,7 @@ class Worker:
 
     def _unclean(self, workdir: Path, sha: str, rc: RepoConfig) -> list[str]:
         """What in the workspace differs from `sha`, besides build output."""
-        res = self._runner("clean_check", job=workdir.name)
+        res = self._runner("clean_check", path=self._path(workdir))
         out = []
         head = str(res.get("head") or "")
         if head != sha:
@@ -744,7 +784,14 @@ def repo_for(config: ProjectConfig, repo_row: RepoConfig, settings: Settings,
 
     return Repo(bare, repo_row.url, settings.workspace_dir, settings.awak_uid,
                 default_branch=repo_row.default_branch, subdir=repo_row.subdir, git_env=env,
-                scratch_dir=str(Path(settings.repos_dir) / "scratch"))
+                scratch_dir=str(Path(settings.repos_dir) / "scratch"), slug=config.slug,
+                name=repo_row.name)
+
+
+def runner_path(workspace_dir: str, workdir: Path) -> str:
+    """A checkout as the runner names it: relative to the workspace, `/`-joined
+    (`<slug>/us-<ref>/<repo>`); the runner validates its shape."""
+    return Path(workdir).relative_to(Path(workspace_dir)).as_posix()
 
 
 def command_lines(text: str) -> list[list[str]]:

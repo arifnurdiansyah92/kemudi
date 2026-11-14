@@ -1,15 +1,18 @@
 """kemudi-runner: a tiny HTTP service that runs a fixed set of commands in an
 Awak job workspace. Python stdlib only.
 
-POST /install    {job, subdir?, commands?}  pnpm install (frozen, no scripts), or the commands
-POST /commit     {job, message}             commit anything the agent left
-POST /gates      {job, subdir?, commands?}  tsc, eslint, vitest, vite build, or the commands
-POST /qa_reset   {job}                      empty .qa/ for a fresh spec
-POST /qa         {job, token, user, project, subdir?}  run .qa/spec twice against a dev
-                                            server started in subdir (default apps/web)
-POST /clean_check {job}                     HEAD sha and `git status --ignored` entries
-POST /deploy     {job, command}             the project's post-merge deploy command (sh -c)
-                                            in the job workspace at the merged commit
+POST /install    {path, subdir?, commands?}  pnpm install (frozen, no scripts), or the commands
+POST /commit     {path, message}             commit anything the agent left
+POST /gates      {path, subdir?, commands?}  tsc, eslint, vitest, vite build, or the commands
+POST /qa_reset   {path}                      empty .qa/ for a fresh spec
+POST /qa         {path, token, user, project, subdir?}  run .qa/spec twice against a dev
+                                             server started in subdir (default apps/web)
+POST /clean_check {path}                     HEAD sha and `git status --ignored` entries
+POST /deploy     {path, command}             the project's post-merge deploy command (sh -c)
+                                             in the job workspace at the merged commit
+
+`path` names one checkout under WORKSPACE: `<slug>/us-<ref>/<repo>` for a
+story, `<slug>/setup/<repo>` for setup runs.
 
 `commands` is [{name, argv, timeout}], run without a shell in `subdir` of the
 job workspace; argv[0] must be in ALLOWED_PROGRAMS. Without `commands`, the
@@ -36,7 +39,9 @@ KEY = os.environ.get("KEMUDI_RUNNER_KEY", "")
 GATEWAY = os.environ.get("KEMUDI_DEV_GATEWAY", "http://kemudi-gateway")
 CONFIG = "/opt/runner/playwright.config.cjs"
 QA_PORT = 5199
-JOB_RE = re.compile(r"^awak-us-\d+$")
+# <project slug>/<us-<ref> | setup>/<repo name>
+PATH_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,99}/(us-\d+|setup)/"
+                     r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
 GIT_SAFE = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false",
             "-c", "safe.directory=*"]
 
@@ -63,12 +68,16 @@ def run(cmd: list[str], cwd: Path, timeout: int, env: dict | None = None) -> tup
 
 
 def job_dir(body: dict) -> Path:
-    job = str(body.get("job", ""))
-    if not JOB_RE.match(job):
-        raise ValueError(f"bad job name {job!r}")
-    d = WORKSPACE / job
-    if not d.is_dir():
-        raise ValueError(f"no workspace for {job}")
+    """The checkout named by `path` (`<slug>/us-<ref>/<repo>` or
+    `<slug>/setup/<repo>`), relative to WORKSPACE. A symlink anywhere on the
+    way could point outside, so the resolved directory must stay inside."""
+    rel = str(body.get("path", ""))
+    if not PATH_RE.fullmatch(rel):
+        raise ValueError(f"bad workspace path {rel!r}")
+    d = WORKSPACE.joinpath(*rel.split("/"))
+    if (d.is_symlink() or not d.is_dir()
+            or not d.resolve().is_relative_to(WORKSPACE.resolve())):
+        raise ValueError(f"no workspace at {rel}")
     return d
 
 

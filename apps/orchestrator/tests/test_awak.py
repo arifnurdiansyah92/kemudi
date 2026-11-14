@@ -118,7 +118,8 @@ def host(tmp_path):
 
 @pytest.fixture
 def repo(tmp_path, host):
-    return Repo(str(tmp_path / "bare.git"), str(host / ".git"), str(tmp_path / "ws"), uid=0)
+    return Repo(str(tmp_path / "bare.git"), str(host / ".git"), str(tmp_path / "ws"), uid=0,
+                slug="kemudi", name="kemudi")
 
 
 def test_git_roundtrip_pushes_only_awak_branches(repo, host):
@@ -161,7 +162,8 @@ def test_rework_reuses_branch(repo):
 # --- the loop -------------------------------------------------------------------
 
 def make_worker(tmp_path, repo, agent, runner, taiga=None):
-    settings = Settings(awak_projects="kemudi", ai_db_url="sqlite:///:memory:")
+    settings = Settings(awak_projects="kemudi", ai_db_url="sqlite:///:memory:",
+                        workspace_dir=str(tmp_path / "ws"))
     sessions = make_session(settings.ai_db_url)
     taiga = taiga or FakeTaiga()
     w = Worker(settings, sessions, taiga, FakeTaiga("awak-qa"), agent, runner, repo,
@@ -358,7 +360,8 @@ def test_infra_error_after_coding_resumes_without_recoding(tmp_path, repo):
 # --- iteration 2: projects come from the database -------------------------------
 
 def test_worker_serves_db_enabled_projects(tmp_path, repo):
-    settings = Settings(awak_projects="", ai_db_url="sqlite:///:memory:")
+    settings = Settings(awak_projects="", ai_db_url="sqlite:///:memory:",
+                        workspace_dir=str(tmp_path / "ws"))
     sessions = make_session(settings.ai_db_url)
     with sessions() as db:
         db.add(AwakProject(slug="kemudi", enabled=True, merge_mode="manual"))

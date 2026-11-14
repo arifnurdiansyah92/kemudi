@@ -239,7 +239,8 @@ def _no_secret_key(e: SecretKeyMissing) -> HTTPException:
 
 
 class RepoIn(BaseModel):
-    name: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,99}$")
+    # The checkout folder name in the workspace (the runner validates the same shape).
+    name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
     role: Literal["web", "api", "mobile", "other"]
     url: str = Field(max_length=500)
     default_branch: str = Field("main", pattern=r"^[A-Za-z0-9._/-]{1,100}$")
