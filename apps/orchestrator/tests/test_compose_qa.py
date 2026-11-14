@@ -367,19 +367,22 @@ def test_failed_start_logs_reach_the_card_redacted(tmp_path, repo):
     assert v["JWT_SECRET_KEY"] not in str(events(sessions, "compose_up"))
 
 
-def test_failing_init_blocks_with_redacted_output(tmp_path, repo):
+def test_failing_init_goes_back_to_the_agent_redacted(tmp_path, repo):
+    # init runs in an image built from the branch: the story's code is the
+    # likely cause, so it is reworked (an attempt), not blocked
     w, taiga, sessions, runner, agent, order, v = setup(tmp_path, repo)
     w.svc.exec = [{"ok": False, "exit": 1,
                    "output": f"psql: password authentication failed ({v['QA_ADMIN_PASSWORD']})"}]
     w.tick()
     with sessions() as db:
-        assert db.query(AwakJob).one().state == "failed"
-    assert taiga.story(1)["is_blocked"]
-    assert "qa" not in runner.calls and order[-1] == "svc_down"
-    text = taiga.texts(1)[-1]
-    assert "init `python scripts/init_qa.py`" in text and "authentication failed" in text
-    assert v["QA_ADMIN_PASSWORD"] not in text
+        job = db.query(AwakJob).one()
+        assert job.state == "passed" and job.attempts == 2
+    assert not taiga.story(1)["is_blocked"]
+    fail = next(x for x in taiga.texts(1) if "Gagal: init" in x)
+    assert "init `python scripts/init_qa.py`" in fail and "authentication failed" in fail
+    assert "Kembali ke In progress" in fail and v["QA_ADMIN_PASSWORD"] not in fail
     assert v["QA_ADMIN_PASSWORD"] not in str(events(sessions, "service_failed"))
+    assert order.count("svc_down") == 2
 
 
 def test_login_failure_blocks_the_story(tmp_path, repo):
@@ -432,13 +435,13 @@ def test_run_in_gates_build_up_deps_exec_and_down(tmp_path, repo):
     w.tick()
     assert taiga.status_of(1) == "done", taiga.texts(1)
     assert [o for o in order if o.startswith("svc")] == [
-        "svc_up", "svc_exec:python -m pytest -q tests", "svc_exec:python -m flake8 app",
-        "svc_down"]
+        "svc_up", "svc_exec:python scripts/init_qa.py", "svc_exec:python -m pytest -q tests",
+        "svc_exec:python -m flake8 app", "svc_down"]  # init first: the same fresh DB as QA
     [up] = w.svc.ops("svc_up")
     assert up["up"] == ["postgres", "redis"] and "expose" not in up
     assert up["path"] == "kemudi/us-12/kemudi" and up["env"] == {
         "JWT_SECRET_KEY": v["JWT_SECRET_KEY"]}
-    ex = w.svc.ops("svc_exec")[0]
+    ex = w.svc.ops("svc_exec")[1]
     assert ex["service"] == "backend" and ex["timeout"] == checks.TIMEOUTS["checks"]
     assert "api: python -m pytest -q tests" in taiga.texts(1)[-1]
     # install never ran for the run_in app
@@ -449,7 +452,8 @@ def test_run_in_gates_build_up_deps_exec_and_down(tmp_path, repo):
 def test_run_in_gate_failure_reworks_and_still_goes_down(tmp_path, repo):
     w, taiga, sessions, runner, agent, order, v = setup(tmp_path, repo, _run_in_spec(),
                                                         qa_mode="gates")
-    w.svc.exec = [{"ok": False, "exit": 1,
+    w.svc.exec = [{"ok": True, "exit": 0, "output": "schema ready"},  # init
+                  {"ok": False, "exit": 1,
                    "output": f"FAILED tests/test_x.py {v['JWT_SECRET_KEY']}"}]
     w.tick()
     assert order.index("svc_down") > order.index("svc_exec:python -m pytest -q tests")
@@ -517,6 +521,58 @@ def test_worker_start_survives_an_unreachable_svc(tmp_path):
     w, runner = _start_worker(tmp_path, running=False, svc=FakeSvc(fail=SvcError("down")))
     w.recover()
     assert runner.calls == ["reap"]
+
+
+def test_worker_sweeps_compose_when_idle_at_most_every_ten_minutes(tmp_path):
+    from kemudi_ai.awak.worker import SWEEP_EVERY_S
+
+    w, runner = _start_worker(tmp_path, running=False)
+    t = [1000.0]
+    w.clock = lambda: t[0]
+    w.idle_sweep()  # before the start sweep: nothing
+    assert w.svc.calls == []
+    w.recover()
+    assert len(w.svc.calls) == 1
+    t[0] += SWEEP_EVERY_S - 1
+    w.idle_sweep()
+    assert len(w.svc.calls) == 1
+    # a merge in progress (and a running job) keep their compose projects
+    with w.sessions() as db:
+        db.query(AwakJob).filter_by(story_ref=13).one().merge_state = "merging"
+        db.commit()
+    t[0] += 1
+    w.idle_sweep()
+    assert w.svc.calls[-1] == ("svc_sweep", {"keep": ["kemudi-us13"]})
+    t[0] += SWEEP_EVERY_S / 2
+    w.idle_sweep()
+    assert len(w.svc.calls) == 2
+
+
+def test_idle_sweep_runs_from_the_worker_loop(tmp_path):
+    from kemudi_ai.awak.worker import SWEEP_EVERY_S
+
+    w, runner = _start_worker(tmp_path, running=False)
+    t = [0.0]
+    w.clock = lambda: t[0]
+    loops = []
+
+    def sleep(_s):
+        loops.append(1)
+        t[0] += SWEEP_EVERY_S
+
+    w.sleep = sleep
+    w.tick = lambda: False
+    w.run_forever(stop_flag=lambda: len(loops) >= 3)
+    sweeps = [c for c in w.svc.calls if c[0] == "svc_sweep"]
+    assert len(sweeps) == 3  # the start sweep, then one per idle pass past 10 minutes
+
+
+def test_idle_sweep_survives_an_unreachable_svc(tmp_path):
+    w, runner = _start_worker(tmp_path, running=False)
+    w.recover()
+    w.svc.fail = SvcError("down")
+    w.clock = lambda: 10 ** 9
+    w.idle_sweep()  # logged, not raised
 
 
 def test_browser_mode_with_compose_qa_needs_kemudi_svc(agent_client):

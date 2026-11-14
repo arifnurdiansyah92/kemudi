@@ -335,3 +335,153 @@ def test_rewrite_environment_unknown_service(doc, checkout):
     reduced = sanitize.reduce(doc, ["backend"], checkout)
     with pytest.raises(sanitize.Refused):
         sanitize.rewrite(reduced, "p", None, {"inbox-backend": {"A": "b"}})
+
+
+# --- after interpolation ---------------------------------------------------------------
+
+
+def _interpolated(doc, checkout):
+    """What compose's second `config` gives back: the reduced file, values
+    filled in, with the project name and volume names compose adds."""
+    out = copy.deepcopy(sanitize.reduce(doc, ["backend"], checkout))
+    out["name"] = "playfast-us1"
+    out["networks"] = {"default": {"name": "playfast-us1_default"}}
+    out["volumes"] = {v: {"name": f"playfast-us1_{v}"} for v in out.get("volumes", {})}
+    return out
+
+
+@pytest.mark.parametrize("image", [
+    "kemudi-other-us3-backend", "KEMUDI-other-us3-backend:latest",
+    "docker.io/library/kemudi-other-us3-backend", "library/kemudi-x",
+    "sha256:" + "a" * 64, "a" * 12, "3f2a"])
+def test_reserved_images_after_interpolation(doc, checkout, image):
+    # `image: "${UNSET:-kemudi-other-us3-backend}"` passes the first check...
+    doc["services"]["redis"]["image"] = "${UNSET:-" + image + "}"
+    interpolated = _interpolated(doc, checkout)
+    # ...and is what compose makes of it
+    interpolated["services"]["redis"]["image"] = image
+    with pytest.raises(Refused, match="reserved"):
+        sanitize.reduce(interpolated, ["backend", "postgres", "redis"], checkout)
+    with pytest.raises(Refused, match="reserved"):
+        sanitize.rewrite(interpolated, "playfast-us1", None)
+
+
+@pytest.mark.parametrize("image", ["redis:7-alpine", "postgres:16", "ghcr.io/acme/kemudi:1",
+                                   "acme/kemudi-tools", "kemudi"])
+def test_ordinary_images_pass(doc, checkout, image):
+    interpolated = _interpolated(doc, checkout)
+    interpolated["services"]["redis"]["image"] = image
+    sanitize.reduce(interpolated, ["backend", "postgres", "redis"], checkout)
+    assert sanitize.rewrite(interpolated, "p", None)["services"]["redis"]["image"] == image
+
+
+def test_interpolated_build_context_must_stay_in_the_checkout(doc, checkout, tmp_path):
+    # a folder literally named `${X-..}` passes the first check
+    (checkout / "${X-..}" / "backend").mkdir(parents=True)
+    (checkout / "${X-..}" / "backend" / "Dockerfile").write_text("FROM scratch\n")
+    doc["services"]["backend"]["build"]["context"] = str(checkout / "${X-..}")
+    sanitize.reduce(doc, ["backend"], checkout)
+    interpolated = _interpolated(doc, checkout)
+    for escaped in (str(checkout.parent), str(tmp_path / "run" / "svc")):
+        interpolated["services"]["backend"]["build"]["context"] = escaped
+        with pytest.raises(Refused, match="outside the checkout"):
+            sanitize.reduce(interpolated, ["backend", "postgres", "redis"], checkout)
+
+
+def test_interpolated_dockerfile_and_volume_name_are_checked_again(doc, checkout):
+    interpolated = _interpolated(doc, checkout)
+    interpolated["services"]["backend"]["build"]["dockerfile"] = "../../x/Dockerfile"
+    with pytest.raises(Refused, match="outside the checkout"):
+        sanitize.reduce(interpolated, ["backend", "postgres", "redis"], checkout)
+    interpolated = _interpolated(doc, checkout)
+    interpolated["volumes"]["pgdata"]["name"] = "other-us2_pgdata"
+    with pytest.raises(Refused, match="'name'"):
+        sanitize.reduce(interpolated, ["backend", "postgres", "redis"], checkout)
+
+
+def test_interpolated_document_passes_the_recheck(doc, checkout):
+    interpolated = _interpolated(doc, checkout)
+    again = sanitize.reduce(interpolated, ["backend", "postgres", "redis"], checkout)
+    assert list(again["services"]) == ["backend", "postgres", "redis"]
+
+
+def test_precheck_doc():
+    sanitize.precheck_doc({"services": {"a": {"image": "x"}}})
+    with pytest.raises(Refused, match="'include'"):
+        sanitize.precheck_doc({"include": [{"path": ["x.yml"]}], "services": {}})
+    for key in ("extends", "env_file", "label_file"):
+        with pytest.raises(Refused, match=repr(key)):
+            sanitize.precheck_doc({"services": {"a": {"image": "x", key: ["y"]}}})
+
+
+# --- Dockerfiles ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("text", [
+    "FROM kemudi-other-us3-backend\n",
+    "FROM --platform=linux/amd64 kemudi-other-us3-backend AS base\n",
+    "FROM docker.io/library/kemudi-x:latest\n",
+    "FROM sha256:" + "b" * 64 + "\n",
+    "FROM alpine:3.20\nCOPY --from=kemudi-other-us3-backend /app /app\n",
+    "FROM alpine:3.20\nRUN --mount=type=bind,from=kemudi-x,target=/m true\n",
+    "FROM alpine:3.20\nRUN --mount=from=kemudi-x,target=/m true\n",
+    "ARG BASE=kemudi-other-us3-backend\nFROM $BASE\n",
+    "ARG BASE=kemudi-other-us3-backend\nFROM ${BASE}\n",
+    "FROM ${NOPE:-kemudi-x}\n",
+    "FROM alpine:3.20 \\\n  AS a\nCOPY \\\n  --from=kemudi-x /a /a\n",
+    "FROM \\\n  kemudi-x\n",
+    "# syntax=kemudi-x\nFROM alpine:3.20\n",
+])
+def test_dockerfile_refusals(text):
+    with pytest.raises(Refused, match="reserved"):
+        sanitize.check_dockerfile("backend", text, {})
+
+
+def test_dockerfile_build_arg_is_expanded():
+    text = "ARG BASE=alpine:3.20\nFROM $BASE\n"
+    sanitize.check_dockerfile("backend", text, {})
+    with pytest.raises(Refused, match="reserved"):
+        sanitize.check_dockerfile("backend", text, {"BASE": "kemudi-other-us3-backend"})
+
+
+@pytest.mark.parametrize("text", [
+    "FROM python:3.12-slim AS build\nRUN pip wheel .\nFROM python:3.12-slim\n"
+    "COPY --from=build /w /w\nCOPY --from=0 /x /x\n",
+    "# syntax=docker/dockerfile:1\nARG BASE=node:22\nFROM ${BASE}\nRUN echo kemudi-ok\n",
+    "FROM scratch\n",
+    "FROM --platform=$BUILDPLATFORM golang:1.22 AS b\n",
+])
+def test_dockerfile_ordinary(text):
+    sanitize.check_dockerfile("backend", text, {})
+
+
+def test_check_dockerfiles_reads_each_built_service(doc, checkout):
+    interpolated = _interpolated(doc, checkout)
+    sanitize.check_dockerfiles(interpolated, checkout)
+    (checkout / "backend" / "Dockerfile").write_text("FROM kemudi-other-us3-backend\n")
+    with pytest.raises(Refused, match="service 'backend'.*reserved"):
+        sanitize.check_dockerfiles(interpolated, checkout)
+    (checkout / "backend" / "Dockerfile").write_text("#" * (sanitize.DOCKERFILE_MAX + 1))
+    with pytest.raises(Refused, match="over 1 MB"):
+        sanitize.check_dockerfiles(interpolated, checkout)
+
+
+# --- numbers -----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("key,value", [("pids_limit", "abc"), ("pids_limit", 1.5),
+                                       ("pids_limit", True), ("mem_limit", "lots"),
+                                       ("mem_limit", [1])])
+def test_bad_limits_are_refusals_naming_the_key(doc, checkout, key, value):
+    interpolated = _interpolated(doc, checkout)
+    interpolated["services"]["redis"][key] = value
+    with pytest.raises(Refused, match=f"service 'redis': {key}"):
+        sanitize.rewrite(interpolated, "p", None)
+
+
+def test_limits_as_strings(doc, checkout):
+    interpolated = _interpolated(doc, checkout)
+    interpolated["services"]["redis"]["pids_limit"] = "100"
+    interpolated["services"]["postgres"]["pids_limit"] = -1
+    out = sanitize.rewrite(interpolated, "p", None)["services"]
+    assert out["redis"]["pids_limit"] == 100 and out["postgres"]["pids_limit"] == 512

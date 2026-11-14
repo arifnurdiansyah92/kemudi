@@ -82,6 +82,7 @@ def now() -> datetime:
 # Only one worker may run (the API's thread, `awak-tick --forever`, several
 # uvicorn workers...). A crashed holder's lease lapses after this long.
 LEASE_TTL_S = 120
+SWEEP_EVERY_S = 600  # compose sweep when idle, at most this often
 _SHA_RE = re.compile(r"[0-9a-f]{7,64}")
 
 
@@ -118,6 +119,8 @@ class Worker:
         self._seeded = False
         self._swept = False
         self._services_swept = False
+        self.clock: Callable[[], float] = time.monotonic
+        self._last_compose_sweep: float | None = None
         self.holder = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 
     @property
@@ -212,25 +215,52 @@ class Worker:
             except OSError as e:
                 log.warning("awak: could not delete old workspace %s: %s", d, e)
 
+    def _compose_keep(self, db: Session) -> set[str]:
+        """Compose projects a sweep leaves up: those of running jobs and merges
+        in progress (the one place to add others, e.g. setup runs)."""
+        keep: set[str] = set()
+        busy = db.query(AwakJob).filter(
+            or_(AwakJob.state == "running", AwakJob.merge_state == "merging")).all()
+        for j in busy:
+            rb = runbook.load(db, j.project_slug)
+            keep |= set(checks.compose_projects(rb, j.project_slug,
+                                                f"us{j.story_ref}").values())
+        # an active setup run's project (`<slug>-setup`) is reused by its proof
+        keep |= SetupRunner(self).keep_projects(db)
+        return keep
+
+    def _sweep_compose(self, db: Session) -> None:
+        """Every compose project kemudi-svc has, except `_compose_keep`, comes
+        down with its images. Failures are logged, never fatal."""
+        self._last_compose_sweep = self.clock()
+        if self.svc is None:
+            return
+        try:
+            res = self.svc.call("svc_sweep", keep=sorted(self._compose_keep(db)))
+            if res.get("removed"):
+                log.warning("awak: swept compose projects %s", res["removed"])
+            if res.get("infra_error"):
+                log.warning("awak: compose sweep failed: %s", res["infra_error"])
+        except SvcError as e:
+            log.warning("awak: compose sweep failed: %s", e)
+
+    def idle_sweep(self) -> None:
+        """When the worker has nothing to do: a compose sweep at most every
+        SWEEP_EVERY_S, so nothing a story left behind (a crash between svc_up
+        and svc_down, a timed-out call) stays in kemudi-dind for long."""
+        if self.svc is None or self._last_compose_sweep is None:
+            return  # the start sweep (recover) comes first
+        if self.clock() - self._last_compose_sweep < SWEEP_EVERY_S:
+            return
+        with self.heartbeat(), self.sessions() as db:
+            self._sweep_compose(db)
+
     def _sweep_services(self, db: Session, running: list[AwakJob]) -> None:
         """Once per worker: compose projects of jobs that are not running come
         down (kemudi-svc), and with no job running, the runner stops every
         process service left behind. Failures are logged, never fatal."""
         self._services_swept = True
-        if self.svc is not None:
-            keep: set[str] = set()
-            for j in running:
-                rb = runbook.load(db, j.project_slug)
-                keep |= set(checks.compose_projects(rb, j.project_slug,
-                                                    f"us{j.story_ref}").values())
-            # an active setup run's project (`<slug>-setup`) is reused by its proof
-            keep |= SetupRunner(self).keep_projects(db)
-            try:
-                res = self.svc.call("svc_sweep", keep=sorted(keep))
-                if res.get("removed"):
-                    log.warning("awak: swept compose projects %s", res["removed"])
-            except SvcError as e:
-                log.warning("awak: compose sweep failed: %s", e)
+        self._sweep_compose(db)
         if not running:
             try:
                 self.runner.call("reap")
@@ -330,6 +360,11 @@ class Worker:
                     log.exception("awak tick failed")
                     worked = False
                 if not worked:
+                    if held:
+                        try:
+                            self.idle_sweep()
+                        except Exception:  # noqa: BLE001
+                            log.exception("awak idle sweep failed")
                     self.sleep(self.s.poll_interval_s)
         finally:
             if held:
@@ -475,6 +510,18 @@ class Worker:
                                                        "logs": e.logs[-4000:],
                                                        "infra": e.infra})
                 logs = f"\n\n```\n{e.logs.strip()[-1500:]}\n```" if e.logs.strip() else ""
+                if e.rework:
+                    feedback = secrets.redact(
+                        f"{e}\n\nOutput:\n{e.logs.strip()[-3000:]}\n\nThe runbook's command "
+                        "runs in an image built from your branch, on a fresh database, and "
+                        "works on the default branch: fix your change so it does.",
+                        self.redact_values_for(project.slug))
+                    job = self._set(job_id, attempts=job.attempts + 1, feedback=feedback,
+                                    phase="")
+                    self._move(story["id"], project.status("in-progress"))
+                    self._say(story["id"], job_id, f"Gagal: {e}{logs}\n\nKembali ke In "
+                              "progress; Awak akan memperbaiki.")
+                    continue
                 if not e.infra:
                     self._block(project, story, job_id, f"Berhenti: {e}{logs}")
                     return
@@ -1165,7 +1212,7 @@ def runner_path(workspace_dir: str, workdir: Path) -> str:
 
 # What the install, the gates and QA themselves leave in a workspace. Only
 # untracked or ignored paths qualify; a changed tracked file never does.
-QA_DIR = ".qa"                                   # repo root only
+QA_DIR = ".qa"                                   # repo root only, any status
 ANYWHERE_DIRS = {"node_modules", "__pycache__"}  # at any depth
 BUILD_DIRS = {"dist", ".vite", ".turbo", "coverage", ".pytest_cache", ".ruff_cache",
               ".mypy_cache", ".venv", "target", ".next"}  # at the repo root or an app dir
@@ -1184,6 +1231,10 @@ def build_output(status: str, path: str, subdir: str | list[str] = "",
     parts = path.strip("/").split("/")
     if not parts or any(p in ("", ".", "..") for p in parts):
         return False
+    if parts[0] == QA_DIR:
+        # Kemudi's own folder (specs, results, process service logs), however
+        # git lists it: as the folder or file by file.
+        return True
     dirs = [subdir] if isinstance(subdir, str) else subdir
     app_dirs = {"", *(d.strip("/") for d in dirs)}
     if status == "!!" and not path.endswith("/"):

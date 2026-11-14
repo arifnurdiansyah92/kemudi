@@ -40,3 +40,17 @@ def test_svc_client_400_is_a_refusal_other_errors_are_infra():
     with pytest.raises(SvcError) as e:
         c.call("svc_down", project="p")
     assert not isinstance(e.value, SvcRejected)
+
+
+def test_svc_client_waits_per_op_longer_than_svc_takes():
+    seen = {}
+
+    def handler(request):
+        seen[request.url.path] = request.extensions["timeout"]["read"]
+        return httpx.Response(200, json={"ok": True})
+
+    c = SvcClient("http://svc", "k", transport=httpx.MockTransport(handler))
+    for op in ("svc_up", "svc_down", "svc_exec", "svc_logs"):
+        c.call(op, project="p")
+    assert seen["/svc_up"] == 1500 and seen["/svc_down"] == 2400
+    assert seen["/svc_exec"] == seen["/svc_logs"] == SvcClient.TIMEOUT_S == 1800

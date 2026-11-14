@@ -5,18 +5,31 @@ svc.py feeds it the output of `docker compose config --no-interpolate
 depends_on, absolute build contexts) and writes what comes back.
 
 1. `precheck_text` refuses, before compose reads the file, the keys that make
-   compose read other files (`include`, `extends`, `env_file`, `label_file`).
+   compose read other files (`include`, `extends`, `env_file`, `label_file`),
+   and `precheck_doc` refuses them again in compose's first JSON output. Both
+   are a convenience (a YAML escape gets past the text check): the main
+   control is that compose first reads the file as uid 10000, which cannot
+   read svc's own files.
 2. `reduce` keeps the selected services plus their `depends_on` closure and
    checks them against an allowlist; anything else is refused with the key
    named. Services outside the closure are never looked at, so their `${X:?}`
    or odd keys do not matter. Build contexts and Dockerfiles must resolve
    inside the checkout without passing a symlink.
 3. svc.py interpolates the reduced file with compose (cleared environment,
-   only the vault env file from `env_file_text`).
+   only the vault env file from `env_file_text`), then runs `reduce` again on
+   the result: a value like `${X:-..}` or `${X:-kemudi-other}` only shows what
+   it is after interpolation. `check_dockerfiles` reads each built service's
+   Dockerfile and refuses base images that name another project's image.
 4. `rewrite` turns the interpolated file into the one svc runs: built images
    named `kemudi-<project>-<service>`, `restart: "no"`, memory and pids
    capped, only the exposed port published (random host port), every
    service, volume and built image labelled `kemudi.project=<project>`.
+
+Images of every project share kemudi-dind's image store. The image-name and
+Dockerfile checks keep the obvious references to another project's image out
+(a simple scan, not a Dockerfile parser); the real control is that svc_down
+removes a project's images (by label) and the worker runs one job at a time,
+so no other project's image is left to use.
 """
 
 import os
@@ -62,6 +75,31 @@ ENV_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,99}")
 
 class Refused(ValueError):
     """The compose file (or request) is outside what svc runs."""
+
+
+# Image references that could name an image svc built for a project (maybe
+# another one): `kemudi-*` (also as docker.io/library/kemudi-*), an image id
+# (`sha256:...`) or a bare hex string docker would match against image ids.
+_REGISTRY_PREFIXES = ("docker.io/library/", "index.docker.io/library/", "docker.io/",
+                      "index.docker.io/", "library/")
+_HEX_RE = re.compile(r"[0-9a-f]+")
+
+
+def reserved_image(ref: str) -> bool:
+    r = str(ref).strip().strip("\"'").lower()
+    for prefix in _REGISTRY_PREFIXES:
+        if r.startswith(prefix):
+            r = r[len(prefix):]
+            break
+    return r.startswith(("kemudi-", "sha256:")) or bool(_HEX_RE.fullmatch(r))
+
+
+def check_image(name: str, image) -> None:
+    if not isinstance(image, str) or not image:
+        raise Refused(f"service {name!r} needs an image or a build")
+    if reserved_image(image):
+        raise Refused(f"service {name!r}: image {image!r} is reserved (names starting with "
+                      "'kemudi-' or 'sha256:', image ids)")
 
 
 # --- request values ----------------------------------------------------------
@@ -177,6 +215,20 @@ def precheck_text(text: str) -> None:
         raise Refused(f"key {m.group(1)!r} is not allowed (svc reads only this compose file)")
 
 
+def precheck_doc(doc) -> None:
+    """The same keys in compose's first JSON output (`config --no-interpolate`)."""
+    if not isinstance(doc, dict):
+        return
+    if "include" in doc:
+        raise Refused("key 'include' is not allowed (svc reads only this compose file)")
+    services = doc.get("services")
+    for name, svc in services.items() if isinstance(services, dict) else ():
+        for k in FILE_KEYS:
+            if isinstance(svc, dict) and k in svc:
+                raise Refused(f"service {name!r}: key {k!r} is not allowed "
+                              "(svc reads only this compose file)")
+
+
 # --- 2. reduce and check -----------------------------------------------------
 
 def closure(services: dict, selected: list[str]) -> list[str]:
@@ -276,10 +328,8 @@ def reduce(doc: dict, selected: list[str], checkout: Path) -> dict:
             clean[k] = v
         if "build" in clean:
             clean["build"] = _check_build(name, clean["build"], checkout)
-        elif not isinstance(clean.get("image"), str) or not clean["image"]:
-            raise Refused(f"service {name!r} needs an image or a build")
-        elif clean["image"].lower().startswith("kemudi-"):
-            raise Refused(f"service {name!r}: image names starting with 'kemudi-' are reserved")
+        else:
+            check_image(name, clean.get("image"))
         if "volumes" in clean:
             used_volumes += _check_mounts(name, clean["volumes"], top_volumes)
         deps = clean.get("depends_on")
@@ -309,21 +359,132 @@ def reduce(doc: dict, selected: list[str], checkout: Path) -> dict:
     return reduced
 
 
+# --- 3. Dockerfiles ----------------------------------------------------------
+
+DOCKERFILE_MAX = 1_000_000
+_VAR_RE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)(?::?[-+]([^}]*))?\}"
+                     r"|([A-Za-z_][A-Za-z0-9_]*))")
+# `COPY --from=`, `RUN --mount=...,from=` (also `--mount=from=`)
+_FROM_OPT_RE = re.compile(r"(?:--from=|[\s,=]from=)([^\s,]+)", re.I)
+_SYNTAX_RE = re.compile(r"#\s*syntax\s*=\s*(\S+)", re.I)
+
+
+def dockerfile_refs(text: str) -> tuple[list[str], dict[str, str], set[str]]:
+    """(image references, ARG defaults, stage names) of a Dockerfile: the
+    image of every FROM, `--from=` of COPY/ADD, `from=` of `RUN --mount` and
+    the `# syntax=` frontend. A plain scan, not a parser."""
+    refs: list[str] = []
+    args: dict[str, str] = {}
+    stages: set[str] = set()
+    for line in text.splitlines():
+        m = _SYNTAX_RE.match(line.strip())
+        if m:
+            refs.append(m.group(1))
+        elif line.strip() and not line.strip().startswith("#"):
+            break
+    joined = re.sub(r"\\[ \t]*\r?\n", " ", text)
+    for line in joined.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        word, _, rest = s.partition(" ")
+        instr = word.upper()
+        if instr == "ARG":
+            for tok in rest.split():
+                k, eq, v = tok.partition("=")
+                if eq:
+                    args[k] = v.strip("\"'")
+        elif instr == "FROM":
+            toks = [t for t in rest.split() if not t.startswith("--")]
+            if toks:
+                refs.append(toks[0])
+            if len(toks) >= 3 and toks[1].upper() == "AS":
+                stages.add(toks[2].lower())
+        if instr in ("FROM", "COPY", "ADD", "RUN"):
+            refs += [m.group(1) for m in _FROM_OPT_RE.finditer(" " + rest)]
+    return refs, args, stages
+
+
+def _expand(ref: str, values: dict[str, str]) -> list[str]:
+    """The reference with its variables replaced, plus every default written
+    in it: what it could name."""
+    out = []
+
+    def sub(m):
+        name = m.group(1) or m.group(3)
+        if m.group(2) is not None:
+            out.append(m.group(2))
+        return values.get(name, m.group(2) or "")
+
+    out.insert(0, _VAR_RE.sub(sub, ref))
+    return out
+
+
+def check_dockerfile(name: str, text: str, build_args: dict) -> None:
+    refs, args, stages = dockerfile_refs(text)
+    values = {**args, **{str(k): str(v) for k, v in (build_args or {}).items() if v is not None}}
+    for ref in refs:
+        ref = ref.strip("\"'")
+        if ref.lower() in stages or re.fullmatch(r"\d{1,2}", ref) or ref.lower() == "scratch":
+            continue
+        candidates = [ref, *(_expand(ref, values) if "$" in ref else [])]
+        for c in candidates:
+            if c and reserved_image(c):
+                raise Refused(f"service {name!r}: the Dockerfile uses image {ref!r}; images "
+                              "starting with 'kemudi-' or 'sha256:' and image ids are reserved")
+
+
+def check_dockerfiles(doc: dict, checkout: Path) -> None:
+    """Every built service's Dockerfile (inside the checkout, at most 1 MB)."""
+    for name, svc in (doc.get("services") or {}).items():
+        build = svc.get("build") if isinstance(svc, dict) else None
+        if not isinstance(build, dict):
+            continue
+        ctx_dir = inside(checkout, build.get("context") or ".", f"service {name!r}: build.context",
+                         "dir")
+        dockerfile = build.get("dockerfile") or "Dockerfile"
+        target = dockerfile if Path(dockerfile).is_absolute() else ctx_dir / dockerfile
+        path = inside(checkout, target, f"service {name!r}: build.dockerfile", "file")
+        try:
+            with open(path, "rb") as f:
+                data = f.read(DOCKERFILE_MAX + 1)
+        except OSError as e:
+            raise Refused(f"service {name!r}: cannot read the Dockerfile: {e.strerror}") from None
+        if len(data) > DOCKERFILE_MAX:
+            raise Refused(f"service {name!r}: the Dockerfile is over 1 MB")
+        check_dockerfile(name, data.decode(errors="replace"), build.get("args") or {})
+
+
 # --- 4. rewrite --------------------------------------------------------------
 
 _SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*([bkmg]?)b?", re.I)
 _UNITS = {"": 1, "b": 1, "k": 1024, "m": 1024 ** 2, "g": 1024 ** 3}
 
 
-def parse_bytes(v) -> int | None:
+def parse_bytes(v, what: str = "memory size") -> int | None:
     if v is None or v == "":
         return None
-    if isinstance(v, (int, float)):
+    if isinstance(v, bool):
+        raise Refused(f"bad {what} {v!r}")
+    if isinstance(v, int):
+        return v
+    if isinstance(v, float) and v == v and abs(v) < 1e18:
         return int(v)
     m = _SIZE_RE.fullmatch(str(v).strip())
     if not m:
-        raise Refused(f"bad memory size {v!r}")
+        raise Refused(f"bad {what} {v!r}")
     return int(float(m.group(1)) * _UNITS[m.group(2).lower()])
+
+
+def parse_count(v, what: str) -> int | None:
+    """A whole number (int or digits; -1 means no limit to compose)."""
+    if v is None or v == "":
+        return None
+    if isinstance(v, int) and not isinstance(v, bool):
+        return v
+    if isinstance(v, str) and re.fullmatch(r"-?\d{1,18}", v.strip()):
+        return int(v.strip())
+    raise Refused(f"bad {what} {v!r}")
 
 
 def image_name(project: str, service: str) -> str:
@@ -361,11 +522,14 @@ def rewrite(doc: dict, project: str, expose: tuple[str, int] | None,
         if "build" in s:
             s["image"] = image_name(project, name)
             s["build"] = {**s["build"], "labels": {LABEL: project}}
+        else:
+            # again after interpolation: `${UNSET:-kemudi-other-...}` passed reduce
+            check_image(name, s.get("image"))
         s["restart"] = "no"
-        mem = parse_bytes(s.get("mem_limit"))
-        s["mem_limit"] = min(mem, MEM_CAP) if mem else MEM_CAP
-        pids = s.get("pids_limit")
-        s["pids_limit"] = min(int(pids), PIDS_CAP) if pids and int(pids) > 0 else PIDS_CAP
+        mem = parse_bytes(s.get("mem_limit"), f"service {name!r}: mem_limit")
+        s["mem_limit"] = min(mem, MEM_CAP) if mem and mem > 0 else MEM_CAP
+        pids = parse_count(s.get("pids_limit"), f"service {name!r}: pids_limit")
+        s["pids_limit"] = min(pids, PIDS_CAP) if pids and pids > 0 else PIDS_CAP
         s.pop("ports", None)
         if expose and expose[0] == name:
             s["ports"] = [f"0.0.0.0::{expose[1]}"]

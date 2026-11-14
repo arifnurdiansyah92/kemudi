@@ -58,6 +58,16 @@ services:
     privileged: true
     environment:
       X: ${NOT_SET:?never interpolated}
+  sneaky:
+    image: "${UNSET:-kemudi-other-us3-backend}"
+  escape:
+    build:
+      context: "${X:-..}"
+      dockerfile: Dockerfile
+  based:
+    build:
+      context: .
+      dockerfile: based/Dockerfile
 volumes:
   cachedata: {}
 networks:
@@ -80,6 +90,12 @@ def real_svc(monkeypatch):
     (root / "web").mkdir(parents=True)
     (root / "docker-compose.yml").write_text(COMPOSE)
     (root / "web" / "Dockerfile").write_text(DOCKERFILE)
+    # a folder literally named `${X:-..}`: inside the checkout before
+    # interpolation, its parent after
+    (root / "${X:-..}").mkdir()
+    (root / "${X:-..}" / "Dockerfile").write_text("FROM busybox:1.36\n")
+    (root / "based").mkdir()
+    (root / "based" / "Dockerfile").write_text("FROM kemudi-other-us3-backend\n")
     for dirpath, dirs, files in os.walk(base):
         for name in dirs:
             os.chmod(os.path.join(dirpath, name), 0o755)
@@ -153,3 +169,28 @@ def test_up_exec_logs_stats_down(real_svc):
     with pytest.raises(svc.Refused, match="'privileged'"):
         svc.op_svc_up({"path": "itest/us-1/app", "project": "itest-us1",
                        "services": ["unselected"]})
+
+
+@pytest.mark.parametrize("service,match", [
+    ("sneaky", "reserved"),                  # ${UNSET:-kemudi-...}: seen after interpolation
+    ("escape", "outside the checkout"),      # context ${X:-..}
+    ("based", "Dockerfile uses image"),      # FROM kemudi-<other project>
+])
+def test_refused_after_interpolation_or_in_the_dockerfile(real_svc, service, match):
+    svc = real_svc
+    with pytest.raises(svc.Refused, match=match):
+        svc.op_svc_up({"path": "itest/us-1/app", "project": "itest-us1", "services": [service]})
+    code, ps, _ = svc.docker(["ps", "-a", "-q", "--filter", "label=kemudi.project=itest-us1"], 60)
+    assert code == 0 and ps.split() == []
+
+
+def test_down_removes_the_projects_images(real_svc):
+    svc = real_svc
+    res = svc.op_svc_up({"path": "itest/us-1/app", "project": "itest-us1", "services": ["web"],
+                         "env": {"GREETING": "x"}, "up": []})
+    assert res["ok"], res
+    _, ids, _ = svc.docker(["image", "ls", "-q", "--filter", "label=kemudi.project=itest-us1"], 60)
+    assert ids.split()
+    assert svc.op_svc_down({"project": "itest-us1"})["ok"]
+    _, ids, _ = svc.docker(["image", "ls", "-q", "--filter", "label=kemudi.project=itest-us1"], 60)
+    assert ids.split() == []
