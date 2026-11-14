@@ -204,7 +204,7 @@ def test_runbook_app_in_a_missing_folder_stops_the_story(tmp_path):
     taiga.add(1, 12, "Badge jumlah", DESC)
     w.tick()
     job = _job(sessions)
-    assert job.state == "stopped" and job.infra_errors == 0
+    assert job.state == "failed" and job.infra_errors == 0
     assert any("Berhenti" in t and "`frontend`" in t for t in taiga.texts(1))
     assert "install" not in runner.calls
 
@@ -217,7 +217,7 @@ def test_qa_service_of_a_repo_that_is_gone_stops_the_story(tmp_path):
         db.commit()
     w.tick()
     job = _job(sessions)
-    assert job.state == "stopped" and job.infra_errors == 0
+    assert job.state == "failed" and job.infra_errors == 0
     assert any("Berhenti" in t and "repo api" in t for t in taiga.texts(1))
 
 
@@ -244,7 +244,7 @@ def test_runner_refusal_stops_instead_of_retrying(tmp_path):
     taiga.add(1, 12, "Badge jumlah", DESC)
     w.tick()
     job = _job(sessions)
-    assert job.state == "stopped" and job.infra_errors == 0
+    assert job.state == "failed" and job.infra_errors == 0
     assert any("no directory 'x'" in t and "runbook" in t for t in taiga.texts(1))
 
 

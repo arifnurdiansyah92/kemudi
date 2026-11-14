@@ -46,6 +46,11 @@ class Stop(Exception):
     """A human took the story over; stop quietly (with one comment)."""
 
 
+class NeedsHuman(Stop):
+    """Awak cannot go on until a human fixes settings or the story: the card
+    is blocked (a stopped In progress card would just be picked again)."""
+
+
 class Infra(Exception):
     """Something outside the story failed; retry without using an attempt."""
 
@@ -386,7 +391,10 @@ class Worker:
                 return
             try:
                 result = self._attempt(project, job, story)
-            except (Stop, checks.Unsupported) as e:
+            except (NeedsHuman, checks.Unsupported) as e:
+                self._block(project, story, job_id, f"Berhenti: {e}")
+                return
+            except Stop as e:
                 self._set(job_id, state="stopped")
                 self._say(story["id"], job_id, f"Berhenti: {e}")
                 return
@@ -605,7 +613,7 @@ class Worker:
             route: Route) -> Verdict:
         texts = criteria(story.get("description") or "")
         if not texts:
-            raise Stop("story tidak punya kriteria penerimaan; tambahkan bagian "
+            raise NeedsHuman("story tidak punya kriteria penerimaan; tambahkan bagian "
                        "'Acceptance criteria' berisi daftar poin.")
         qa_role = route.config.qa_role()
         if qa_role is not None:
@@ -660,25 +668,25 @@ class Worker:
                 areas = story_areas(tag_names(story))
                 role = cfg.role_for_story(areas)
                 if role is None and len(areas) > 1:
-                    raise Stop("story punya lebih dari satu tag area ("
+                    raise NeedsHuman("story punya lebih dari satu tag area ("
                                + ", ".join(f"area-{a}" for a in areas) + "); sisakan satu, "
                                "atau tambahkan peran Fullstack (area Frontend + backend) di "
                                "Pengaturan proyek → Agen.")
                 if role is None:
-                    raise Stop(f"tidak ada peran agen aktif untuk area {areas[0]}; aktifkan "
+                    raise NeedsHuman(f"tidak ada peran agen aktif untuk area {areas[0]}; aktifkan "
                                f"di Pengaturan proyek → Agen.")
                 rc = cfg.repo(role.repo_ids[0]) if role.repo_ids else None
                 if rc is None:
-                    raise Stop(f"peran {role.name} belum punya repo; pilih di Pengaturan "
+                    raise NeedsHuman(f"peran {role.name} belum punya repo; pilih di Pengaturan "
                                f"proyek → Agen.")
                 row.role_id, row.repo_id = role.id, rc.id
             else:
                 role = cfg.role(row.role_id)
                 if role is None or not role.enabled:
-                    raise Stop("peran agen untuk story ini sudah dihapus atau dimatikan.")
+                    raise NeedsHuman("peran agen untuk story ini sudah dihapus atau dimatikan.")
                 rc = cfg.repo(row.repo_id)
                 if rc is None:
-                    raise Stop("repo untuk story ini sudah dihapus dari pengaturan Agen.")
+                    raise NeedsHuman("repo untuk story ini sudah dihapus dari pengaturan Agen.")
             # What this attempt runs against; Merge checks it is still the same.
             row.repo_url, row.repo_branch = rc.url, rc.default_branch
             version = prompt_version(role, cfg.repos)
@@ -799,10 +807,10 @@ class Worker:
             # install or a check generates. Telling the agent to "commit
             # everything" made it commit build artefacts, so a human decides.
             paths = ", ".join(f"`{u[3:]}`" for u in out[:10])
-            raise Stop(f"setelah install dan pemeriksaan, workspace berisi berkas yang di-ignore "
+            raise NeedsHuman(f"setelah install dan pemeriksaan, workspace berisi berkas yang di-ignore "
                        f"git dan tidak dikenal sebagai hasil build: {paths}. Jika itu dibuat oleh "
                        f"install atau build, tambahkan ke `generated` app di runbook (Pengaturan "
-                       f"proyek → Agen), lalu kembalikan story ke In progress.")
+                       f"proyek → Agen), lalu buka blokir story.")
         return out[:20]
 
     def _runner(self, op: str, **payload) -> dict:

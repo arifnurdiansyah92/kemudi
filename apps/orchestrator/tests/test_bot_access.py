@@ -293,7 +293,7 @@ def test_two_area_story_without_fullstack_role_stops_and_suggests_it(tmp_path, r
     w, taiga, sessions = make_worker(tmp_path, repo, FakeAgent(), FakeRunner(tmp_path / "ws"))
     taiga.add(1, 12, "Badge + API", DESC, tags=("agent-ready", "area-both"))
     w.tick()
-    assert job_of(sessions).state == "stopped"
+    assert job_of(sessions).state == "failed"
     last = taiga.texts(1)[-1]
     assert "lebih dari satu tag area" in last and "Fullstack" in last
 

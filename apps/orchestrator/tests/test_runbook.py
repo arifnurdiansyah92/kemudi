@@ -468,5 +468,5 @@ def test_unparseable_runbook_command_stops_the_story(tmp_path, repo):
         db.commit()
     taiga.add(1, 12, "Badge jumlah", DESC)
     w.tick()
-    assert job_of(sessions).state == "stopped"
+    assert job_of(sessions).state == "failed"
     assert any("tidak valid" in t for t in taiga.texts(1))

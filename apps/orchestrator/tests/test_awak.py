@@ -333,8 +333,11 @@ def test_story_without_criteria_stops(tmp_path, repo):
     w, taiga, sessions = make_worker(tmp_path, repo, FakeAgent(), runner)
     taiga.add(1, 12, "Badge jumlah", "Tanpa kriteria.")
     w.tick()
-    assert job_of(sessions).state == "stopped"
+    assert job_of(sessions).state == "failed"
     assert "kriteria" in taiga.texts(1)[-1]
+    # Blocked for a human, so the next tick does not pick it again.
+    assert taiga.story(1)["is_blocked"] and ["needs-human", None] in taiga.story(1)["tags"]
+    assert not w.tick()
 
 
 def test_infra_error_after_coding_resumes_without_recoding(tmp_path, repo):
@@ -460,7 +463,7 @@ def test_ignored_file_during_qa_stops_for_a_human(tmp_path, repo):
     w.tick()
     stop = next(t for t in taiga.texts(1) if "Berhenti" in t)
     assert "local.env" in stop and "feature1.txt" not in stop
-    assert taiga.status_of(1) != "done" and job_of(sessions).state == "stopped"
+    assert taiga.status_of(1) != "done" and job_of(sessions).state == "failed"
 
 
 def test_head_moved_after_gates_fails_the_attempt(tmp_path, repo):

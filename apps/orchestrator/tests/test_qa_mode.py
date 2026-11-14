@@ -87,7 +87,7 @@ def test_gates_mode_clean_check_runs_after_gates(tmp_path, repo):
     # agent is not told to commit it (it would commit build artefacts).
     stop = next(t for t in taiga.texts(1) if "Berhenti" in t)
     assert "local.env" in stop and "generated" in stop
-    assert taiga.status_of(1) != "done" and job_of(sessions).state == "stopped"
+    assert taiga.status_of(1) != "done" and job_of(sessions).state == "failed"
     assert runner.calls[:4] == ["install", "commit", "gates", "clean_check"]
 
 
