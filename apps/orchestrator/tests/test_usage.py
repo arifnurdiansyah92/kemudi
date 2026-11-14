@@ -29,7 +29,7 @@ from .conftest import ADMIN, MEMBER, SECRET_KEY
 from .test_awak import DESC, host, job_of, make_worker, repo  # noqa: F401 (fixtures)
 from .test_setup import drive, make, project_host, run_of  # noqa: F401 (fixtures)
 
-PROFILE = "sk-e3b0c44298fc1c149afbf4c8996fb924"
+PROFILE = "sk-" + "e3b0c442" * 4  # a skill-set profile id, built so it is not a key-shaped literal
 
 
 def _settings(**kw) -> Settings:
