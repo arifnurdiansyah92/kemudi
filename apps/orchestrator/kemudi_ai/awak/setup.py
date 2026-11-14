@@ -4,17 +4,24 @@ runbook, the runner and kemudi-svc prove it, a human approves it.
 A run (`awak_setup_runs`) moves through
 
     queued -> reading -> proving -> ready -> approved
-    reading -> needs_input -> proving        (the vault lacks a value)
+    reading -> needs_input -> proving        (the vault lacks a value, or an
+                                              admin must confirm saved ones)
     proving -> reading                       (a fix round)
     queued, reading, proving -> failed;  any active state or ready -> cancelled (API)
+    ready -> superseded                      (a newer run started or was approved)
 
 - `queued`: every repo is synced and checked out at its default branch to
   `<workspace>/<slug>/setup/<repo>/`; `detect_apps` gives a draft.
 - `reading`: one setup-agent turn writes `<workspace>/<slug>/setup/runbook.json`;
-  it is validated (and scanned for secret values). Problems go back to the
-  agent, at most MAX_RETRIES more turns, then `failed`. A valid runbook goes to
-  `needs_input` when the vault lacks a value it needs, else to `proving`.
-- `needs_input`: holds nothing; the API writes the values and moves on.
+  it is validated (and every string in it scanned for secret values). Problems
+  go back to the agent, at most MAX_RETRIES more turns, then `failed`. A valid
+  runbook goes to `needs_input` when the vault lacks a value it needs, or when
+  it wires a saved vault value an admin has not confirmed for this run
+  (`confirm_env`: the agent picks the names, so it must not hand any saved
+  value to its own unapproved commands unasked), else to `proving`.
+- `needs_input`: holds nothing; the API writes the values (a value typed
+  there counts as confirmed), takes the admin's confirmation
+  (`confirmed_env`) and moves on.
 - `proving`: fresh checkouts, install every app, run its checks once (a red
   check is reported, never blocking), bring up the compose services (init,
   health, seed: the worker's `Compose.for_qa`), start the process services
@@ -24,41 +31,46 @@ A run (`awak_setup_runs`) moves through
   logs (state `reading`, `round` + 1), at most MAX_ROUNDS rounds, then `failed`.
 - `ready` -> `approved` (API; saved as the project's runbook) or `cancelled`.
 
-The worker calls `SetupRunner.step` once per tick (after requested merges,
-before stories): one state change per call, persisted, so a restart resumes
-where it was. Every stored text (step output, error, the agent's feedback)
-is redacted with the project's vault values and the usual secrets first.
+The worker calls `SetupRunner.step` at most every other tick while a story is
+ready (see `Worker.tick`): one state change per call, persisted, so a restart
+resumes where it was. An environment problem retries after `not_before`, so
+no tick waits for it. Every stored text (step output, error, the agent's
+feedback) is redacted with the project's secret vault values and the usual
+secrets first.
 State changes are conditional (`UPDATE ... WHERE state = <expected>`), so a
 cancel from the API is never overwritten by a step that was still running.
 """
 
 import json
 import logging
+import shutil
 from contextlib import nullcontext
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..config import Settings
-from ..store import AwakEnvVar, AwakSetupRun
-from . import checks, config_store, detect, runbook, secrets
+from ..store import SETUP_ACTIVE, AwakEnvVar, AwakSetupRun
+from . import checks, config_store, detect, runbook, secrets, vault
 from .agent import AgentError
 from .gitops import GitError
 from .prompts import RoleScope, render
 from .runbook import ENV_REF_RE, Runbook
-from .runner import RunnerError, RunnerRejected
+from .runner import RunnerError, RunnerRejected, RunnerUnknownOp
 from .svc import SvcError, SvcRejected
 
 log = logging.getLogger(__name__)
 
-ACTIVE = ("queued", "reading", "proving", "needs_input")
+ACTIVE = SETUP_ACTIVE  # ("queued", "reading", "proving", "needs_input"): one per project
 # States the worker steps (needs_input waits for a human).
 STEPPED = ("queued", "reading", "proving")
 MAX_ROUNDS = 3        # proposal + proof rounds
 MAX_RETRIES = 2       # more agent turns after an invalid runbook, per round
 MAX_INFRA = 3         # transport failures (runner, svc, git, model) before `failed`
+INFRA_WAIT_S = 10     # x the failures so far: the wait before the step is tried again
 OUTPUT_MAX = 4000     # stored tail of a step's output
 FEEDBACK_MAX = 12000
 RUNBOOK_FILE = "runbook.json"
@@ -133,12 +145,31 @@ def latest(db: Session, slug: str) -> AwakSetupRun | None:
             .order_by(AwakSetupRun.id.desc()).first())
 
 
-def start(db: Session, slug: str, by: str) -> AwakSetupRun:
+def start(db: Session, slug: str, by: str) -> AwakSetupRun | None:
+    """A new run, or None when the project already has an active one: the
+    database's partial unique index decides, so two starts at once cannot
+    both insert. Older `ready` runs are superseded (their proposal can no
+    longer be approved)."""
     run = AwakSetupRun(project_slug=slug, state="queued", round=1, created_by=by,
-                       proposal={}, steps=[], missing_env=[], resources={})
+                       proposal={}, steps=[], missing_env=[], confirm_env=[],
+                       confirmed_env=[], resources={})
     db.add(run)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        return None
+    supersede(db, slug, keep=run.id)
     db.commit()
     return run
+
+
+def supersede(db: Session, slug: str, keep: int) -> None:
+    """Every other `ready` run of the project becomes `superseded` (not committed)."""
+    db.execute(update(AwakSetupRun)
+               .where(AwakSetupRun.project_slug == slug, AwakSetupRun.state == "ready",
+                      AwakSetupRun.id != keep)
+               .values(state="superseded", updated_at=now()))
 
 
 def proposed(run: AwakSetupRun) -> Runbook | None:
@@ -198,6 +229,8 @@ def out(run: AwakSetupRun, is_admin: bool) -> dict:
         },
         "steps": run.steps or [],
         "missing_env": run.missing_env or [],
+        "confirm_env": run.confirm_env or [],
+        "confirmed_env": run.confirmed_env or [],
         "screenshot": bool(run.screenshot),
         "resources": run.resources or {},
         "error": run.error or "",
@@ -261,7 +294,53 @@ def missing_env(rb: Runbook, have: set[str], env_help: dict[str, str]) -> list[d
 
 
 def vault_names(db: Session, slug: str) -> set[str]:
-    return {r.name for r in db.query(AwakEnvVar).filter_by(project_slug=slug)}
+    return set(vault_secrets(db, slug))
+
+
+def vault_secrets(db: Session, slug: str) -> dict[str, bool]:
+    """name -> stored as secret, of the project's vault."""
+    return {r.name: bool(r.secret) for r in db.query(AwakEnvVar).filter_by(project_slug=slug)}
+
+
+def wiring(rb: Runbook) -> dict[str, list[str]]:
+    """Every vault name the runbook hands to a command -> where:
+    "services.<name>.env", "init[<i>]", "seed", "qa.env", "qa.login"."""
+    where: dict[str, list[str]] = {}
+
+    def add(names, place: str) -> None:
+        for n in names:
+            if place not in where.setdefault(n, []):
+                where[n].append(place)
+
+    for s in rb.services:
+        if s.kind == "compose" and isinstance(s.env, list):
+            add(s.env, f"services.{s.name}.env")
+    for i, o in enumerate(rb.init):
+        add(o.env, f"init[{i}]")
+    if rb.seed is not None:
+        add(rb.seed.env, "seed")
+    if rb.qa is not None:
+        add(rb.qa.env, "qa.env")
+    add(login_refs(rb), "qa.login")
+    return where
+
+
+def to_confirm(rb: Runbook, have: dict[str, bool], confirmed: set[str]) -> list[dict]:
+    """The saved vault values the runbook wires that no admin has confirmed for
+    this run: the proof runs the agent's unapproved commands with them."""
+    return [{"name": n, "secret": have[n], "used_in": places}
+            for n, places in wiring(rb).items() if n in have and n not in confirmed]
+
+
+def waiting(db: Session, run: AwakSetupRun, rb: Runbook, confirmed: set[str] | None = None,
+            env_help: dict[str, str] | None = None) -> tuple[list[dict], list[dict]]:
+    """(missing_env, confirm_env) of a proposal: what its proof waits for."""
+    have = vault_secrets(db, run.project_slug)
+    if confirmed is None:
+        confirmed = set(run.confirmed_env or [])
+    if env_help is None:
+        env_help = (run.proposal or {}).get("env_help") or {}
+    return missing_env(rb, set(have), env_help), to_confirm(rb, have, confirmed)
 
 
 # --- the task --------------------------------------------------------------------
@@ -316,10 +395,15 @@ class SetupRunner:
     # ---------------------------------------------------------------- entry
     def next_run(self) -> int | None:
         """The active run waiting longest for its next step."""
+        t = now().replace(tzinfo=None)
         with self.w.sessions() as db:
-            run = (db.query(AwakSetupRun).filter(AwakSetupRun.state.in_(STEPPED))
-                   .order_by(AwakSetupRun.updated_at, AwakSetupRun.id).first())
-            return run.id if run else None
+            for run in (db.query(AwakSetupRun).filter(AwakSetupRun.state.in_(STEPPED))
+                        .order_by(AwakSetupRun.updated_at, AwakSetupRun.id)):
+                nb = run.not_before
+                if nb is not None and nb.replace(tzinfo=None) > t:
+                    continue  # waiting out an environment problem
+                return run.id
+        return None
 
     def step_next(self) -> bool:
         run_id = self.next_run()
@@ -394,8 +478,7 @@ class SetupRunner:
             raise SetupBlocked(f"{setup_root(self.s, slug)} is not a plain folder inside the "
                                "workspace.")
         target = root / RUNBOOK_FILE
-        if target.is_symlink() or target.exists():
-            target.unlink()
+        _clear(target)
         p = dict(run.proposal or {})
         with self.w.sessions() as db:
             have = vault_names(db, slug)
@@ -403,7 +486,13 @@ class SetupRunner:
                           p.get("draft") or {}, sorted(have), p.get("feedback") or "",
                           p.get("previous"))
         system = render("setup", "", RoleScope(repos=[r.name for r in cfg.repos]))
-        report, cost = self.w.agent.run(PURPOSE, self.s.awak_model, system, task, slug=slug)
+        try:
+            report, cost = self.w.agent.run(PURPOSE, self.s.awak_model, system, task,
+                                            slug=slug)
+        except AgentError as e:
+            # a turn that broke off was paid for all the same
+            self._add_cost(run.id, getattr(e, "cost_idr", 0.0))
+            raise
         self._add_cost(run.id, cost)
         p["report"] = self._redact(slug, report)[-2000:]
         rb, env_help, problems, raw = self._read_runbook(target, {r.name for r in cfg.repos},
@@ -418,7 +507,7 @@ class SetupRunner:
                 return
             p.update(turns=turns, feedback="The runbook is not valid:\n" + text)
             if isinstance(raw, dict):
-                p["previous"] = json.loads(self._redact(slug, json.dumps(raw)))
+                p["previous"] = self._redact_obj(slug, raw)
             self._set(run.id, "reading", proposal=p, error="")
             return
         assert rb is not None
@@ -426,10 +515,11 @@ class SetupRunner:
         p.update(runbook=spec, env_help=env_help, feedback="", turns=0)
         p.pop("previous", None)
         with self.w.sessions() as db:
-            missing = missing_env(rb, vault_names(db, slug), env_help)
-        self._set(run.id, "reading", state="needs_input" if missing else "proving",
-                  proposal=p, missing_env=missing, steps=[], screenshot="", resources={},
-                  error="")
+            missing, confirm = waiting(db, run, rb, env_help=env_help)
+        self._set(run.id, "reading",
+                  state="needs_input" if (missing or confirm) else "proving",
+                  proposal=p, missing_env=missing, confirm_env=confirm, steps=[],
+                  screenshot="", resources={}, error="")
 
     def _prove(self, run: AwakSetupRun) -> None:
         slug = run.project_slug
@@ -437,10 +527,11 @@ class SetupRunner:
         if rb is None:
             raise SetupBlocked("the run has no valid runbook to prove.")
         with self.w.sessions() as db:
-            missing = missing_env(rb, vault_names(db, slug),
-                                  (run.proposal or {}).get("env_help") or {})
-        if missing:
-            self._set(run.id, "proving", state="needs_input", missing_env=missing)
+            missing, confirm = waiting(db, run, rb)
+        if missing or confirm:
+            # e.g. a value added outside this run since: confirmed first
+            self._set(run.id, "proving", state="needs_input", missing_env=missing,
+                      confirm_env=confirm)
             return
         steps: list[dict] = []
         resources: dict = {}
@@ -463,7 +554,7 @@ class SetupRunner:
         slug = run.project_slug
         cfg, keys = self._config(slug)
         root = setup_root(self.s, slug)
-        redact = self.w.redact_values_for(slug)
+        redact = self._redact_values(slug)
         dirs = {rc.name: self._checkout(cfg, rc, keys, sync=False) for rc in cfg.repos
                 if rb.apps_of(rc.name) or any(s.kind == "compose" and s.repo == rc.name
                                               for s in rb.services)}
@@ -487,7 +578,10 @@ class SetupRunner:
                 if not ok:
                     raise _ProofFailed(f"install of app {p['app']} failed", text)
 
-        values = self._vault(slug) if (rb.services or rb.qa) else {}
+        # only the values the runbook wires (each confirmed or typed in this run)
+        wired = wiring(rb)
+        values = ({k: v for k, v in self._vault(slug).items() if k in wired}
+                  if (rb.services or rb.qa) else {})
         compose = None
         if any(s.kind == "compose" for s in rb.services):
             if self.w.svc is None:
@@ -564,7 +658,11 @@ class SetupRunner:
                 for name in urls:
                     add(f"health {name}", True, f"{rb.service(name).health} answered")
                 if plan["services"]:
-                    base = next(s for s in plan["services"] if s["name"] == plan["base_service"])
+                    base = next((s for s in plan["services"]
+                                 if s["name"] == plan["base_service"]), None)
+                    if base is None:
+                        raise _ProofFailed(f"qa.service {plan['base_service']!r} is not among "
+                                           "the process services QA starts")
                     repo = base["repo"]
                     body = {"path": self.w._path(root / repo), "services": plan["services"],
                             "base_service": plan["base_service"], "out": SHOT_OUT}
@@ -660,15 +758,18 @@ class SetupRunner:
             self._set(run_id, state, state="failed", proposal=p,
                       error=f"Environment problem, {n} times in a row: {text}")
             return
-        self._set(run_id, state, proposal=p, error=f"Environment problem (retrying): {text}")
-        self.w.sleep(10 * n)
+        # tried again later, without holding the worker (stories go on meanwhile)
+        self._set(run_id, state, proposal=p, error=f"Environment problem (retrying): {text}",
+                  not_before=now() + timedelta(seconds=INFRA_WAIT_S * n))
 
     def _infra_ok(self, run_id: int) -> None:
         """A step went through: the next environment problem counts from one."""
         with self.w.sessions() as db:
             run = db.get(AwakSetupRun, run_id)
-            if run is not None and (run.proposal or {}).get("infra_errors"):
-                run.proposal = {**run.proposal, "infra_errors": 0}
+            if run is not None and ((run.proposal or {}).get("infra_errors")
+                                    or run.not_before is not None):
+                run.proposal = {**(run.proposal or {}), "infra_errors": 0}
+                run.not_before = None
                 db.commit()
 
     # ------------------------------------------------------------- helpers
@@ -687,6 +788,8 @@ class SetupRunner:
     def _read_runbook(self, path: Path, repos: set[str], slug: str
                       ) -> tuple[Runbook | None, dict[str, str], list[str], object]:
         """(runbook, env_help, problems, the raw JSON)."""
+        if path.is_dir() and not path.is_symlink():
+            return None, {}, [f"{path} is a folder; write the runbook there as a file"], None
         if path.is_symlink() or not path.is_file():
             return None, {}, [f"{path} was not written; write the runbook there"], None
         if path.stat().st_size > MAX_RUNBOOK_BYTES:
@@ -706,7 +809,10 @@ class SetupRunner:
         else:
             env_help = {str(k): str(v)[:500] for k, v in help_raw.items()
                         if isinstance(k, str) and runbook.ENV_NAME_RE.fullmatch(k)}
-        hits = secrets.find(json.dumps(raw), self.w.scan_values_for(slug))
+        # every string (key or value) as parsed: json.dumps would escape a value
+        # with quotes, backslashes or non-ASCII past the scan
+        scan = self._scan_values(slug)
+        hits = list(dict.fromkeys(h for x in _strings(raw) for h in secrets.find(x, scan)))
         if hits:
             problems.append("the runbook contains a secret value or a key-like string ("
                             + ", ".join(hits) + "); never write values, declare the name in "
@@ -726,6 +832,9 @@ class SetupRunner:
     def _run(self, op: str, **payload) -> dict:
         try:
             return self.w.runner.call(op, **payload)
+        except RunnerUnknownOp as e:
+            raise SetupBlocked(f"{e}: update the kemudi-runner image to the orchestrator's "
+                               "version, then try again.") from e
         except RunnerRejected as e:
             raise checks.Unsupported(f"the runner refused {op}: {e}") from e
         except RunnerError as e:
@@ -749,11 +858,41 @@ class SetupRunner:
         if run is None or run.state != "proving":
             raise _Cancelled()
 
+    def _redact_values(self, slug: str) -> list[str]:
+        """The project's secret vault values (every encoding) plus the usual
+        secrets. A plain value (APP_ENV=development) is not hidden: it would
+        blank every "development" in the logs."""
+        with self.w.sessions() as db:
+            own = vault.redaction_values(db, self.s, slug, secret_only=True)
+        return [*own, *self.w.redact_values]
+
+    def _scan_values(self, slug: str) -> list[str]:
+        """What a proposal must not contain: the secret vault values and the
+        usual secrets (a plain value may well appear in a runbook)."""
+        with self.w.sessions() as db:
+            own = vault.scan_values(db, self.s, slug, secret_only=True)
+        return [*own, *self.w.secret_values]
+
     def _redact(self, slug: str, text: str) -> str:
-        return secrets.redact(text or "", self.w.redact_values_for(slug))
+        return secrets.redact(text or "", self._redact_values(slug))
+
+    def _redact_obj(self, slug: str, obj):
+        """Every string of a parsed JSON value (keys too) redacted."""
+        values = self._redact_values(slug)
+
+        def walk(x):
+            if isinstance(x, str):
+                return secrets.redact(x, values)
+            if isinstance(x, dict):
+                return {walk(k) if isinstance(k, str) else k: walk(v) for k, v in x.items()}
+            if isinstance(x, list):
+                return [walk(v) for v in x]
+            return x
+
+        return walk(obj)
 
     def _clean_steps(self, slug: str, steps: list[dict]) -> list[dict]:
-        values = self.w.redact_values_for(slug)
+        values = self._redact_values(slug)
         return [{**s, "name": secrets.redact(str(s["name"]), values)[:200],
                  "output": secrets.redact(str(s.get("output") or ""), values)[-OUTPUT_MAX:]}
                 for s in steps]
@@ -772,6 +911,32 @@ class SetupRunner:
             if run is not None:
                 run.cost_idr = (run.cost_idr or 0.0) + float(cost or 0.0)
                 db.commit()
+
+
+def _strings(x):
+    """Every string of a parsed JSON value, keys included."""
+    if isinstance(x, str):
+        yield x
+    elif isinstance(x, dict):
+        for k, v in x.items():
+            yield from _strings(k)
+            yield from _strings(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from _strings(v)
+
+
+def _clear(target: Path) -> None:
+    """Remove the last turn's runbook (a file, a link, or a folder the agent
+    made there). What cannot be removed stays: the agent hears about it after
+    its turn ("is a folder")."""
+    try:
+        if target.is_symlink() or target.is_file():
+            target.unlink()
+        elif target.is_dir():
+            shutil.rmtree(target)
+    except OSError as e:
+        log.warning("awak: setup could not clear %s: %s", target, e)
 
 
 def _compose_step(add, kind: str, detail: dict) -> None:

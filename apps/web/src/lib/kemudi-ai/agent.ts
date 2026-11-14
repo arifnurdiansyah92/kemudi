@@ -723,6 +723,8 @@ export type SetupState =
   | 'approved'
   | 'failed'
   | 'cancelled'
+  /** A newer run started (or another was approved): it can't be approved. */
+  | 'superseded'
 
 /** One proof step. A `red` checks step ran, but some gates failed. */
 export type SetupStep = {
@@ -738,6 +740,15 @@ export type SetupMissingEnv = {
   name: string
   description: string
   secret: boolean
+}
+
+/** A saved vault value the proposed runbook wires, waiting for an admin to
+ * let the proof use it. `used_in`: e.g. "services.api.env", "init[0]",
+ * "seed", "qa.env", "qa.login". */
+export type SetupConfirmEnv = {
+  name: string
+  secret: boolean
+  used_in: string[]
 }
 
 export type SetupResources = {
@@ -768,6 +779,9 @@ export type SetupRun = {
   }
   steps: SetupStep[]
   missing_env: SetupMissingEnv[]
+  confirm_env: SetupConfirmEnv[]
+  /** Names an admin confirmed (or typed) for this run's proof. */
+  confirmed_env: string[]
   screenshot: boolean
   resources: SetupResources
   error: string
@@ -830,14 +844,17 @@ export function useSetupEnv(slug: string) {
     mutationFn: async ({
       runId,
       values,
+      confirm,
     }: {
       runId: number
       values: Record<string, { value: string; secret: boolean }>
+      /** Let the proof use the saved values the run listed in `confirm_env`. */
+      confirm?: boolean
     }) =>
       (
         await api.post<{ run: SetupRun }>(
           `/projects/${slug}/agent/setup/${runId}/env`,
-          { values },
+          confirm ? { values, confirm: true } : { values },
           base
         )
       ).data.run,

@@ -340,6 +340,9 @@ def start_setup(slug: str, user: TaigaUser = Depends(admin), db: Session = Depen
     if running is not None:
         raise HTTPException(409, f"setup run {running.id} is still {running.state}")
     run = setup_runs.start(db, slug, actor(user))
+    if run is None:  # another start won meanwhile (the database's one-active-run index)
+        running = setup_runs.active(db, slug)
+        raise HTTPException(409, f"setup run {running.id if running else ''} is still active")
     record_decision(db, actor(user), "awak_setup", slug, {"op": "start", "run_id": run.id})
     start_worker()
     return {"run": setup_runs.out(run, True)}
@@ -358,17 +361,24 @@ class SetupEnvValue(BaseModel):
 
 
 class SetupEnvIn(BaseModel):
-    values: dict[str, SetupEnvValue] = Field(min_length=1, max_length=100)
+    values: dict[str, SetupEnvValue] = Field(default_factory=dict, max_length=100)
+    # The admin lets the proof use the saved values listed in the run's
+    # `confirm_env` (the names the agent wired).
+    confirm: bool = False
 
 
 @router.post("/setup/{run_id}/env")
 def fill_setup_env(slug: str, run_id: int, body: SetupEnvIn, user: TaigaUser = Depends(admin),
                    db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
-    """Values the run asked for go to the vault; with none missing any more the
+    """Values the run asked for go to the vault (a value typed here counts as
+    confirmed for this run); `confirm` confirms the saved values the run
+    listed in `confirm_env`. With nothing missing or unconfirmed any more the
     run goes on proving."""
     run = _setup_run(db, slug, run_id)
     if run.state != "needs_input":
         raise HTTPException(409, f"the run is {run.state}, not waiting for env values")
+    if not body.values and not body.confirm:
+        raise HTTPException(422, "send values, or confirm the saved ones")
     for name, v in body.values.items():
         _env_name(name)
         if problem := vault.value_problem(v.value):
@@ -378,17 +388,22 @@ def fill_setup_env(slug: str, run_id: int, body: SetupEnvIn, user: TaigaUser = D
             vault.put(db, settings, slug, name, v.value, v.secret, actor(user))
     except SecretKeyMissing as e:
         raise _no_secret_key(e) from e
+    confirmed = set(run.confirmed_env or []) | set(body.values)
+    newly = sorted({c["name"] for c in run.confirm_env or []} - set(body.values)
+                   if body.confirm else [])
+    confirmed |= set(newly)
     record_decision(db, actor(user), "awak_setup", slug,
                     {"op": "env", "run_id": run.id, "names": sorted(body.values),
-                     "secret": sorted(n for n, v in body.values.items() if v.secret)})
+                     "secret": sorted(n for n, v in body.values.items() if v.secret),
+                     "confirmed": newly})
     rb = setup_runs.proposed(run)
-    missing = (setup_runs.missing_env(rb, setup_runs.vault_names(db, slug),
-                                      (run.proposal or {}).get("env_help") or {})
-               if rb is not None else [])
-    if missing:
-        setup_runs.transition(db, run.id, "needs_input", missing_env=missing)
+    missing, confirm = (setup_runs.waiting(db, run, rb, confirmed)
+                        if rb is not None else ([], []))
+    fields = {"missing_env": missing, "confirm_env": confirm, "confirmed_env": sorted(confirmed)}
+    if missing or confirm:
+        setup_runs.transition(db, run.id, "needs_input", **fields)
     else:
-        setup_runs.transition(db, run.id, "needs_input", state="proving", missing_env=[])
+        setup_runs.transition(db, run.id, "needs_input", state="proving", **fields)
     db.refresh(run)
     return {"run": setup_runs.out(run, True)}
 
@@ -419,6 +434,9 @@ def approve_setup(slug: str, run_id: int, body: SetupApproveIn | None = None,
             raise HTTPException(422, why)
     if not setup_runs.transition(db, run.id, "ready", state="approved"):
         raise HTTPException(409, "the run changed meanwhile; reload it")
+    # any other proposal of the project is stale now
+    setup_runs.supersede(db, slug, keep=run.id)
+    db.commit()
     row = runbook.save(db, slug, rb, actor(user))
     record_decision(db, actor(user), "awak_runbook", slug,
                     {"version": row.version, "setup_run": run.id})

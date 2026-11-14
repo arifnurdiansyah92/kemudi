@@ -371,7 +371,8 @@
       "ready": "The runbook worked. Review it, then approve it to make it this project's runbook.",
       "failed": "Setup stopped before the runbook worked.",
       "approved": "Approved.",
-      "cancelled": "Cancelled."
+      "cancelled": "Cancelled.",
+      "superseded": "Superseded by a newer run."
     },
     "phases": {
       "reading": "Reading repos",
@@ -417,7 +418,17 @@
       "saved": "Saved. Awak goes on proving the runbook.",
       "savedMore_one": "Saved. {{count}} value is still missing.",
       "savedMore_other": "Saved. {{count}} values are still missing.",
-      "memberWait": "Waiting for a project admin to fill in these values:"
+      "memberWait": "Waiting for a project admin to fill in these values:",
+      "savedConfirm": "Saved. Confirm the saved values above to go on."
+    },
+    "confirm": {
+      "title": "Awak will use these saved values",
+      "intro": "Awak's proposed runbook hands these values from Env & secrets to its own commands during the proof. Check where each one goes, then continue.",
+      "memberWait": "Waiting for a project admin to let Awak use these saved values:",
+      "usedIn": "Used in",
+      "submit": "Continue",
+      "hint": "The values stay hidden; only the proof gets them.",
+      "doneMore": "Confirmed. Awak still needs a few values."
     },
     "failed": {
       "title": "Setup failed",
@@ -428,7 +439,8 @@
       "browserHint": "Awak will start the app and check every acceptance criterion in a browser before a story is Done.",
       "submit": "Approve runbook",
       "rejected": "Not approved"
-    }
+    },
+    "superseded": "Replaced by a newer setup run. This proposal can no longer be approved."
   },
   "env": {
     "title": "Env & secrets",

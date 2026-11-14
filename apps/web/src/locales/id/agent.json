@@ -369,7 +369,8 @@
       "ready": "Runbook berhasil. Tinjau dulu, lalu setujui agar menjadi runbook proyek ini.",
       "failed": "Setup berhenti sebelum runbook berhasil.",
       "approved": "Disetujui.",
-      "cancelled": "Dibatalkan."
+      "cancelled": "Dibatalkan.",
+      "superseded": "Digantikan oleh proses yang lebih baru."
     },
     "phases": {
       "reading": "Membaca repo",
@@ -415,7 +416,17 @@
       "saved": "Tersimpan. Awak melanjutkan pembuktian runbook.",
       "savedMore_one": "Tersimpan. Masih kurang {{count}} nilai.",
       "savedMore_other": "Tersimpan. Masih kurang {{count}} nilai.",
-      "memberWait": "Menunggu admin proyek mengisi nilai-nilai berikut:"
+      "memberWait": "Menunggu admin proyek mengisi nilai-nilai berikut:",
+      "savedConfirm": "Tersimpan. Konfirmasi nilai tersimpan di atas untuk melanjutkan."
+    },
+    "confirm": {
+      "title": "Awak akan memakai nilai tersimpan ini",
+      "intro": "Usulan runbook Awak memberikan nilai-nilai dari Env & rahasia ini ke perintahnya sendiri selama pembuktian. Periksa ke mana tiap nilai dipakai, lalu lanjutkan.",
+      "memberWait": "Menunggu admin proyek mengizinkan Awak memakai nilai tersimpan berikut:",
+      "usedIn": "Dipakai di",
+      "submit": "Lanjutkan",
+      "hint": "Nilainya tetap tersembunyi; hanya pembuktian yang menerimanya.",
+      "doneMore": "Dikonfirmasi. Awak masih memerlukan beberapa nilai."
     },
     "failed": {
       "title": "Setup gagal",
@@ -426,7 +437,8 @@
       "browserHint": "Awak akan menjalankan aplikasi dan memeriksa setiap kriteria penerimaan di browser sebelum story masuk Done.",
       "submit": "Setujui runbook",
       "rejected": "Tidak disetujui"
-    }
+    },
+    "superseded": "Digantikan oleh proses setup yang lebih baru. Usulan ini tidak dapat disetujui lagi."
   },
   "env": {
     "title": "Env & rahasia",

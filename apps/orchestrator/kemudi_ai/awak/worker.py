@@ -121,6 +121,8 @@ class Worker:
         self._services_swept = False
         self.clock: Callable[[], float] = time.monotonic
         self._last_compose_sweep: float | None = None
+        # Whether the last tick stepped a setup run (they take turns with stories)
+        self._last_tick_setup = False
         self.holder = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 
     @property
@@ -271,6 +273,12 @@ class Worker:
         """Process at most one story (or a requested merge, or one step of a
         setup run). Returns True if it did any work.
 
+        Requested merges come first. Setup runs and stories take turns: a setup
+        step runs when the last tick did not run one, or when no story is
+        ready; so one project's setup run never holds every project's stories
+        (and a story never holds an admin watching a setup run for more than
+        one story).
+
         A failure in one project (the bot cannot open it, Taiga refuses...) is
         logged and recorded on that project, and the next project is served.
         """
@@ -290,10 +298,22 @@ class Worker:
                 self._project_failed(slug, e)
                 continue
             return True
-        # Then one step of a setup run (Configure automatically): an admin is
-        # watching it, and each step is short compared to a story.
-        if SetupRunner(self).step_next():
+        # Then one step of a setup run (Configure automatically), unless the last
+        # tick ran one: then a story first, if one is ready.
+        setup = SetupRunner(self)
+        if not self._last_tick_setup and setup.step_next():
+            self._last_tick_setup = True
             return True
+        self._last_tick_setup = False
+        if self._story(slugs):
+            return True
+        if setup.step_next():
+            self._last_tick_setup = True
+            return True
+        return False
+
+    def _story(self, slugs: list[str]) -> bool:
+        """Pick and process one story of the first project that has one."""
         for slug in slugs:
             try:
                 project = self._project(slug)

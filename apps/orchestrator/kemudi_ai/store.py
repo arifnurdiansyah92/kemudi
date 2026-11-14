@@ -293,7 +293,8 @@ class AwakSetupRun(Base):
     __tablename__ = "awak_setup_runs"
     id: Mapped[int] = mapped_column(primary_key=True)
     project_slug: Mapped[str] = mapped_column(String(200), index=True)
-    # queued, reading, proving, needs_input, ready, approved, failed, cancelled
+    # queued, reading, proving, needs_input, ready, approved, failed, cancelled,
+    # superseded (a ready run a newer run or approval replaced)
     state: Mapped[str] = mapped_column(String(20), default="queued")
     round: Mapped[int] = mapped_column(default=1)
     # {draft, runbook, env_help, feedback, turns, infra_errors, report}
@@ -302,6 +303,13 @@ class AwakSetupRun(Base):
     steps: Mapped[list[Any]] = mapped_column(default=list)
     # [{name, description, secret}]
     missing_env: Mapped[list[Any]] = mapped_column(default=list)
+    # Saved vault values the proposal wires and an admin has not confirmed
+    # yet: [{name, secret, used_in: ["services.api.env", "init[0]", ...]}]
+    confirm_env: Mapped[list[Any]] = mapped_column(default=list)
+    # Vault names an admin confirmed for this run's proof (or typed in it)
+    confirmed_env: Mapped[list[Any]] = mapped_column(default=list)
+    # After an environment problem: not stepped again before this time
+    not_before: Mapped[datetime | None] = mapped_column(default=None, nullable=True)
     # relative to <workspace>/<slug>/setup/ ("<repo>/.qa/setup/home.png")
     screenshot: Mapped[str] = mapped_column(String(500), default="")
     resources: Mapped[dict[str, Any]] = mapped_column(default=dict)
@@ -380,7 +388,30 @@ def init_db(engine, host_git: str | None = None) -> None:
     data fix-ups; read from the settings when not given."""
     Base.metadata.create_all(engine)
     _migrate(engine)
+    _setup_run_index(engine)
     _set_qa_modes(engine, host_git)
+
+
+# The setup run states that hold a project (kemudi_ai/awak/setup.py ACTIVE).
+SETUP_ACTIVE = ("queued", "reading", "proving", "needs_input")
+
+
+def _setup_run_index(engine) -> None:
+    """At most one active setup run per project, enforced by the database (a
+    partial unique index, SQLite and PostgreSQL), so two starts at once cannot
+    both insert. Rows from before it that break the rule leave the index out
+    (logged); the API's check still holds them."""
+    states = ", ".join(_sql_literal(s) for s in SETUP_ACTIVE)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_awak_setup_runs_active "
+                f"ON awak_setup_runs (project_slug) WHERE state IN ({states})"))
+    except Exception as e:  # noqa: BLE001 - the service must still start
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "awak_setup_runs: the one-active-run index was not created: %s", e)
 
 
 def _set_qa_modes(engine, host_git: str | None) -> None:

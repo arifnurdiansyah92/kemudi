@@ -142,6 +142,8 @@ describe('RunbookCard', () => {
       },
       steps: [],
       missing_env: [],
+      confirm_env: [],
+      confirmed_env: [],
       screenshot: false,
       resources: {},
       error: '',

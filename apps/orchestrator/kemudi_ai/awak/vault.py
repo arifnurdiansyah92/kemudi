@@ -120,10 +120,11 @@ def values(db: Session, settings: Settings, slug: str) -> dict[str, str]:
     return {r.name: _decrypt(f, r) for r in found}
 
 
-def _readable(db: Session, settings: Settings, slug: str) -> list[str]:
+def _readable(db: Session, settings: Settings, slug: str,
+              secret_only: bool = False) -> list[str]:
     """The values that decrypt; without a key there are none (nothing can use
-    them either)."""
-    found = rows(db, slug)
+    them either). `secret_only`: the values stored as secret."""
+    found = [r for r in rows(db, slug) if r.secret or not secret_only]
     if not found:
         return []
     try:
@@ -147,20 +148,24 @@ def _variants(value: str) -> set[str]:
             quote(value, safe=""), quote(value), quote_plus(value)}
 
 
-def redaction_values(db: Session, settings: Settings, slug: str) -> list[str]:
+def redaction_values(db: Session, settings: Settings, slug: str,
+                     secret_only: bool = False) -> list[str]:
     """What the project's comments, events, feedback and logs never show:
     every value of 4+ characters and its base64/URL-encoded forms, longest
-    first (so a value inside a longer one is replaced whole)."""
+    first (so a value inside a longer one is replaced whole). `secret_only`:
+    of the secret values only (a plain APP_ENV=development need not be)."""
     out: set[str] = set()
-    for v in _readable(db, settings, slug):
+    for v in _readable(db, settings, slug, secret_only):
         if len(v) >= MIN_REDACT:
             out |= {x for x in _variants(v) if len(x) >= MIN_REDACT}
     return sorted(out, key=len, reverse=True)
 
 
-def scan_values(db: Session, settings: Settings, slug: str) -> list[str]:
-    """What a diff of the project must not add: the values of 8+ characters."""
-    return sorted({v for v in _readable(db, settings, slug) if len(v) >= MIN_SCAN},
+def scan_values(db: Session, settings: Settings, slug: str,
+                secret_only: bool = False) -> list[str]:
+    """What a diff of the project must not add: the values of 8+ characters
+    (`secret_only`: of the secret values only)."""
+    return sorted({v for v in _readable(db, settings, slug, secret_only) if len(v) >= MIN_SCAN},
                   key=len, reverse=True)
 
 

@@ -19,6 +19,11 @@ class RunnerRejected(RunnerError):
     env it cannot accept. Retrying sends the same request: not an infra error."""
 
 
+class RunnerUnknownOp(RunnerError):
+    """The runner has no such op (HTTP 404): an older runner image than the
+    orchestrator. Retrying cannot help: a deployment problem."""
+
+
 class Runner(Protocol):
     def call(self, op: str, **payload: Any) -> dict: ...
 
@@ -42,6 +47,9 @@ class HttpRunner:
                     body = None
                 why = str(body.get("error") or r.text) if isinstance(body, dict) else r.text
                 raise RunnerRejected(f"runner {op} refused: {why[:500]}")
+            if r.status_code == 404:
+                raise RunnerUnknownOp(f"the runner has no `{op}` op (an older kemudi-runner "
+                                      "image?)")
             r.raise_for_status()
             return r.json()
         except (httpx.HTTPError, ValueError) as e:

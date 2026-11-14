@@ -21,6 +21,7 @@ import {
   useSetupEnv,
   useSetupScreenshot,
   type QaMode,
+  type SetupConfirmEnv,
   type SetupMissingEnv,
   type SetupResources,
   type SetupRun,
@@ -114,7 +115,11 @@ export function SetupAssistant({
     </p>
   )
 
-  if (run.state === 'approved' || run.state === 'cancelled') {
+  if (
+    run.state === 'approved' ||
+    run.state === 'cancelled' ||
+    run.state === 'superseded'
+  ) {
     const approved = run.state === 'approved'
     return (
       <section
@@ -133,7 +138,7 @@ export function SetupAssistant({
               aria-hidden
             />
           )}
-          {approved ? t('setup.approved') : t('setup.cancelled')}
+          {t(`setup.${run.state}`)}
         </h3>
         {footer}
       </section>
@@ -192,17 +197,29 @@ export function SetupAssistant({
           </Disclosure>
         )}
 
-      {run.state === 'needs_input' &&
-        (canEdit ? (
-          <EnvForm
-            key={`${run.id}:${run.missing_env.map((m) => m.name).join(',')}`}
-            slug={slug}
-            runId={run.id}
-            missing={run.missing_env}
-          />
-        ) : (
-          <MissingEnvList missing={run.missing_env} />
-        ))}
+      {run.state === 'needs_input' && (
+        <div className='grid gap-5'>
+          {run.confirm_env.length > 0 && (
+            <ConfirmEnv
+              slug={slug}
+              runId={run.id}
+              confirm={run.confirm_env}
+              canEdit={canEdit}
+            />
+          )}
+          {run.missing_env.length > 0 &&
+            (canEdit ? (
+              <EnvForm
+                key={`${run.id}:${run.missing_env.map((m) => m.name).join(',')}`}
+                slug={slug}
+                runId={run.id}
+                missing={run.missing_env}
+              />
+            ) : (
+              <MissingEnvList missing={run.missing_env} />
+            ))}
+        </div>
+      )}
 
       {run.state === 'failed' && (
         <Alert variant='destructive'>
@@ -532,6 +549,94 @@ function MissingEnvList({ missing }: { missing: SetupMissingEnv[] }) {
   )
 }
 
+/** Saved vault values the proposed runbook hands to its commands. The agent
+ * picked them, so the proof waits until an admin lets it use them. */
+function ConfirmEnv({
+  slug,
+  runId,
+  confirm,
+  canEdit,
+}: {
+  slug: string
+  runId: number
+  confirm: SetupConfirmEnv[]
+  canEdit: boolean
+}) {
+  const { t } = useTranslation('agent')
+  const save = useSetupEnv(slug)
+  const id = useId()
+  const [problem, setProblem] = useState<string | null>(null)
+
+  const submit = () => {
+    setProblem(null)
+    save.mutate(
+      { runId, values: {}, confirm: true },
+      {
+        onSuccess: (run) =>
+          toast.success(
+            run.state === 'needs_input'
+              ? t('setup.confirm.doneMore')
+              : t('setup.env.saved')
+          ),
+        onError: (error) => setProblem(agentError(error)),
+      }
+    )
+  }
+
+  return (
+    <div className='grid gap-3' role='group' aria-labelledby={`${id}-title`}>
+      <div className='grid gap-0.5'>
+        <h4 id={`${id}-title`} className='text-sm font-semibold'>
+          {t('setup.confirm.title')}
+        </h4>
+        <p className='max-w-prose text-sm text-muted-foreground'>
+          {canEdit ? t('setup.confirm.intro') : t('setup.confirm.memberWait')}
+        </p>
+      </div>
+      <ul className='divide-y rounded-lg border text-sm'>
+        {confirm.map((c) => (
+          <li key={c.name} className='grid gap-1 px-3 py-2'>
+            <div className='flex flex-wrap items-center gap-2'>
+              <code className='font-mono text-xs font-medium break-all'>
+                {c.name}
+              </code>
+              {c.secret && (
+                <Badge variant='outline' className='font-normal'>
+                  {t('setup.env.secret')}
+                </Badge>
+              )}
+            </div>
+            <p className='flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground'>
+              <span>{t('setup.confirm.usedIn')}</span>
+              {c.used_in.map((where) => (
+                <code key={where} className='font-mono text-foreground'>
+                  {where}
+                </code>
+              ))}
+            </p>
+          </li>
+        ))}
+      </ul>
+      {problem && (
+        <p role='alert' className='text-sm text-destructive'>
+          {problem}
+        </p>
+      )}
+      {canEdit && (
+        <div className='flex flex-wrap items-center gap-x-3 gap-y-1'>
+          <Button size='sm' disabled={save.isPending} onClick={submit}>
+            {save.isPending && <Loader2 className='animate-spin' />}
+            {t('setup.confirm.submit')}
+          </Button>
+          <span className='text-xs text-muted-foreground'>
+            {t('setup.confirm.hint')}
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** The values the proof needs. They go to the vault and are never shown
  * again; a secret one stays write-only there too. */
 function EnvForm({
@@ -561,8 +666,12 @@ function EnvForm({
   ) => setValues((v) => ({ ...v, [name]: { ...v[name], ...patch } }))
 
   const submit = () => {
+    // Only names the run still waits for; a value saved before is not sent again.
+    const waiting = new Set(missing.map((m) => m.name))
     const filled = Object.fromEntries(
-      Object.entries(values).filter(([, v]) => v.value !== '')
+      Object.entries(values).filter(
+        ([name, v]) => waiting.has(name) && v.value !== ''
+      )
     )
     if (Object.keys(filled).length === 0)
       return setProblem(t('setup.env.noneFilled'))
@@ -570,12 +679,24 @@ function EnvForm({
     save.mutate(
       { runId, values: filled },
       {
-        onSuccess: (run) =>
+        onSuccess: (run) => {
+          // saved: clear them, so a later submit sends only what is left
+          setValues((v) =>
+            Object.fromEntries(
+              Object.entries(v).map(([name, entry]) => [
+                name,
+                name in filled ? { ...entry, value: '' } : entry,
+              ])
+            )
+          )
           toast.success(
-            run.state === 'needs_input'
+            run.state === 'needs_input' && run.missing_env.length > 0
               ? t('setup.env.savedMore', { count: run.missing_env.length })
-              : t('setup.env.saved')
-          ),
+              : run.state === 'needs_input'
+                ? t('setup.env.savedConfirm')
+                : t('setup.env.saved')
+          )
+        },
         onError: (error) => setProblem(agentError(error)),
       }
     )

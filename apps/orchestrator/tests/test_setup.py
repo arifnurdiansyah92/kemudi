@@ -93,7 +93,10 @@ def project_host(host):
     return host
 
 
-def make(tmp_path, repo, replies=(RB,), fill=True, shots=None, on_shot=None, **kw):
+def make(tmp_path, repo, replies=(RB,), fill=True, shots=None, on_shot=None, confirmed=True,
+         **kw):
+    """`confirmed`: the saved values count as confirmed for the run (as if an
+    admin had confirmed them); False to see the run ask."""
     order: list[str] = []
     runner = SetupRunner(tmp_path / "ws", order, shots=shots, on_shot=on_shot,
                          health=kw.pop("health", None), gates=kw.pop("gates", None))
@@ -106,6 +109,9 @@ def make(tmp_path, repo, replies=(RB,), fill=True, shots=None, on_shot=None, **k
         for k, v in values.items():
             vault.put(db, settings, "kemudi", k, v, True, "pm")
         run = setup.start(db, "kemudi", "pm")
+        if confirmed:
+            run.confirmed_env = sorted(values)
+            db.commit()
     return w, sessions, settings, runner, agent, run.id, values
 
 
@@ -325,7 +331,19 @@ def test_transport_errors_retry_then_fail(tmp_path, repo, project_host):
     w.tick()
     run = run_of(sessions, run_id)
     assert run.state == "proving" and run.round == 1 and "retrying" in run.error
+    # no sleep in the tick: the run waits until `not_before`, the worker goes on
+    assert run.not_before is not None
+    assert not w.tick() and setup.SetupRunner(w).next_run() is None
+    assert run_of(sessions, run_id).proposal["infra_errors"] == 1
+
+    def due():
+        with sessions() as db:
+            db.get(AwakSetupRun, run_id).not_before = None
+            db.commit()
+
+    due()
     w.tick()
+    due()
     w.tick()
     run = run_of(sessions, run_id)
     assert run.state == "failed" and "3 times in a row" in run.error
@@ -345,13 +363,25 @@ def test_cancel_during_the_proof_is_not_overwritten(tmp_path, repo, project_host
     assert w.svc.order.count("svc_down") == 1  # the proof's services still came down
 
 
-def test_setup_step_runs_before_stories_and_recovers(tmp_path, repo, project_host):
+def test_setup_steps_and_stories_take_turns_and_it_recovers(tmp_path, repo, project_host):
     w, sessions, settings, runner, _, run_id, _ = make(tmp_path, repo)
     w.taiga.add(1, 12, "Badge", "## Acceptance criteria\n- shows a badge")
+    stories: list[int] = []
+    w._process = lambda project, job_id, story: stories.append(story["ref"])
     w.tick()
-    assert run_of(sessions, run_id).state == "reading"
-    assert w.taiga.status_of(1) == "ready"  # the story waits for the setup run
-    drive(w, sessions, run_id, until=("proving",))
+    assert run_of(sessions, run_id).state == "reading" and stories == []
+    # the next tick serves the ready story, not the setup run
+    w.tick()
+    assert stories == [12] and run_of(sessions, run_id).state == "reading"
+    w.tick()
+    assert run_of(sessions, run_id).state == "proving" and stories == [12]
+    w.tick()
+    assert stories == [12, 12] and run_of(sessions, run_id).state == "proving"
+    w.tick()
+    assert run_of(sessions, run_id).state == "ready" and stories == [12, 12]
+    assert w.tick() and stories == [12, 12, 12]
+    with sessions() as db:
+        setup.transition(db, run_id, "ready", state="proving")
     with sessions() as db:
         db.get(AwakSetupRun, run_id).steps = [{"name": "half", "ok": True, "output": ""}]
         db.commit()
@@ -465,7 +495,12 @@ def test_env_fills_the_vault_and_resumes_the_proof(api):
     assert not any(v in json.dumps(detail) for v in values.values())
     # not waiting any more; a bad name
     assert api.post(url, headers=ADMIN, json=body).status_code == 409
+    # an empty body is refused; one active run per project
+    with api.S() as db:
+        setup.transition(db, run_id, "proving", state="failed")
     other = put_run(api, "needs_input")
+    r = api.post(f"{BASE}/{other}/env", headers=ADMIN, json={"values": {}})
+    assert r.status_code == 422
     r = api.post(f"{BASE}/{other}/env", headers=ADMIN,
                  json={"values": {"PATH": {"value": "x"}}})
     assert r.status_code == 422
@@ -547,3 +582,341 @@ def test_screenshot_is_served_only_from_the_setup_folder(api, tmp_path):
             return  # no symlink rights (Windows)
         bad = put_run(api, "ready", screenshot="kemudi/link.png")
         assert api.get(f"{BASE}/{bad}/screenshot", headers=MEMBER).status_code == 404
+
+
+# --- review fixes: confirmation, scans, fairness, supersede, failures, cost ---------
+
+
+def as_admin():
+    from kemudi_ai.auth import TaigaUser
+
+    return TaigaUser(id=1, username="pm", token=made_value())
+
+
+def fill(sessions, settings, run_id, values=None, confirm=False):
+    """POST /setup/{id}/env, through the API function, on the worker's database."""
+    from kemudi_ai.awak import agent_api
+
+    body = agent_api.SetupEnvIn(values={k: agent_api.SetupEnvValue(value=v)
+                                        for k, v in (values or {}).items()},
+                                confirm=confirm)
+    with sessions() as db:
+        return agent_api.fill_setup_env("kemudi", run_id, body, user=as_admin(), db=db,
+                                        settings=settings)["run"]
+
+
+def test_saved_values_wait_for_an_admins_confirmation(tmp_path, repo, project_host):
+    w, sessions, settings, runner, _, run_id, _ = make(tmp_path, repo, confirmed=False)
+    assert drive(w, sessions, run_id) == ["queued", "reading", "needs_input"]
+    run = run_of(sessions, run_id)
+    assert run.missing_env == []
+    by = {c["name"]: c for c in run.confirm_env}
+    assert set(by) == {"JWT_SECRET_KEY", "QA_ADMIN_EMAIL", "QA_ADMIN_PASSWORD"}
+    assert by["JWT_SECRET_KEY"] == {"name": "JWT_SECRET_KEY", "secret": True,
+                                    "used_in": ["services.api.env"]}
+    assert by["QA_ADMIN_PASSWORD"]["used_in"] == ["init[0]", "qa.env", "qa.login"]
+    # nothing ran with them
+    assert "svc_up" not in w.svc.order and "screenshot" not in runner.order
+    assert setup.SetupRunner(w).next_run() is None
+    out = fill(sessions, settings, run_id, confirm=True)
+    assert out["state"] == "proving" and out["confirm_env"] == []
+    assert out["confirmed_env"] == ["JWT_SECRET_KEY", "QA_ADMIN_EMAIL", "QA_ADMIN_PASSWORD"]
+    assert drive(w, sessions, run_id)[-1] == "ready"
+    with sessions() as db:
+        last = (db.query(Decision).filter_by(action="awak_setup")
+                .order_by(Decision.id.desc()).first())
+    assert last.detail["confirmed"] == ["JWT_SECRET_KEY", "QA_ADMIN_EMAIL", "QA_ADMIN_PASSWORD"]
+
+
+def test_a_later_proposal_wiring_another_saved_value_asks_again(tmp_path, repo, project_host):
+    more = copy.deepcopy(RB)
+    more["services"][0]["env"] = [*RB["services"][0]["env"], "SENTRY_DSN"]
+    more["env"] = [*RB["env"], {"name": "SENTRY_DSN", "secret": True}]
+    health = [{"ok": False, "error": "down"}]
+    w, sessions, settings, _, agent, run_id, _ = make(tmp_path, repo, replies=[RB, more],
+                                                      health=health)
+    with sessions() as db:
+        vault.put(db, settings, "kemudi", "SENTRY_DSN", made_value(), True, "pm")
+    seen = drive(w, sessions, run_id)
+    assert seen == ["queued", "reading", "proving", "reading", "needs_input"]
+    run = run_of(sessions, run_id)
+    assert run.confirm_env == [{"name": "SENTRY_DSN", "secret": True,
+                                "used_in": ["services.api.env"]}]
+    assert fill(sessions, settings, run_id, confirm=True)["state"] == "proving"
+    assert drive(w, sessions, run_id)[-1] == "ready"
+
+
+def test_values_typed_in_the_run_count_as_confirmed(tmp_path, repo, project_host):
+    w, sessions, settings, _, _, run_id, _ = make(tmp_path, repo, fill=False, confirmed=False)
+    drive(w, sessions, run_id)
+    run = run_of(sessions, run_id)
+    assert len(run.missing_env) == 3 and run.confirm_env == []
+    out = fill(sessions, settings, run_id, creds())
+    assert out["state"] == "proving" and out["confirm_env"] == []
+    # a value saved elsewhere meanwhile (not typed here) is asked about before the proof
+    with sessions() as db:
+        vault.put(db, settings, "kemudi", "JWT_SECRET_KEY", made_value(), True, "pm")
+        run = db.get(AwakSetupRun, run_id)
+        run.confirmed_env = ["QA_ADMIN_EMAIL", "QA_ADMIN_PASSWORD"]
+        db.commit()
+    w.tick()
+    run = run_of(sessions, run_id)
+    assert run.state == "needs_input"
+    assert [c["name"] for c in run.confirm_env] == ["JWT_SECRET_KEY"]
+
+
+def test_the_proof_gets_only_the_wired_values(tmp_path, repo, project_host):
+    w, sessions, settings, _, _, run_id, _ = make(tmp_path, repo)
+    other = made_value()
+    with sessions() as db:
+        vault.put(db, settings, "kemudi", "UNRELATED_TOKEN", other, True, "pm")
+    seen_values = []
+    real = setup.checks.Compose
+
+    def spy(rb, svc, run, projects, path, values, *a, **k):
+        seen_values.append(dict(values))
+        return real(rb, svc, run, projects, path, values, *a, **k)
+
+    setup.checks.Compose = spy
+    try:
+        assert drive(w, sessions, run_id)[-1] == "ready"
+    finally:
+        setup.checks.Compose = real
+    assert set(seen_values[0]) == {"JWT_SECRET_KEY", "QA_ADMIN_EMAIL", "QA_ADMIN_PASSWORD"}
+
+
+def test_the_secret_scan_sees_values_json_would_escape(tmp_path, repo, project_host):
+    value = 'q"' + made_value() + '\\é'
+    leaky = copy.deepcopy(RB)
+    leaky["apps"][0]["env"]["API_TOKEN"] = value
+    w, sessions, settings, _, agent, run_id, _ = make(tmp_path, repo, replies=[leaky, RB])
+    with sessions() as db:
+        vault.put(db, settings, "kemudi", "API_TOKEN", value, True, "pm")
+    assert drive(w, sessions, run_id)[-1] == "ready"
+    assert "secret value" in agent.tasks[1] and value not in agent.tasks[1]
+    # the previous runbook shown to the agent and stored is redacted string by string
+    assert json.dumps(value)[1:-1] not in agent.tasks[1]
+    assert not any(value in x for x in setup._strings(run_of(sessions, run_id).proposal))
+
+
+def test_a_secret_value_in_a_key_is_refused(tmp_path, repo, project_host):
+    value = made_value()
+    leaky = copy.deepcopy(RB)
+    leaky["apps"][0]["env"][value] = "x"
+    w, sessions, settings, _, agent, run_id, _ = make(tmp_path, repo, replies=[leaky, RB])
+    with sessions() as db:
+        vault.put(db, settings, "kemudi", "API_TOKEN", value, True, "pm")
+    assert drive(w, sessions, run_id)[-1] == "ready"
+    assert "secret value" in agent.tasks[1] and value not in agent.tasks[1]
+
+
+def test_a_plain_vault_value_is_neither_refused_nor_redacted(tmp_path, repo, project_host):
+    spec = copy.deepcopy(RB)
+    spec["apps"][0]["env"]["APP_ENV"] = "development-mode"
+    shots = [{"infra_error": "web: APP_ENV is development-mode", "processes": []}]
+    w, sessions, settings, _, agent, run_id, _ = make(tmp_path, repo, replies=[spec],
+                                                      shots=shots)
+    with sessions() as db:
+        vault.put(db, settings, "kemudi", "APP_ENV", "development-mode", False, "pm")
+    assert drive(w, sessions, run_id)[-1] == "ready"
+    run = run_of(sessions, run_id)
+    assert run.round == 2 and "secret value" not in agent.tasks[1]
+    assert "APP_ENV is development-mode" in agent.tasks[1]
+    assert run.proposal["runbook"]["apps"][0]["env"]["APP_ENV"] == "development-mode"
+
+
+def test_a_runbook_json_folder_goes_back_to_the_agent(tmp_path, repo, project_host):
+    class FolderAgent(SetupAgent):
+        def run(self, purpose, model, system, task, slug="", role_id=None):
+            if not self.tasks:
+                self.tasks.append(task)
+                root = Path(task.splitlines()[0].removeprefix("Workspace: ").strip())
+                (root / "runbook.json" / "x").mkdir(parents=True)
+                return "made a folder", 1.0
+            return super().run(purpose, model, system, task, slug, role_id)
+
+    w, sessions, _, _, _, run_id, _ = make(tmp_path, repo)
+    agent = w.agent = FolderAgent([RB])
+    seen = drive(w, sessions, run_id)
+    assert seen[-1] == "ready" and "is a folder" in agent.tasks[1]
+    assert run_of(sessions, run_id).proposal.get("infra_errors", 0) == 0
+
+
+def test_a_runner_without_the_screenshot_op_fails_the_run(tmp_path, repo, project_host):
+    from kemudi_ai.awak.runner import RunnerUnknownOp
+
+    class OldRunner(SetupRunner):
+        def call(self, op, **payload):
+            if op == "screenshot":
+                raise RunnerUnknownOp("the runner has no `screenshot` op")
+            return super().call(op, **payload)
+
+    w, sessions, _, runner, agent, run_id, _ = make(tmp_path, repo)
+    w.runner = OldRunner(tmp_path / "ws", runner.order)
+    assert drive(w, sessions, run_id)[-1] == "failed"
+    run = run_of(sessions, run_id)
+    assert "kemudi-runner image" in run.error and run.round == 1 and len(agent.tasks) == 1
+    assert w.svc.order.count("svc_down") == 1  # the services still came down
+
+
+def test_the_http_runner_reports_an_unknown_op():
+    import httpx
+
+    from kemudi_ai.awak.runner import HttpRunner, RunnerUnknownOp
+
+    r = HttpRunner("http://runner", made_value(), transport=httpx.MockTransport(
+        lambda req: httpx.Response(404, json={"error": "unknown op"})))
+    with pytest.raises(RunnerUnknownOp):
+        r.call("screenshot")
+
+
+def test_a_failed_agent_turn_still_counts_its_cost(tmp_path, repo, project_host):
+    from kemudi_ai.awak.agent import AgentError
+
+    class Broken(SetupAgent):
+        def run(self, *a, **k):
+            if not self.tasks:
+                self.tasks.append("")
+                raise AgentError("provider down", cost_idr=5.0)
+            return super().run(*a, **k)
+
+    w, sessions, _, _, _, run_id, _ = make(tmp_path, repo)
+    w.agent = Broken([RB])
+    drive(w, sessions, run_id, until=("reading",))
+    w.tick()
+    run = run_of(sessions, run_id)
+    assert run.state == "reading" and "retrying" in run.error and run.cost_idr == 5.0
+    with sessions() as db:
+        db.get(AwakSetupRun, run_id).not_before = None
+        db.commit()
+    assert drive(w, sessions, run_id)[-1] == "ready"
+    assert run_of(sessions, run_id).cost_idr == 12.0
+
+
+def test_cancel_through_the_api_during_the_proof(tmp_path, repo, project_host):
+    from kemudi_ai.awak import agent_api
+
+    holder = {}
+
+    def cancel():
+        with holder["sessions"]() as db:
+            out = agent_api.cancel_setup("kemudi", holder["id"], user=as_admin(), db=db,
+                                         svc=holder["svc"])
+        holder["out"] = out["run"]
+
+    w, sessions, _, _, _, run_id, _ = make(tmp_path, repo, on_shot=cancel)
+    holder.update(sessions=sessions, id=run_id, svc=w.svc)
+    drive(w, sessions, run_id, until=("cancelled",))
+    assert holder["out"]["state"] == "cancelled"
+    run = run_of(sessions, run_id)
+    assert run.state == "cancelled" and run.screenshot == ""
+    # the API brought the project down, and so did the proof on its way out
+    assert w.svc.order.count("svc_down") == 2
+
+
+def test_one_active_run_per_project_in_the_database(tmp_path):
+    from kemudi_ai.store import make_session
+
+    sessions = make_session("sqlite:///:memory:")
+    with sessions() as db:
+        first = setup.start(db, "demo", "pm")
+        assert first is not None and setup.start(db, "demo", "pm") is None
+        assert setup.start(db, "other", "pm") is not None
+        db.add(AwakSetupRun(project_slug="demo", state="needs_input"))
+        with pytest.raises(Exception):
+            db.commit()
+        db.rollback()
+        setup.transition(db, first.id, "queued", state="failed")
+        assert setup.start(db, "demo", "pm") is not None
+
+
+def test_a_run_of_another_project_is_not_found(api):
+    run_id = put_run(api, "needs_input")
+    other = f"/projects/other/agent/setup/{run_id}"
+    assert api.post(f"{other}/env", headers=ADMIN,
+                    json={"values": {}, "confirm": True}).status_code == 404
+    assert api.post(f"{other}/approve", headers=ADMIN).status_code == 404
+    assert api.post(f"{other}/cancel", headers=ADMIN).status_code == 404
+    assert api.get(f"{other}/screenshot", headers=MEMBER).status_code == 404
+    with api.S() as db:
+        assert db.get(AwakSetupRun, run_id).state == "needs_input"
+    assert api.svc.ops("svc_down") == []
+
+
+def test_confirm_over_http_lets_the_proof_use_saved_values(api):
+    values = creds()
+    with api.S() as db:
+        for k, v in values.items():
+            vault.put(db, api.settings, "demo", k, v, k != "QA_ADMIN_EMAIL", "pm")
+    shown = [{"name": "JWT_SECRET_KEY", "secret": True, "used_in": ["services.api.env"]}]
+    run_id = put_run(api, "needs_input", confirm_env=shown)
+    url = f"{BASE}/{run_id}/env"
+    assert api.post(url, headers=MEMBER, json={"confirm": True}).status_code == 403
+    member = api.get(f"{BASE}/latest", headers=MEMBER).json()["run"]
+    assert member["confirm_env"] == shown
+    # a confirmation covers what the run listed, nothing more
+    r = api.post(url, headers=ADMIN, json={"confirm": True})
+    run = r.json()["run"]
+    assert run["state"] == "needs_input" and run["confirmed_env"] == ["JWT_SECRET_KEY"]
+    assert [c["name"] for c in run["confirm_env"]] == ["QA_ADMIN_EMAIL", "QA_ADMIN_PASSWORD"]
+    assert run["confirm_env"][0]["secret"] is False
+    r = api.post(url, headers=ADMIN, json={"values": {}, "confirm": True})
+    assert r.status_code == 200, r.text
+    run = r.json()["run"]
+    assert run["state"] == "proving" and run["confirm_env"] == [] and run["missing_env"] == []
+    assert run["confirmed_env"] == ["JWT_SECRET_KEY", "QA_ADMIN_EMAIL", "QA_ADMIN_PASSWORD"]
+    assert [d["confirmed"] for d in decisions(api)] == [
+        ["JWT_SECRET_KEY"], ["QA_ADMIN_EMAIL", "QA_ADMIN_PASSWORD"]]
+
+
+def test_values_without_confirm_leave_saved_ones_unconfirmed(api):
+    values = creds()
+    with api.S() as db:
+        vault.put(db, api.settings, "demo", "JWT_SECRET_KEY", values["JWT_SECRET_KEY"], True,
+                  "pm")
+    run_id = put_run(api, "needs_input")
+    r = api.post(f"{BASE}/{run_id}/env", headers=ADMIN, json={"values": {
+        "QA_ADMIN_EMAIL": {"value": values["QA_ADMIN_EMAIL"], "secret": False},
+        "QA_ADMIN_PASSWORD": {"value": values["QA_ADMIN_PASSWORD"]}}})
+    run = r.json()["run"]
+    assert run["state"] == "needs_input" and run["missing_env"] == []
+    assert [c["name"] for c in run["confirm_env"]] == ["JWT_SECRET_KEY"]
+    assert run["confirmed_env"] == ["QA_ADMIN_EMAIL", "QA_ADMIN_PASSWORD"]
+
+
+def test_a_new_run_or_an_approval_supersedes_ready_runs(api):
+    old = put_run(api, "ready")
+    r = api.post(BASE, headers=ADMIN)
+    assert r.status_code == 202
+    with api.S() as db:
+        assert db.get(AwakSetupRun, old).state == "superseded"
+    r = api.post(f"{BASE}/{old}/approve", headers=ADMIN)
+    assert r.status_code == 409 and "superseded" in r.text
+    assert api.post(f"{BASE}/{old}/cancel", headers=ADMIN).status_code == 409
+    # approving one ready run supersedes another
+    with api.S() as db:
+        for run in db.query(AwakSetupRun).filter(AwakSetupRun.state == "queued"):
+            run.state = "failed"
+        db.commit()
+    a, b = put_run(api, "ready"), put_run(api, "ready")
+    assert api.post(f"{BASE}/{b}/approve", headers=ADMIN).status_code == 200
+    with api.S() as db:
+        assert db.get(AwakSetupRun, a).state == "superseded"
+        assert db.get(AwakSetupRun, b).state == "approved"
+    out = api.get(f"{BASE}/latest", headers=ADMIN).json()["run"]
+    assert out["state"] == "approved" and not out["active"]
+
+
+def test_members_see_no_compose_environment_values(api):
+    spec = copy.deepcopy(RB)
+    spec["services"][0]["environment"] = {"backend": {"FLASK_ENV": "plain-but-hidden"}}
+    with api.S() as db:
+        db.add(AwakSetupRun(project_slug="demo", state="ready", proposal={"runbook": spec}))
+        db.commit()
+    member = api.get(f"{BASE}/latest", headers=MEMBER).json()["run"]
+    assert "plain-but-hidden" not in json.dumps(member)
+    assert member["proposal"]["runbook"]["services"][0]["environment"] == {
+        "backend": {"FLASK_ENV": runbook.MASK}}
+    admin = api.get(f"{BASE}/latest", headers=ADMIN).json()["run"]
+    assert admin["proposal"]["runbook"]["services"][0]["environment"]["backend"] == {
+        "FLASK_ENV": "plain-but-hidden"}

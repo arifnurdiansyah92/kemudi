@@ -38,6 +38,8 @@ const base: SetupRun = {
   },
   steps: [],
   missing_env: [],
+  confirm_env: [],
+  confirmed_env: [],
   screenshot: false,
   resources: {},
   error: '',
@@ -179,6 +181,86 @@ describe('SetupAssistant', () => {
     })
   })
 
+  it('sends a saved value only once after a partial save', async () => {
+    const { screen: s } = show({
+      state: 'needs_input',
+      proposal: proposed,
+      missing_env: [
+        { name: 'JWT_SECRET_KEY', description: '', secret: true },
+        { name: 'QA_ADMIN_EMAIL', description: '', secret: false },
+      ],
+    })
+    const screen = await s
+    await screen
+      .getByLabelText('JWT_SECRET_KEY', { exact: true })
+      .fill('abc123')
+    await screen.getByRole('button', { name: 'Save and continue' }).click()
+    expect(state.env.mock.calls[0][0].values).toEqual({
+      JWT_SECRET_KEY: { value: 'abc123', secret: true },
+    })
+    // the server saved it; QA_ADMIN_EMAIL is still missing
+    state.env.mock.calls[0][1].onSuccess({
+      ...base,
+      state: 'needs_input',
+      missing_env: [{ name: 'QA_ADMIN_EMAIL', description: '', secret: false }],
+    })
+    await expect
+      .element(screen.getByLabelText('JWT_SECRET_KEY', { exact: true }))
+      .toHaveValue('')
+    await screen
+      .getByLabelText('QA_ADMIN_EMAIL', { exact: true })
+      .fill('qa@example.com')
+    await screen.getByRole('button', { name: 'Save and continue' }).click()
+    expect(state.env.mock.calls[1][0]).toEqual({
+      runId: 7,
+      values: { QA_ADMIN_EMAIL: { value: 'qa@example.com', secret: false } },
+    })
+  })
+
+  it('lists the saved values the proof will use and continues on confirm', async () => {
+    const { screen: s } = show({
+      state: 'needs_input',
+      proposal: proposed,
+      confirm_env: [
+        {
+          name: 'JWT_SECRET_KEY',
+          secret: true,
+          used_in: ['services.api.env'],
+        },
+        {
+          name: 'QA_ADMIN_EMAIL',
+          secret: false,
+          used_in: ['init[0]', 'qa.login'],
+        },
+      ],
+      missing_env: [{ name: 'SMTP_PASSWORD', description: '', secret: true }],
+    })
+    const screen = await s
+    await expect
+      .element(screen.getByText('Awak will use these saved values'))
+      .toBeVisible()
+    const jwt = screen
+      .getByRole('listitem')
+      .filter({ hasText: 'JWT_SECRET_KEY' })
+    await expect.element(jwt).toHaveTextContent(/Secret/)
+    await expect.element(jwt).toHaveTextContent(/Used in\s*services\.api\.env/)
+    const email = screen
+      .getByRole('listitem')
+      .filter({ hasText: 'QA_ADMIN_EMAIL' })
+    await expect.element(email).toHaveTextContent(/init\[0\]\s*qa\.login/)
+    // the missing-value form is there too
+    await expect
+      .element(screen.getByLabelText('SMTP_PASSWORD', { exact: true }))
+      .toBeVisible()
+    await screen.getByRole('button', { name: 'Continue', exact: true }).click()
+    expect(state.env).toHaveBeenCalledOnce()
+    expect(state.env.mock.calls[0][0]).toEqual({
+      runId: 7,
+      values: {},
+      confirm: true,
+    })
+  })
+
   it('shows the proof when ready and approves with Browser QA', async () => {
     const { screen: s } = show({
       state: 'ready',
@@ -239,6 +321,20 @@ describe('SetupAssistant', () => {
     expect(onRetry).toHaveBeenCalledOnce()
   })
 
+  it('collapses a superseded run with its own label', async () => {
+    const { screen: s } = show({
+      state: 'superseded',
+      active: false,
+      proposal: proposed,
+      steps,
+    })
+    const screen = await s
+    await expect
+      .element(screen.getByText(/Replaced by a newer setup run/))
+      .toBeVisible()
+    expect(screen.getByRole('button').elements()).toHaveLength(0)
+  })
+
   it('collapses an approved run to a confirmation', async () => {
     const { screen: s } = show({
       state: 'approved',
@@ -261,6 +357,12 @@ describe('SetupAssistant', () => {
       state: 'needs_input',
       missing_env: [{ name: 'JWT_SECRET_KEY', description: '', secret: true }],
     },
+    {
+      state: 'needs_input',
+      confirm_env: [
+        { name: 'JWT_SECRET_KEY', secret: true, used_in: ['qa.env'] },
+      ],
+    },
     { state: 'ready', active: false, steps },
     { state: 'failed', active: false, error: 'boom' },
   ])('gives members no admin controls ($state)', async (run) => {
@@ -275,6 +377,10 @@ describe('SetupAssistant', () => {
     if (run.state === 'needs_input')
       await expect
         .element(screen.getByText(/Waiting for a project admin/))
+        .toBeVisible()
+    if (run.confirm_env?.length)
+      await expect
+        .element(screen.getByText(/let Awak use these saved values/))
         .toBeVisible()
   })
 
