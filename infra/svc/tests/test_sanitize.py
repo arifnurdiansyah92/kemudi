@@ -69,7 +69,9 @@ def test_rewrite(doc, checkout):
     assert b["ports"] == ["0.0.0.0::5000"]
     assert "ports" not in pg and "ports" not in rd
     for s in (b, pg, rd):
-        assert s["restart"] == "no" and s["labels"] == {"kemudi.project": "playfast-us1"}
+        # every playfast service declares `restart: unless-stopped`
+        assert s["restart"] == "on-failure:3"
+        assert s["labels"] == {"kemudi.project": "playfast-us1"}
         assert "networks" not in s
     assert b["mem_limit"] == sanitize.MEM_CAP and pg["mem_limit"] == sanitize.MEM_CAP
     assert rd["mem_limit"] == 512 * 1024 ** 2
@@ -485,3 +487,14 @@ def test_limits_as_strings(doc, checkout):
     interpolated["services"]["postgres"]["pids_limit"] = -1
     out = sanitize.rewrite(interpolated, "p", None)["services"]
     assert out["redis"]["pids_limit"] == 100 and out["postgres"]["pids_limit"] == 512
+
+
+def test_rewrite_keeps_no_restart_when_the_app_declares_none(doc, checkout):
+    reduced = sanitize.reduce(doc, ["backend"], checkout)
+    reduced["name"] = "playfast-us1"
+    reduced["services"]["redis"].pop("restart", None)
+    reduced["services"]["postgres"]["restart"] = "no"
+    out = sanitize.rewrite(reduced, "playfast-us1", ("backend", 5000))
+    assert out["services"]["redis"]["restart"] == "no"
+    assert out["services"]["postgres"]["restart"] == "no"
+    assert out["services"]["backend"]["restart"] == "on-failure:3"

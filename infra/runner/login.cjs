@@ -16,6 +16,15 @@ async function main() {
       locale: 'en-US',
     })
     const page = await context.newPage()
+    // Why a submit did not land: each non-GET request's status (never its
+    // body or the typed values) and the page's alert text, for the message.
+    const posts = []
+    page.on('response', (r) => {
+      const req = r.request()
+      if (req.method() !== 'GET' && ['xhr', 'fetch', 'document'].includes(req.resourceType())) {
+        posts.push(`${req.method()} ${new URL(r.url()).pathname} -> ${r.status()}`)
+      }
+    })
     const loginPath = new URL(cfg.path, env.QA_BASE_URL).pathname
     const done = (url) =>
       cfg.success_url ? url.pathname.startsWith(cfg.success_url) : url.pathname !== loginPath
@@ -41,9 +50,15 @@ async function main() {
     }
     if (!landed) {
       const where = new URL(page.url()).pathname
+      const alert = await page
+        .locator('[role=alert]')
+        .allInnerTexts()
+        .then((t) => t.join(' | ').replace(/\s+/g, ' ').slice(0, 200), () => '')
       throw new Error(
         `still at ${where} after ${waits.length} login attempts` +
           (cfg.success_url ? ` (expected ${cfg.success_url})` : '') +
+          `; requests: ${posts.slice(-6).join(', ') || 'none sent'}` +
+          (alert ? `; page says: ${alert}` : '') +
           '; check the selectors and the vault values of qa.login',
       )
     }
