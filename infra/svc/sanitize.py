@@ -21,7 +21,8 @@ depends_on, absolute build contexts) and writes what comes back.
    it is after interpolation. `check_dockerfiles` reads each built service's
    Dockerfile and refuses base images that name another project's image.
 4. `rewrite` turns the interpolated file into the one svc runs: built images
-   named `kemudi-<project>-<service>`, `restart: "no"`, memory and pids
+   named `kemudi-<project>-<service>`, restart `no` (`on-failure:3` for a
+   service that declares a restart policy), memory and pids
    capped, only the exposed port published (random host port), every
    service, volume and built image labelled `kemudi.project=<project>`.
 
@@ -37,6 +38,7 @@ import re
 from pathlib import Path
 
 LABEL = "kemudi.project"
+RESTART_RETRIES = 3
 MEM_CAP = 2 * 1024 ** 3
 PIDS_CAP = 512
 
@@ -525,7 +527,11 @@ def rewrite(doc: dict, project: str, expose: tuple[str, int] | None,
         else:
             # again after interpolation: `${UNSET:-kemudi-other-...}` passed reduce
             check_image(name, s.get("image"))
-        s["restart"] = "no"
+        # A service the app restarts in its own compose (a server that loses a
+        # start-up race and exits, then comes back) gets a bounded retry, so
+        # QA sees what the app's deployment sees; never an endless loop.
+        s["restart"] = ("no" if str(svc.get("restart") or "no") == "no"
+                        else f"on-failure:{RESTART_RETRIES}")
         mem = parse_bytes(s.get("mem_limit"), f"service {name!r}: mem_limit")
         s["mem_limit"] = min(mem, MEM_CAP) if mem and mem > 0 else MEM_CAP
         pids = parse_count(s.get("pids_limit"), f"service {name!r}: pids_limit")

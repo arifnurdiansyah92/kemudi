@@ -662,7 +662,7 @@ def _npm_root() -> str:
                           env=child_env(), **child_kw()).stdout.strip()
 
 
-LOGIN_TIMEOUT = 180
+LOGIN_TIMEOUT = 240
 
 
 def _login(d: Path, base: str, login: dict, deadline: float, tmp: Path) -> str:

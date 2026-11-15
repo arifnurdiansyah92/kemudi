@@ -918,11 +918,18 @@ class Worker:
         with compose.for_qa(plan) if compose else nullcontext({}) as urls:
             report = self._runner("qa", path=self._path(workdir),
                                   **self.qa_payload(plan, token, rc, urls, login, spec_env))
+            # The app's own log says why a login failed (a crashed backend, a
+            # 500); read it while the services are still up.
+            app_logs = (compose.exposed_logs()
+                        if compose is not None and report.get("login_error") else "")
         if report.get("login_error"):
+            logs = str(report["login_error"])
+            if app_logs:
+                logs += "\n\n" + app_logs
             raise checks.ServiceFailed(
                 "login QA (qa.login) gagal; periksa selector dan nilai vault di runbook, atau "
                 "kembalikan story ke In progress jika story ini mengubah halaman login.",
-                logs=str(report["login_error"]), infra=False)
+                logs=logs, infra=False)
         return report
 
     def _vault(self, slug: str) -> dict[str, str]:
