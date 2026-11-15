@@ -107,7 +107,7 @@ export function SetupAssistant({
           when: f.date(run.created_at, 'dateTime'),
         })}
       </span>
-      {run.cost_idr > 0 && (
+      {run.cost_idr != null && run.cost_idr > 0 && (
         <span className='tabular-nums'>
           {t('setup.cost', { cost: f.rupiah(run.cost_idr) })}
         </span>

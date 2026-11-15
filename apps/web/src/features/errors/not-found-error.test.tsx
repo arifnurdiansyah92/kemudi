@@ -39,8 +39,6 @@ describe('NotFoundError', () => {
       screen.getByRole('link', { name: 'Back to projects' })
     )
 
-    await expect
-      .element(screen.getByText('projects list'))
-      .toBeInTheDocument()
+    await expect.element(screen.getByText('projects list')).toBeInTheDocument()
   })
 })

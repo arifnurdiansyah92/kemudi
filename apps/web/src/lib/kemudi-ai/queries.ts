@@ -58,7 +58,8 @@ export type ContractState = {
   contract: {
     filename: string
     lang: 'id' | 'en'
-    rate_card: RateCard
+    /** null: hidden (money is for project admins unless prices are shown). */
+    rate_card: RateCard | null
     sections: Section[]
     created_at: string
     /** Rupiah amounts appear in CR check results only when this is on. */
@@ -77,14 +78,14 @@ export type Prediction = {
   reason: string
   clause: string
   effort_days: Record<string, number>
-  price_idr: number
+  price_idr: number | null
   question: string | null
 }
 
 export type Expected = {
   label: ScopeLabel
   reason?: string
-  price_idr?: number
+  price_idr?: number | null
   waived?: boolean
 }
 
@@ -112,9 +113,10 @@ export type Metrics = {
   confusion: Record<ScopeLabel, Record<ScopeLabel | 'error', number>>
   cr_recall: number | null
   false_cr_rate: number | null
-  value_expected_idr: number
-  value_predicted_idr: number
-  value_caught_idr: number
+  /** null when the caller may not see money (members, prices off). */
+  value_expected_idr: number | null
+  value_predicted_idr: number | null
+  value_caught_idr: number | null
   verdicts: { right: number; wrong: number; pending: number }
 }
 

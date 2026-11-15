@@ -16,6 +16,7 @@ import {
   LayoutGrid,
   ListOrdered,
   Palette,
+  Radar,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useKemudiMe } from '@/lib/kemudi-ai/skills'
@@ -45,6 +46,10 @@ export function useNavGroups(): NavGroup[] {
           // How many projects the user belongs to; none means no badge.
           badge: projects?.length ? String(projects.length) : undefined,
         },
+        // The helicopter view over every project: superadmins only.
+        ...(me?.superadmin
+          ? [{ title: t('nav.portfolio'), url: '/portfolio', icon: Radar }]
+          : []),
         // The skill library: Kemudi admins only (the API refuses others too).
         ...(me?.kemudi_admin
           ? [{ title: t('nav.skills'), url: '/skills', icon: Blocks }]

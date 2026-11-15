@@ -1,0 +1,96 @@
+{
+  "title": "Portofolio",
+  "intro": "Semua proyek yang berjalan dalam satu layar: delivery, scope, dan Awak, beserta alasan di balik setiap warna.",
+  "superadminOnly": "Portofolio hanya untuk superadmin: superuser Taiga dan admin Kemudi yang terdaftar di KEMUDI_ADMIN_USER_IDS.",
+  "partialCoverage": "Anda admin Kemudi tetapi bukan superuser Taiga, jadi hanya proyek yang dapat Anda lihat di Taiga yang ditampilkan.",
+  "loadFailed": "Portofolio gagal dimuat.",
+  "updated": "Diperbarui {{time}}",
+  "refresh": "Muat ulang",
+  "filter": {
+    "button": "Proyek: {{included}} dari {{total}}",
+    "buttonAll": "Semua proyek ({{total}})",
+    "search": "Cari proyek",
+    "all": "Sertakan semua",
+    "none": "Kecualikan semua",
+    "hint": "Proyek yang dikecualikan keluar dari tabel dan total. Proyek baru otomatis disertakan. Pilihan Anda tersimpan di akun Anda.",
+    "empty": "Tidak ada proyek yang cocok."
+  },
+  "kpi": {
+    "projects": "Proyek yang dipantau",
+    "projectsDetail": "{{excluded}} dikecualikan",
+    "health": "Kesehatan",
+    "contractValue": "Nilai kontrak disetujui",
+    "crWaiting": "Pengecekan kontrak untuk ditinjau",
+    "crWaitingDetail": "{{agreed}} change request disetujui, senilai {{value}}",
+    "awakSpend": "Biaya Awak bulan ini",
+    "contractValueDetail_other": "{{count}} proyek dengan baseline disetujui",
+    "awakSpendDetail_other": "{{count}} run gagal dalam {{days}} hari terakhir"
+  },
+  "levels": {
+    "red": "Berisiko",
+    "amber": "Perlu dipantau",
+    "green": "Sesuai rencana"
+  },
+  "showOnly": "Tampilkan hanya {{level}}",
+  "showAll": "Tampilkan semua",
+  "cols": {
+    "project": "Proyek",
+    "health": "Kesehatan",
+    "sprint": "Sprint berjalan",
+    "contract": "Kontrak",
+    "scope": "Change request",
+    "awak": "Awak",
+    "spend": "Biaya bulan ini",
+    "activity": "Perubahan terakhir"
+  },
+  "private": "Privat",
+  "sprint": {
+    "none": "Tidak ada sprint berjalan",
+    "progress": "{{done}}% selesai, waktu terpakai {{elapsed}}%",
+    "noPoints": "Belum ada estimasi poin, waktu terpakai {{elapsed}}%",
+    "ends": "Berakhir {{date}}"
+  },
+  "contract": {
+    "none": "Belum ada kontrak",
+    "draft": "Baseline masih draf",
+    "approved": "Baseline v{{number}}",
+    "unpriced": "Belum ada harga"
+  },
+  "scope": {
+    "none": "Belum ada pengecekan",
+    "toReview": "{{count}} perlu ditinjau",
+    "agreedValue": "{{value}} disetujui",
+    "candidates_other": "{{count}} kandidat CR"
+  },
+  "awak": {
+    "off": "Nonaktif",
+    "active": "{{running}} berjalan, {{queued}} antre",
+    "idle": "Menganggur",
+    "failed": "{{count}} gagal baru-baru ini"
+  },
+  "spend": {
+    "budget": "{{pct}}% dari anggaran",
+    "noBudget": "Anggaran belum diatur"
+  },
+  "reasons": {
+    "sprintBehind": "Sprint {{done}}% selesai, waktu terpakai {{elapsed}}%",
+    "sprintSlipping": "Sprint {{done}}% selesai, waktu terpakai {{elapsed}}%",
+    "noBaseline": "Kontrak sudah diunggah, baseline belum disetujui",
+    "awakError": "Awak melaporkan error",
+    "budgetOver": "Anggaran Awak habis ({{pct}}%)",
+    "budgetNear": "Anggaran Awak terpakai {{pct}}%",
+    "more": "+{{count}} lagi",
+    "sprintOverdue_other": "{{name}} lewat {{count}} hari dari tanggal selesai",
+    "crBacklog_other": "{{count}} change request menunggu keputusan PM",
+    "crPending_other": "{{count}} pengecekan kontrak menunggu keputusan PM",
+    "awakFailed_other": "Awak gagal di {{count}} story baru-baru ini"
+  },
+  "rules": {
+    "title": "Cara menentukan kesehatan",
+    "red": "Berisiko: sprint melewati tanggal selesai atau tertinggal 30 poin persentase dari waktunya, 3 atau lebih change request menunggu PM, story Awak gagal dalam 7 hari terakhir, atau anggaran Awak habis.",
+    "amber": "Perlu dipantau: sprint tertinggal 15 poin persentase dari waktunya, ada pengecekan kontrak yang menunggu PM, kontrak tanpa baseline yang disetujui, error Awak, atau anggaran Awak terpakai 80%.",
+    "green": "Sesuai rencana: tidak ada kondisi di atas."
+  },
+  "empty": "Tidak ada proyek yang disertakan. Gunakan filter proyek untuk menampilkannya kembali.",
+  "noneVisible": "Tidak ada proyek dengan status ini."
+}

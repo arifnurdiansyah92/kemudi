@@ -37,7 +37,7 @@ def taiga(request: httpx.Request) -> httpx.Response:
     if path.endswith("/users/me"):
         return httpx.Response(200, json={"id": uid, "username": name})
     if path.endswith("/projects/by_slug"):
-        return httpx.Response(200, json={"i_am_admin": is_admin})
+        return httpx.Response(200, json={"i_am_admin": is_admin, "i_am_member": True})
     if path.endswith("/by_ref"):
         assert request.url.params["project__slug"] == "demo"
         key = (path.split("/")[-2], int(request.url.params["ref"]))

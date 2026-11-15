@@ -18,10 +18,7 @@ import { useProject } from '@/features/project/use-project'
 import { Timeline } from '@/features/timeline/timeline'
 
 type MemberStats = Record<
-  | 'closed_bugs'
-  | 'created_bugs'
-  | 'closed_tasks'
-  | 'wiki_changes',
+  'closed_bugs' | 'created_bugs' | 'closed_tasks' | 'wiki_changes',
   Record<string, number>
 >
 

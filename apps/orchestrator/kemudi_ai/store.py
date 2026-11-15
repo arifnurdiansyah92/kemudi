@@ -523,6 +523,16 @@ class AwakLlmAlias(Base):
     budget_stop: Mapped[str] = mapped_column(Text, default="")
 
 
+class PortfolioPref(Base):
+    """A superadmin's portfolio filter: the project slugs left out of the
+    helicopter view. Stored as exclusions so a new project shows by default."""
+
+    __tablename__ = "portfolio_prefs"
+    user_id: Mapped[int] = mapped_column(primary_key=True)
+    excluded: Mapped[list[Any]] = mapped_column(default=list)
+    updated_at: Mapped[datetime] = mapped_column(default=now)
+
+
 class AwakLlmUsage(Base):
     """One proxied model call: the tokens the provider reported and what they
     cost (kemudi_ai/awak/usage.py). `cost_idr` NULL = the price is unknown

@@ -1,0 +1,103 @@
+{
+  "title": "Portfolio",
+  "intro": "Every running project on one screen: delivery, scope and Awak, with the reason behind each colour.",
+  "superadminOnly": "The portfolio is for superadmins: Taiga superusers and the Kemudi admins in KEMUDI_ADMIN_USER_IDS.",
+  "partialCoverage": "You are a Kemudi admin but not a Taiga superuser, so only the projects Taiga lets you see are listed.",
+  "loadFailed": "The portfolio could not be loaded.",
+  "updated": "Updated {{time}}",
+  "refresh": "Refresh",
+  "filter": {
+    "button": "Projects: {{included}} of {{total}}",
+    "buttonAll": "All projects ({{total}})",
+    "search": "Search projects",
+    "all": "Include all",
+    "none": "Exclude all",
+    "hint": "Excluded projects leave the table and the totals. New projects are included automatically. Your choice is saved to your account.",
+    "empty": "No project matches."
+  },
+  "kpi": {
+    "projects": "Projects in view",
+    "projectsDetail": "{{excluded}} excluded",
+    "health": "Health",
+    "contractValue": "Approved contract value",
+    "crWaiting": "Contract checks to review",
+    "crWaitingDetail": "{{agreed}} change requests agreed, worth {{value}}",
+    "awakSpend": "Awak spend this month",
+    "contractValueDetail_one": "{{count}} project with an approved baseline",
+    "contractValueDetail_other": "{{count}} projects with an approved baseline",
+    "awakSpendDetail_one": "{{count}} failed run in the last {{days}} days",
+    "awakSpendDetail_other": "{{count}} failed runs in the last {{days}} days"
+  },
+  "levels": {
+    "red": "At risk",
+    "amber": "Watch",
+    "green": "On track"
+  },
+  "showOnly": "Show only {{level}}",
+  "showAll": "Show all",
+  "cols": {
+    "project": "Project",
+    "health": "Health",
+    "sprint": "Current sprint",
+    "contract": "Contract",
+    "scope": "Change requests",
+    "awak": "Awak",
+    "spend": "Spend this month",
+    "activity": "Last change"
+  },
+  "private": "Private",
+  "sprint": {
+    "none": "No running sprint",
+    "progress": "{{done}}% done, {{elapsed}}% of time",
+    "noPoints": "No points estimated, {{elapsed}}% of time",
+    "ends": "Ends {{date}}"
+  },
+  "contract": {
+    "none": "No contract",
+    "draft": "Baseline in draft",
+    "approved": "Baseline v{{number}}",
+    "unpriced": "Not priced"
+  },
+  "scope": {
+    "none": "No checks yet",
+    "toReview": "{{count}} to review",
+    "agreedValue": "{{value}} agreed",
+    "candidates_one": "{{count}} CR candidate",
+    "candidates_other": "{{count}} CR candidates"
+  },
+  "awak": {
+    "off": "Off",
+    "active": "{{running}} running, {{queued}} queued",
+    "idle": "Idle",
+    "failed": "{{count}} failed recently"
+  },
+  "spend": {
+    "budget": "{{pct}}% of budget",
+    "noBudget": "No budget set"
+  },
+  "reasons": {
+    "sprintBehind": "Sprint {{done}}% done with {{elapsed}}% of time gone",
+    "sprintSlipping": "Sprint {{done}}% done with {{elapsed}}% of time gone",
+    "noBaseline": "Contract uploaded, baseline not approved",
+    "awakError": "Awak reported an error",
+    "budgetOver": "Awak budget used up ({{pct}}%)",
+    "budgetNear": "Awak budget at {{pct}}%",
+    "more": "+{{count}} more",
+    "sprintOverdue_one": "{{name}} is {{count}} day past its end date",
+    "sprintOverdue_other": "{{name}} is {{count}} days past its end date",
+    "crBacklog_one": "{{count}} change request waiting for the PM",
+    "crBacklog_other": "{{count}} change requests waiting for the PM",
+    "crPending_one": "{{count}} contract check waiting for the PM",
+    "crPending_other": "{{count}} contract checks waiting for the PM",
+    "awakFailed_one": "Awak failed {{count}} story recently",
+    "awakFailed_other": "Awak failed {{count}} stories recently"
+  },
+  "rules": {
+    "title": "How health is decided",
+    "red": "At risk: a sprint past its end date or 30 percentage points behind its time, 3 or more change requests waiting for the PM, an Awak story failed in the last 7 days, or the Awak budget used up.",
+    "amber": "Watch: a sprint 15 percentage points behind its time, any contract check waiting for the PM, a contract without an approved baseline, an Awak error, or 80% of the Awak budget used.",
+    "green": "On track: none of the above."
+  },
+  "empty": "No project is included. Use the project filter to bring some back.",
+  "noneVisible": "No project has this health."
+}

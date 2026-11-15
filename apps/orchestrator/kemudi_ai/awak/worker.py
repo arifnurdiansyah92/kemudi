@@ -1248,9 +1248,10 @@ class Worker:
         job = self._job(job_id)
         n = n or job.attempts
         mins = max(0, int((now() - _aware(job.started_at)).total_seconds() // 60))
+        # No model cost here: every project member (and anyone, on a public
+        # project) reads story comments, and Awak's spend is for admins
+        # (Agent settings, Usage).
         head = f"**Awak** · percobaan {max(n, 1)}/{self.s.max_attempts} · {mins} mnt"
-        if job.cost_idr:
-            head += f" · biaya model Rp{job.cost_idr:,.0f}".replace(",", ".")
         body = secrets.redact(f"{head}\n\n{text}", self.redact_values_for(job.project_slug))
         self.taiga.comment(story_id, body)
         self._event(job_id, "comment", {"text": body[:500]})

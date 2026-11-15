@@ -25,7 +25,7 @@ def taiga_auth(request: httpx.Request) -> httpx.Response:
     if request.url.path.endswith("/users/me"):
         return httpx.Response(200, json={"id": uid, "username": name})
     if request.url.path.endswith("/projects/by_slug"):
-        return httpx.Response(200, json={"i_am_admin": is_admin})
+        return httpx.Response(200, json={"i_am_admin": is_admin, "i_am_member": True})
     return httpx.Response(404)
 
 

@@ -26,6 +26,9 @@
   --ring: oklch(0.62 0.12 75);
   --success: oklch(0.52 0.09 185);
   --success-foreground: oklch(0.98 0.01 185);
+  /* At-risk (amber in a red/amber/green health). Never brass: brass is you. */
+  --warning: oklch(0.64 0.16 48);
+  --warning-foreground: oklch(0.99 0.01 60);
   --brass: oklch(0.62 0.12 75);
   --chart-1: oklch(0.33 0.07 252);
   --chart-2: oklch(0.52 0.09 185);
@@ -65,6 +68,8 @@
   --ring: oklch(0.76 0.12 78);
   --success: oklch(0.7 0.1 185);
   --success-foreground: oklch(0.18 0.03 200);
+  --warning: oklch(0.74 0.15 52);
+  --warning-foreground: oklch(0.2 0.04 50);
   --brass: oklch(0.78 0.12 78);
 
   --sidebar: oklch(0.14 0.03 255);
@@ -115,5 +120,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --color-brass: var(--brass);
 }

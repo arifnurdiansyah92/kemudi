@@ -31,7 +31,8 @@
     "addRole": "Tambah peran",
     "removeRole": "Hapus {{role}}",
     "save": "Simpan rate card",
-    "rolePlaceholder": "backend"
+    "rolePlaceholder": "backend",
+    "adminOnly": "Tarif dan nilai Rupiah hanya terlihat oleh admin proyek. Admin dapat menampilkan harga ke tim di pengaturan kontrak."
   },
   "baseline": {
     "title": "Baseline",
@@ -110,7 +111,7 @@
     "title": "Harga",
     "description": "Estimasi effort bersifat indikatif: pada backtest pilot, pemeriksaan CR menaksir effort terlalu tinggi. Sembunyikan nominal Rupiah sampai tim memercayai rate card dan baseline.",
     "label": "Tampilkan nominal Rupiah pada pemeriksaan CR",
-    "hint": "Jika nonaktif, hasil pemeriksaan dan baris backtest hanya menampilkan hari-orang."
+    "hint": "Jika nonaktif, pemeriksaan CR dan baris backtest hanya menampilkan hari-orang, dan anggota tim tidak melihat rate card maupun harga baseline. Admin proyek selalu melihat harga kontrak."
   },
   "check": {
     "title": "Pemeriksaan kontrak",

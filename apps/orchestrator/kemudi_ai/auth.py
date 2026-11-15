@@ -12,11 +12,15 @@ class TaigaUser(BaseModel):
     username: str
     full_name: str = ""
     token: str
+    # Taiga's superuser flag (kemudi-back adds it to /users/me). A superuser
+    # is admin on every project and sees every project.
+    is_superuser: bool = False
 
 
 class ProjectAccess(BaseModel):
     slug: str
     is_admin: bool
+    is_member: bool = True
 
 
 _transport: httpx.BaseTransport | None = None  # tests swap in a MockTransport
@@ -48,6 +52,7 @@ def current_user(
         username=me["username"],
         full_name=me.get("full_name_display") or me.get("full_name") or "",
         token=token,
+        is_superuser=bool(me.get("is_superuser")),
     )
 
 
@@ -56,4 +61,12 @@ def project_access(slug: str, user: TaigaUser, settings: Settings) -> ProjectAcc
         r = c.get("/projects/by_slug", params={"slug": slug})
     if r.status_code != 200:
         raise HTTPException(404, "project not found")
-    return ProjectAccess(slug=slug, is_admin=bool(r.json().get("i_am_admin")))
+    p = r.json()
+    is_admin = bool(p.get("i_am_admin"))
+    # Taiga answers by_slug for anyone on a public project; Kemudi data
+    # (contract, money, agent) is for the team only. A Taiga superuser is
+    # admin, hence member, of every project.
+    is_member = is_admin or bool(p.get("i_am_member")) or user.is_superuser
+    if not is_member:
+        raise HTTPException(404, "project not found")
+    return ProjectAccess(slug=slug, is_admin=is_admin, is_member=True)

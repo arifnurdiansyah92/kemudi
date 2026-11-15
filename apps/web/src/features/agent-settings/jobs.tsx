@@ -72,7 +72,7 @@ export function Jobs({ slug, jobs }: { slug: string; jobs: Job[] }) {
               </td>
               <td className='px-3 py-2 text-end tabular-nums'>{j.attempts}</td>
               <td className='px-3 py-2 text-end whitespace-nowrap tabular-nums'>
-                {f.rupiah(j.cost_idr)}
+                {j.cost_idr == null ? '—' : f.rupiah(j.cost_idr)}
               </td>
               <td className='max-w-48 truncate px-3 py-2 font-mono text-xs text-muted-foreground'>
                 {j.branch}

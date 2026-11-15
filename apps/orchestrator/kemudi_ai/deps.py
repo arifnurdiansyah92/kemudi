@@ -66,5 +66,25 @@ def kemudi_admin(user: TaigaUser = Depends(current_user),
     return user
 
 
+def is_superadmin(user: TaigaUser, settings: Settings) -> bool:
+    """Instance-wide oversight (the portfolio page): a Taiga superuser, or a
+    Kemudi instance admin from KEMUDI_ADMIN_USER_IDS / USERNAMES."""
+    return user.is_superuser or is_kemudi_admin(user, settings)
+
+
+def superadmin(user: TaigaUser = Depends(current_user),
+               settings: Settings = Depends(get_settings)) -> TaigaUser:
+    if not is_superadmin(user, settings):
+        raise HTTPException(403, "superadmins only")
+    return user
+
+
+def sees_money(acc: ProjectAccess, show_prices: bool) -> bool:
+    """Rupiah values (rate card, baseline prices, backtest value, Awak cost)
+    are for project admins. Members see them only once an admin turns on
+    'show prices' for the project."""
+    return acc.is_admin or show_prices
+
+
 def actor(user: TaigaUser) -> str:
     return f"{user.username} ({user.id})"

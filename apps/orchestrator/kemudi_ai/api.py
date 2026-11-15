@@ -20,21 +20,24 @@ from fastapi import (
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session, sessionmaker
 
-from .auth import TaigaUser, current_user
-from . import audit, cr_check, retention
+from .auth import ProjectAccess, TaigaUser, current_user
+from . import audit, cr_check, portfolio, retention
 from .awak import agent_api, llm_proxy, marketplace_api, skills_api, usage_api
 from .backtest import metrics, run_backtest
 from .baseline import BaselineItem, draft_baseline
 from .config import Settings, check_production, get_settings
 from .deps import (
     _sessions,
+    access,
     actor,
     admin,
     get_db,
     get_llm,
     get_sessions,
     is_kemudi_admin,
+    is_superadmin,
     member,
+    sees_money,
 )
 from .documents import extract_sections
 from .llm import LLM, LLMError
@@ -92,6 +95,7 @@ app.include_router(usage_api.router)
 app.include_router(llm_proxy.router)
 app.include_router(audit.router)
 app.include_router(retention.router)
+app.include_router(portfolio.router)
 
 
 def _contract(db: Session, slug: str) -> Contract:
@@ -114,14 +118,18 @@ def _approved(db: Session, c: Contract) -> list[BaselineVersion]:
     )
 
 
-def _version(v: BaselineVersion | None) -> dict | None:
+def _strip_price(d: dict | None) -> dict | None:
+    return None if d is None else {**d, "price_idr": None}
+
+
+def _version(v: BaselineVersion | None, money: bool = True) -> dict | None:
     if v is None:
         return None
     return {
         "id": v.id,
         "number": v.number,
         "status": v.status,
-        "items": v.items,
+        "items": v.items if money else [_strip_price(i) for i in (v.items or [])],
         "approved_by": v.approved_by,
         "approved_at": v.approved_at,
     }
@@ -148,7 +156,9 @@ def me(user: TaigaUser = Depends(current_user), settings: Settings = Depends(get
     """Who is calling (the Taiga user id is what KEMUDI_ADMIN_USER_IDS
     lists), and whether they are a Kemudi instance admin (the skill library)."""
     return {"id": user.id, "username": user.username,
-            "kemudi_admin": is_kemudi_admin(user, settings)}
+            "kemudi_admin": is_kemudi_admin(user, settings),
+            "superadmin": is_superadmin(user, settings),
+            "is_superuser": user.is_superuser}
 
 
 @app.get("/skills")
@@ -164,25 +174,26 @@ def list_enabled_skills(_: TaigaUser = Depends(current_user), db: Session = Depe
 
 
 @app.get("/projects/{slug}/contract")
-def get_contract(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(get_db)):
+def get_contract(slug: str, acc: ProjectAccess = Depends(access), db: Session = Depends(get_db)):
     c = db.query(Contract).filter_by(project_slug=slug).one_or_none()
     if c is None:
         return {"contract": None, "baseline": None, "runs": []}
+    money = sees_money(acc, bool(c.show_prices))
     approved = _approved(db, c)
     runs = db.query(BacktestRun).filter_by(contract_id=c.id).order_by(BacktestRun.id.desc()).all()
     return {
         "contract": {
             "filename": c.filename,
             "lang": c.lang,
-            "rate_card": c.rate_card,
+            "rate_card": c.rate_card if money else None,
             "sections": c.sections,
             "created_at": c.created_at,
             "show_prices": bool(c.show_prices),
         },
         "baseline": {
-            "draft": _version(_draft(db, c)),
-            "approved": _version(approved[0] if approved else None),
-            "history": [_version(v) for v in approved],
+            "draft": _version(_draft(db, c), money),
+            "approved": _version(approved[0] if approved else None, money),
+            "history": [_version(v, money) for v in approved],
         },
         "runs": [_run(r) for r in runs],
     }
@@ -325,15 +336,15 @@ async def start_backtest(
     return {"run_id": run.id}
 
 
-def _result(r: BacktestResult) -> dict[str, Any]:
+def _result(r: BacktestResult, money: bool = True) -> dict[str, Any]:
     return {
         "id": r.id,
         "ticket_id": r.ticket_id,
         "source": r.source,
         "date": r.date,
         "text": r.text,
-        "expected": r.expected,
-        "predicted": r.predicted,
+        "expected": r.expected if money else _strip_price(r.expected),
+        "predicted": r.predicted if money else _strip_price(r.predicted),
         "status": r.status,
         "verdict": r.verdict,
     }
@@ -348,10 +359,16 @@ def _get_run(db: Session, slug: str, run_id: int) -> BacktestRun:
 
 
 @app.get("/projects/{slug}/backtests/{run_id}")
-def get_backtest(slug: str, run_id: int, _: TaigaUser = Depends(member), db: Session = Depends(get_db)):
+def get_backtest(slug: str, run_id: int, acc: ProjectAccess = Depends(access),
+                 db: Session = Depends(get_db)):
     run = _get_run(db, slug, run_id)
+    money = sees_money(acc, _show_prices(db, slug))
     results = db.query(BacktestResult).filter_by(run_id=run.id).order_by(BacktestResult.id).all()
-    return {"run": _run(run), "results": [_result(r) for r in results], "metrics": metrics(results).model_dump()}
+    m = metrics(results).model_dump()
+    if not money:
+        for k in ("value_expected_idr", "value_predicted_idr", "value_caught_idr"):
+            m[k] = None
+    return {"run": _run(run), "results": [_result(r, money) for r in results], "metrics": m}
 
 
 class VerdictBody(BaseModel):
@@ -553,13 +570,13 @@ async def intake(
 
 
 @app.get("/projects/{slug}/awak/jobs")
-def awak_jobs(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(get_db)):
+def awak_jobs(slug: str, acc: ProjectAccess = Depends(access), db: Session = Depends(get_db)):
     from .store import AwakJob
 
     jobs = db.query(AwakJob).filter_by(project_slug=slug).order_by(AwakJob.id.desc()).all()
     return {"jobs": [
         {"story_ref": j.story_ref, "branch": j.branch, "state": j.state, "phase": j.phase,
          "attempts": j.attempts, "infra_errors": j.infra_errors, "last_sha": j.last_sha,
-         "cost_idr": j.cost_idr, "started_at": j.started_at, "updated_at": j.updated_at}
+         "cost_idr": j.cost_idr if acc.is_admin else None, "started_at": j.started_at, "updated_at": j.updated_at}
         for j in jobs
     ]}
