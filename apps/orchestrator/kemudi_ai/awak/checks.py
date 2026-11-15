@@ -484,6 +484,23 @@ class Compose:
             for project in reversed(started):
                 self.down(project)
 
+    def exposed_logs(self, tail: int = 80) -> str:
+        """The last log lines of each exposed compose service (the app behind
+        the URLs QA used), for a failure that happened while it was up."""
+        out = []
+        for name in self.projects:
+            s = self.rb.service(name)
+            if s is None or s.kind != "compose" or not s.expose:
+                continue
+            try:
+                logs = str(self.svc("svc_logs", project=self.projects[name],
+                                    service=s.expose_service(), tail=tail,
+                                    redact=self.redact).get("logs") or "")
+            except Exception as e:  # noqa: BLE001 - the original failure is the news
+                logs = f"(log tidak bisa diambil: {e})"
+            out.append(f"--- {name} ---\n{logs.strip()}")
+        return "\n".join(out)
+
     def run_in_gates(self, path: str, p: dict) -> list[dict]:
         """A run_in app's checks in its compose service: build the image from the
         story checkout, start only the other listed services (dependencies),

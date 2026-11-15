@@ -391,6 +391,9 @@ def test_login_failure_blocks_the_story(tmp_path, repo):
     w.tick()
     assert taiga.story(1)["is_blocked"] and order[-1] == "svc_down"
     assert "qa.login" in taiga.texts(1)[-1] and "still at /login" in taiga.texts(1)[-1]
+    # the app's log, read before the services went down, says why
+    assert "Traceback: no table users" in taiga.texts(1)[-1]
+    assert order[-2:] == ["svc_logs", "svc_down"]
 
 
 def test_missing_required_vault_value_blocks_before_anything_starts(tmp_path, repo):
