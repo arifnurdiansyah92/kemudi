@@ -134,7 +134,7 @@ export function ContractUpload({
           </details>
         )}
       </section>
-      {contract && (
+      {contract && (isAdmin || contract.rate_card) && (
         <RateCardEditor
           slug={slug}
           initial={
@@ -142,6 +142,14 @@ export function ContractUpload({
           }
           isAdmin={isAdmin}
         />
+      )}
+      {contract && !isAdmin && !contract.rate_card && (
+        <section className='grid gap-1'>
+          <h2 className='text-base font-semibold'>{t('rateCard.title')}</h2>
+          <p className='text-sm text-muted-foreground'>
+            {t('rateCard.adminOnly')}
+          </p>
+        </section>
       )}
       {contract && (
         <PriceSetting

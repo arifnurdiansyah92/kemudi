@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import TaigaUser
 from ..config import Settings, get_settings
-from ..deps import actor, admin, get_db, member
+from ..deps import actor, admin, get_db
 from ..store import AwakProject, record_decision
 from . import config_store, llm_conn, usage
 
@@ -49,7 +49,7 @@ def _out(db: Session, settings: Settings, slug: str) -> dict:
 
 
 @router.get("/usage")
-def get_usage(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(get_db),
+def get_usage(slug: str, _: TaigaUser = Depends(admin), db: Session = Depends(get_db),
               settings: Settings = Depends(get_settings)):
     return _out(db, settings, slug)
 

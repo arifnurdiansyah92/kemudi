@@ -381,7 +381,9 @@ def test_usage_summary_and_budget_api(agent_client):
         db.commit()
     _spend(S, 300, job_id=1, cost=1500.0)
     _spend(S, 100, cost=None)  # an unknown price
-    r = agent_client.get("/projects/demo/agent/usage", headers=MEMBER)
+    # cost and budget are money: project admins only
+    assert agent_client.get("/projects/demo/agent/usage", headers=MEMBER).status_code == 403
+    r = agent_client.get("/projects/demo/agent/usage", headers=ADMIN)
     assert r.status_code == 200, r.text
     u = r.json()
     assert u["tokens"] == 400 and u["cost_idr"] == 1500.0 and u["unknown_cost_calls"] == 1

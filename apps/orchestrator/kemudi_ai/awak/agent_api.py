@@ -522,10 +522,11 @@ def _hosts_in_use(db: Session, slug: str, skip_repo: int | None = None,
 # --- jobs --------------------------------------------------------------------
 
 
-def _job_out(j: AwakJob) -> dict:
+def _job_out(j: AwakJob, money: bool = True) -> dict:
     return {
         "id": j.id, "story_id": j.story_id, "story_ref": j.story_ref, "branch": j.branch,
-        "state": j.state, "phase": j.phase, "attempts": j.attempts, "cost_idr": j.cost_idr,
+        "state": j.state, "phase": j.phase, "attempts": j.attempts,
+        "cost_idr": j.cost_idr if money else None,
         "repo_id": j.repo_id, "role_id": j.role_id, "prompt_version": j.prompt_version,
         "merge_state": j.merge_state, "merged_sha": j.merged_sha,
         "started_at": j.started_at, "updated_at": j.updated_at,
@@ -533,10 +534,10 @@ def _job_out(j: AwakJob) -> dict:
 
 
 @router.get("/jobs")
-def get_agent_jobs(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(get_db)):
+def get_agent_jobs(slug: str, acc: ProjectAccess = Depends(access), db: Session = Depends(get_db)):
     jobs = (db.query(AwakJob).filter_by(project_slug=slug)
             .order_by(AwakJob.id.desc()).limit(50).all())
-    return {"jobs": [_job_out(j) for j in jobs]}
+    return {"jobs": [_job_out(j, acc.is_admin) for j in jobs]}
 
 
 # --- repos -------------------------------------------------------------------
@@ -1394,14 +1395,14 @@ def _merge_blocker(db: Session, slug: str, job: AwakJob | None) -> str | None:
 
 
 @router.get("/stories/{story_id}")
-def get_story_agent(slug: str, story_id: int, _: TaigaUser = Depends(member),
+def get_story_agent(slug: str, story_id: int, acc: ProjectAccess = Depends(access),
                     db: Session = Depends(get_db)):
     from .merge import effective_mode
 
     job = _story_job(db, slug, story_id)
     current = config_store.load(db, slug).merge_mode
     return {
-        "job": _job_out(job) if job else None,
+        "job": _job_out(job, acc.is_admin) if job else None,
         "merge_mode": effective_mode(job.merge_mode, current) if job else current,
         # The card's awaiting-merge tag is not checked here (no Taiga call while
         # polling); the UI has the tags and POST merge checks them.

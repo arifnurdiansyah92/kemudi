@@ -312,7 +312,8 @@ export type Job = {
   state: JobState
   phase: string
   attempts: number
-  cost_idr: number
+  /** null for non-admins: Awak's spend is money. */
+  cost_idr: number | null
   repo_id: number | null
   role_id: number | null
   prompt_version: string
@@ -833,7 +834,8 @@ export type SetupRun = {
   screenshot: boolean
   resources: SetupResources
   error: string
-  cost_idr: number
+  /** null for non-admins. */
+  cost_idr: number | null
   created_by: string
   created_at: string
   updated_at: string

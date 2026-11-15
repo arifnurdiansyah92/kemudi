@@ -31,7 +31,8 @@
     "addRole": "Add role",
     "removeRole": "Remove {{role}}",
     "save": "Save rate card",
-    "rolePlaceholder": "backend"
+    "rolePlaceholder": "backend",
+    "adminOnly": "Rates and Rupiah values are visible to project admins. An admin can show prices to the team in the contract settings."
   },
   "baseline": {
     "title": "Baseline",
@@ -111,7 +112,7 @@
     "title": "Prices",
     "description": "Effort estimates are indicative: in the pilot backtest the CR check overestimated effort. Keep Rupiah amounts hidden until the team trusts the rate card and the baseline.",
     "label": "Show Rupiah amounts in CR checks",
-    "hint": "When off, checks and backtest rows show person-days only."
+    "hint": "When off, CR checks and backtest rows show person-days only, and members do not see the rate card or baseline prices. Project admins always see the contract's prices."
   },
   "check": {
     "title": "Contract check",

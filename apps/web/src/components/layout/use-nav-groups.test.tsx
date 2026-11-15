@@ -19,7 +19,11 @@ function projectsCache(count: number) {
   }))
 }
 
-async function renderNavGroups(projectCount: number, kemudiAdmin = false) {
+async function renderNavGroups(
+  projectCount: number,
+  kemudiAdmin = false,
+  superadmin = false
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
@@ -28,6 +32,7 @@ async function renderNavGroups(projectCount: number, kemudiAdmin = false) {
     id: 1,
     username: 'awak',
     kemudi_admin: kemudiAdmin,
+    superadmin,
   })
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -75,5 +80,16 @@ describe('useNavGroups', () => {
 
     const admin = await renderNavGroups(1, true)
     expect(urls(admin.result.current)).toContain('/skills')
+  })
+
+  it('shows Portfolio only to superadmins', async () => {
+    const urls = (groups: ReturnType<typeof useNavGroups>) =>
+      groups.flatMap((group) => group.items).map((item) => item.url)
+
+    const admin = await renderNavGroups(1, false, false)
+    expect(urls(admin.result.current)).not.toContain('/portfolio')
+
+    const boss = await renderNavGroups(1, false, true)
+    expect(urls(boss.result.current)).toContain('/portfolio')
   })
 })

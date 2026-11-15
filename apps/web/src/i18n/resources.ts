@@ -13,6 +13,7 @@ import en_contract from '@/locales/en/contract.json'
 import en_home from '@/locales/en/home.json'
 import en_item from '@/locales/en/item.json'
 import en_pages from '@/locales/en/pages.json'
+import en_portfolio from '@/locales/en/portfolio.json'
 import en_settings from '@/locales/en/settings.json'
 import en_shell from '@/locales/en/shell.json'
 import en_skills from '@/locales/en/skills.json'
@@ -26,6 +27,7 @@ import id_contract from '@/locales/id/contract.json'
 import id_home from '@/locales/id/home.json'
 import id_item from '@/locales/id/item.json'
 import id_pages from '@/locales/id/pages.json'
+import id_portfolio from '@/locales/id/portfolio.json'
 import id_settings from '@/locales/id/settings.json'
 import id_shell from '@/locales/id/shell.json'
 import id_skills from '@/locales/id/skills.json'
@@ -47,6 +49,7 @@ export const resources = {
     contract: en_contract,
     agent: en_agent,
     skills: en_skills,
+    portfolio: en_portfolio,
   },
   id: {
     common: id_common,
@@ -62,5 +65,6 @@ export const resources = {
     contract: id_contract,
     agent: id_agent,
     skills: id_skills,
+    portfolio: id_portfolio,
   },
 } as const

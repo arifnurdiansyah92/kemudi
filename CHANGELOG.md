@@ -4,6 +4,31 @@ All notable changes to Kemudi are documented in this file. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Portfolio** (`/portfolio`): a superadmin-only helicopter view of every
+  project on one screen, with red/amber/green health and the reason behind each
+  colour (sprint progress against time, contract checks waiting for the PM,
+  baseline approval, Awak failures and budget), approved contract value, change
+  requests and Awak spend. Superadmins choose which projects are included (all
+  by default; new projects join automatically), saved to their account.
+- Superadmin role: a Taiga superuser, or a Kemudi admin listed in
+  `KEMUDI_ADMIN_USER_IDS`. `/users/me` now returns `is_superuser`, and
+  Kemudi AI's `GET /me` returns `superadmin`.
+
+### Security
+
+- Rupiah values are for project admins: the rate card, baseline item prices,
+  backtest value metrics, Awak job and setup cost, and Awak usage and budget are
+  no longer returned to members. Members see contract prices only after an
+  admin turns on "show prices" for the project. Awak no longer writes its model
+  cost into story comments.
+- Kemudi data (contract, checks, Awak) is for the project team: a signed-in
+  user who is not a member of a public project now gets 404 instead of reading
+  it.
+
 ## [1.0.0] - 2026-11-14
 
 The first release of Kemudi: a self-hosted pilot edition for IT vendors running

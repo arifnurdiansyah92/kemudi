@@ -10,7 +10,14 @@ import type { ScanLevel, SkillSource } from './agent'
 
 const base = { baseURL: import.meta.env.VITE_KEMUDI_AI_URL ?? '/api/kemudi' }
 
-type KemudiMe = { id: number; username: string; kemudi_admin: boolean }
+type KemudiMe = {
+  id: number
+  username: string
+  kemudi_admin: boolean
+  /** Instance-wide oversight (the portfolio): Taiga superuser or Kemudi admin. */
+  superadmin: boolean
+  is_superuser: boolean
+}
 
 const meKey = ['kemudi-ai', 'me'] as const
 

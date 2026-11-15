@@ -264,9 +264,11 @@ def test_me_reports_kemudi_admin_by_user_id(agent_client):
     assert admin["kemudi_admin"] is False and member["kemudi_admin"] is False  # none set
     agent_client.settings.admin_user_ids = f" {admin['id']}, 999 "
     assert agent_client.get("/me", headers=ADMIN).json() == {
-        "id": admin["id"], "username": "pm", "kemudi_admin": True}
+        "id": admin["id"], "username": "pm", "kemudi_admin": True, "superadmin": True,
+        "is_superuser": False}
     assert agent_client.get("/me", headers=MEMBER).json() == {
-        "id": member["id"], "username": "dev", "kemudi_admin": False}
+        "id": member["id"], "username": "dev", "kemudi_admin": False, "superadmin": False,
+        "is_superuser": False}
     # the id matches whatever the username is now
     agent_client.settings.admin_usernames = "someone-else"
     assert agent_client.get("/me", headers=ADMIN).json()["kemudi_admin"] is True

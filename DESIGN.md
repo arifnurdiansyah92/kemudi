@@ -10,6 +10,7 @@ colors:
   deep-navy: "oklch(0.33 0.07 252)"
   harbour-teal: "oklch(0.52 0.09 185)"
   signal-red: "oklch(0.56 0.2 27)"
+  ember-amber: "oklch(0.64 0.16 48)"
   chart-violet: "oklch(0.6 0.08 300)"
   mist: "oklch(0.975 0.004 250)"
   paper: "oklch(1 0 0)"
@@ -133,6 +134,7 @@ A cool navy-and-mist palette, anchored by an ink helm and a single brass accent.
 ### Tertiary
 
 - **Signal Red** (signal-red): destructive actions, errors, blocked items and the issue type label.
+- **Ember Amber** (ember-amber, `--warning`): at risk, the amber of a red/amber/green health signal (the portfolio). Redder than brass on purpose, so it never reads as "you".
 - **Chart Violet** (chart-violet): chart series 4 only.
 
 ### Neutral

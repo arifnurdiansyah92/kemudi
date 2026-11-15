@@ -243,7 +243,8 @@ def out(run: AwakSetupRun, is_admin: bool) -> dict:
         "screenshot": bool(run.screenshot),
         "resources": run.resources or {},
         "error": run.error or "",
-        "cost_idr": run.cost_idr or 0.0,
+        # Awak's model spend is money: project admins only.
+        "cost_idr": (run.cost_idr or 0.0) if is_admin else None,
         "created_by": run.created_by,
         "created_at": run.created_at,
         "updated_at": run.updated_at,

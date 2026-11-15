@@ -22,7 +22,7 @@ def taiga(request: httpx.Request) -> httpx.Response:
     if request.url.path.endswith("/users/me"):
         return httpx.Response(200, json={"id": uid, "username": name})
     if request.url.path.endswith("/projects/by_slug"):
-        return httpx.Response(200, json={"i_am_admin": is_admin})
+        return httpx.Response(200, json={"i_am_admin": is_admin, "i_am_member": True})
     return httpx.Response(404)
 
 
@@ -106,7 +106,9 @@ def test_backtest_run_and_verdict_updates_metrics(client):
     body = client.get(f"/projects/demo/backtests/{run_id}", headers=MEMBER).json()
     assert body["run"]["finished_at"] is not None
     assert body["metrics"]["accuracy"] == 1.0
-    assert body["results"][0]["predicted"]["price_idr"] == 1_000_000
+    assert body["results"][0]["predicted"]["price_idr"] is None  # money is for admins
+    admin_view = client.get(f"/projects/demo/backtests/{run_id}", headers=ADMIN).json()
+    assert admin_view["results"][0]["predicted"]["price_idr"] == 1_000_000
     rid = body["results"][0]["id"]
     v = client.put(f"/projects/demo/backtests/{run_id}/results/{rid}/verdict", headers=ADMIN, json={"verdict": "right"})
     assert v.status_code == 200

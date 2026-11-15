@@ -103,8 +103,6 @@ describe('Attachments', () => {
     await expect
       .element(screen.getByRole('link', { name: 'contract.pdf' }))
       .toHaveAttribute('href', '/media/contract.pdf')
-    expect(
-      screen.getByRole('button', { name: /View contract/ }).length
-    ).toBe(0)
+    expect(screen.getByRole('button', { name: /View contract/ }).length).toBe(0)
   })
 })

@@ -56,13 +56,15 @@ export function BacktestReport({
           value={pct(m.false_cr_rate, format.number)}
           detail={t('backtest.metrics.falseCrDetail')}
         />
-        <Metric
-          label={t('backtest.metrics.value')}
-          value={format.rupiah(m.value_predicted_idr)}
-          detail={t('backtest.metrics.valueDetail', {
-            expected: format.rupiah(m.value_expected_idr),
-          })}
-        />
+        {m.value_predicted_idr != null && m.value_expected_idr != null && (
+          <Metric
+            label={t('backtest.metrics.value')}
+            value={format.rupiah(m.value_predicted_idr)}
+            detail={t('backtest.metrics.valueDetail', {
+              expected: format.rupiah(m.value_expected_idr),
+            })}
+          />
+        )}
       </dl>
       <p className='-mt-5 text-sm text-muted-foreground'>
         {t('backtest.metrics.verdicts', m.verdicts)}
