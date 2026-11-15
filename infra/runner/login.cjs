@@ -17,21 +17,32 @@ async function main() {
     })
     const page = await context.newPage()
     const loginPath = new URL(cfg.path, env.QA_BASE_URL).pathname
-    await page.goto(cfg.path, { timeout: 120_000 })
-    for (const f of cfg.fields) {
-      await page.locator(f.selector).first().fill(f.value, { timeout: 30_000 })
-    }
-    await page.locator(cfg.submit).first().click({ timeout: 30_000 })
     const done = (url) =>
       cfg.success_url ? url.pathname.startsWith(cfg.success_url) : url.pathname !== loginPath
-    // A dev server compiles the page the login lands on at its first visit;
-    // on a busy machine that alone can take more than 30 s.
-    try {
-      await page.waitForURL(done, { timeout: 120_000 })
-    } catch {
+    // Filling or clicking before the page hydrates loses the typed values and
+    // lets the browser submit the bare <form> natively (back to the login
+    // page), so wait for the page to settle, and on a miss reload and retry.
+    // A dev server also compiles the page the login lands on at its first
+    // visit; on a busy machine that alone can take more than 30 s.
+    const waits = [45_000, 35_000, 25_000]
+    let landed = false
+    for (let i = 0; i < waits.length && !landed; i++) {
+      await page.goto(cfg.path, { timeout: 120_000 })
+      await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {})
+      if (done(new URL(page.url()))) {
+        landed = true // an earlier attempt signed in after all
+        break
+      }
+      for (const f of cfg.fields) {
+        await page.locator(f.selector).first().fill(f.value, { timeout: 30_000 })
+      }
+      await page.locator(cfg.submit).first().click({ timeout: 30_000 })
+      landed = await page.waitForURL(done, { timeout: waits[i] }).then(() => true, () => false)
+    }
+    if (!landed) {
       const where = new URL(page.url()).pathname
       throw new Error(
-        `still at ${where} 120 s after submitting the login form` +
+        `still at ${where} after ${waits.length} login attempts` +
           (cfg.success_url ? ` (expected ${cfg.success_url})` : '') +
           '; check the selectors and the vault values of qa.login',
       )
