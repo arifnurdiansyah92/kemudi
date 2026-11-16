@@ -107,6 +107,13 @@ EXEC_WINDOW = 1650
 # Network trouble worth one more build: DNS, timeouts, resets talking to a registry.
 TRANSIENT_RE = re.compile(r"server misbehaving|i/o timeout|TLS handshake timeout|"
                           r"connection reset by peer|temporary failure in name resolution", re.I)
+# The host port an exposed service is published on, pinned per project. A
+# random (ephemeral) port changes when Docker restarts the container (restart
+# on-failure), and the URL handed to QA then points at nothing.
+PORT_MIN = int(os.environ.get("SVC_PORT_MIN", "20000"))
+PORT_MAX = int(os.environ.get("SVC_PORT_MAX", "29999"))
+PORT_BUSY_RE = re.compile(r"port is already allocated|address already in use", re.I)
+PORT_TRIES = 3
 EXEC_MAX_TIMEOUT = 1500
 LOG_TAIL_LINES = 200
 TAIL_CHARS = 8000
@@ -248,6 +255,37 @@ def compose_json(project: str) -> Path:
     return project_dir(project) / "compose.json"
 
 
+def port_file(project: str) -> Path:
+    return project_dir(project) / "port"
+
+
+def held_port(project: str) -> int | None:
+    """The host port this project's exposed service already has (the same on
+    every svc_up of the project, so a second up does not move it)."""
+    try:
+        text = port_file(project).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return int(text) if text.isdigit() and PORT_MIN <= int(text) <= PORT_MAX else None
+
+
+def pick_port(avoid: set[int] = frozenset()) -> int:
+    """A host port no other project of svc holds; Docker still refuses one
+    something else took, and svc_up then tries another."""
+    taken = set(avoid)
+    if RUN_DIR.is_dir():
+        for p in RUN_DIR.iterdir():
+            if p.is_dir() and sanitize.PROJECT_RE.fullmatch(p.name):
+                held = held_port(p.name)
+                if held:
+                    taken.add(held)
+    for _ in range(200):
+        port = PORT_MIN + secrets.randbelow(PORT_MAX - PORT_MIN + 1)
+        if port not in taken:
+            return port
+    raise RuntimeError("no free host port left for svc")
+
+
 def write_private(path: Path, text: str) -> None:
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
@@ -372,8 +410,14 @@ def svc_up(body: dict, budget: Budget) -> dict:
     sanitize.check_dockerfiles(checked, d)
 
     # 4. rewrite
-    final = sanitize.rewrite(checked, project, expose, environment)
-    write_private(compose_json(project), json.dumps(final, indent=1))
+    port = (held_port(project) or pick_port()) if expose else None
+
+    def write_final(host_port: int | None) -> dict:
+        final = sanitize.rewrite(checked, project, expose, environment, host_port)
+        write_private(compose_json(project), json.dumps(final, indent=1))
+        return final
+
+    final = write_final(port)
     built = [n for n, s in final["services"].items() if "build" in s]
     base = compose_base(project)
 
@@ -403,7 +447,18 @@ def svc_up(body: dict, budget: Budget) -> dict:
     if wait:
         wait_s = int(min(UP_TIMEOUT, max(1.0, budget.left() - MIN_STEP)))
         up += ["--wait", "--wait-timeout", str(wait_s)]
-    code, out, err = docker([*up, *(up_only or keep)], budget.step(UP_TIMEOUT + 300))
+    tried = {port} if port else set()
+    while True:
+        code, out, err = docker([*up, *(up_only or keep)], budget.step(UP_TIMEOUT + 300))
+        if (code == 0 or not port or not PORT_BUSY_RE.search(out + err)
+                or len(tried) >= PORT_TRIES or budget.left() < MIN_STEP):
+            break
+        # Something outside svc holds the port: take another one.
+        port = pick_port(tried)
+        tried.add(port)
+        write_final(port)
+    if code == 0 and port:
+        write_private(port_file(project), str(port))
     if code != 0:
         return {"ok": False, "stage": "up", "error": tail(redact(err or out, hide), 2000),
                 "logs_tail": logs(LOG_TAIL_LINES)}

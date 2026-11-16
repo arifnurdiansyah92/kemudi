@@ -393,6 +393,9 @@ def test_login_failure_blocks_the_story(tmp_path, repo):
     assert "qa.login" in taiga.texts(1)[-1] and "still at /login" in taiga.texts(1)[-1]
     # the app's log, read before the services went down, says why
     assert "Traceback: no table users" in taiga.texts(1)[-1]
+    # the login's own error comes last: comments and events keep the tail
+    last = taiga.texts(1)[-1]
+    assert last.index("still at /login") > last.index("Traceback: no table users")
     assert order[-2:] == ["svc_logs", "svc_down"]
 
 
