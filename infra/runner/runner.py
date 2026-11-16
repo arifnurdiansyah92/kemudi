@@ -339,6 +339,29 @@ def op_gates(body: dict) -> dict:
     return {"ok": all(r["ok"] for r in results), "gates": results}
 
 
+COMMIT_RE = re.compile(r"[0-9a-f]{7,64}")
+
+
+def op_discard(body: dict) -> dict:
+    """Put the workspace back to commit `sha`: whatever a read-only run (the
+    reviewer) changed, committed or created is dropped. Ignored files (the
+    install's node_modules, build caches) stay."""
+    d = job_dir(body)
+    sha = str(body.get("sha") or "")
+    if not COMMIT_RE.fullmatch(sha):
+        return {"infra_error": "discard needs a commit sha"}
+    # A fresh index: assume-unchanged or skip-worktree bits the run set would
+    # otherwise keep `reset --hard` from rewriting the files they cover.
+    run(["rm", "-f", "--", ".git/index"], d, 60)
+    code, out = run(["git", *GIT_SAFE, "reset", "-q", "--hard", sha], d, 120)
+    if code != 0:
+        return {"infra_error": "git reset failed: " + out[-300:]}
+    code, out = run(["git", *GIT_SAFE, "clean", "-fdq"], d, 120)
+    if code != 0:
+        return {"infra_error": "git clean failed: " + out[-300:]}
+    return {"ok": True}
+
+
 def op_qa_reset(body: dict) -> dict:
     d = job_dir(body)
     if dropping():
@@ -1154,7 +1177,8 @@ def op_fetch_cleanup(body: dict) -> dict:
     return {"ok": True, "removed": not os.path.lexists(target)}
 
 
-OPS = {"install": op_install, "commit": op_commit, "gates": op_gates, "deploy": op_deploy,
+OPS = {"install": op_install, "commit": op_commit, "discard": op_discard,
+       "gates": op_gates, "deploy": op_deploy,
        "qa_reset": op_qa_reset, "qa": op_qa, "clean_check": op_clean_check,
        "health": op_health, "reap": op_reap, "screenshot": op_screenshot,
        "programs": op_programs, "fetch_repo": op_fetch_repo,

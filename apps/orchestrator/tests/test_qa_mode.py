@@ -51,7 +51,7 @@ def test_gates_mode_skips_qa_and_says_what_was_checked(tmp_path, repo):
     assert w.tick()
     assert taiga.status_of(1) == "done"
     assert ["awaiting-merge", None] in taiga.story(1)["tags"]
-    assert runner.calls == ["install", "commit", "gates", "clean_check"]
+    assert runner.calls == ["install", "commit", "gates", "discard", "clean_check"]
     assert not taiga.attachments
     assert not (tmp_path / "repos" / "qa-specs").exists()
     text = taiga.texts(1)[-1]
@@ -59,7 +59,7 @@ def test_gates_mode_skips_qa_and_says_what_was_checked(tmp_path, repo):
     assert "Tidak diperiksa" in text and "QA browser" in text
     assert "menunggu Merge di Kemudi" in text
     assert job_of(sessions).state == "passed"
-    assert [p for p, _ in w.agent.calls] == ["awak.code"]
+    assert [p for p, _ in w.agent.calls] == ["awak.code", "awak.review"]
 
 
 def test_gates_mode_failed_gate_reworks(tmp_path, repo):
@@ -68,8 +68,10 @@ def test_gates_mode_failed_gate_reworks(tmp_path, repo):
     w, taiga, sessions, _ = _worker(tmp_path, repo, "gates", runner=runner)
     taiga.add(1, 12, "Badge jumlah", DESC)
     w.tick()
-    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 2
-    assert any("gagal di pemeriksaan otomatis" in t for t in taiga.texts(1))
+    # Fixed in a fix round of the same attempt.
+    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 1
+    assert any("gagal di pemeriksaan otomatis" in t and "putaran 2/3" in t
+               for t in taiga.texts(1))
     assert "qa" not in runner.calls
 
 
@@ -88,7 +90,7 @@ def test_gates_mode_clean_check_runs_after_gates(tmp_path, repo):
     stop = next(t for t in taiga.texts(1) if "Berhenti" in t)
     assert "local.env" in stop and "generated" in stop
     assert taiga.status_of(1) != "done" and job_of(sessions).state == "failed"
-    assert runner.calls[:4] == ["install", "commit", "gates", "clean_check"]
+    assert runner.calls[:5] == ["install", "commit", "gates", "discard", "clean_check"]
 
 
 def test_auto_merge_without_browser_qa_waits_for_the_merge_button(tmp_path, repo):
@@ -114,7 +116,7 @@ def test_off_mode_runs_no_gates(tmp_path, repo):
     taiga.add(1, 12, "Badge jumlah", DESC)
     assert w.tick()
     assert taiga.status_of(1) == "done"
-    assert runner.calls == ["install", "commit", "clean_check"]
+    assert runner.calls == ["install", "commit", "discard", "clean_check"]
     text = taiga.texts(1)[-1]
     assert "Mode QA proyek: Off" in text
     assert "Tidak diperiksa" in text and "pemeriksaan otomatis" in text

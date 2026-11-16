@@ -34,10 +34,11 @@ from .intake import TAG, story_areas
 from .merge import DONE_TAG, HUMAN_TAG, Merger, effective_mode, save_spec
 from .runbook import Runbook
 from .setup import SetupRunner
-from .prompts import RoleScope, out_of_scope, prompt_version, render, render_role
+from .prompts import (RoleScope, out_of_scope, prompt_version, render, render_role,
+                      scope_for)
 from .runner import Runner, RunnerError, RunnerRejected
 from .svc import Svc, SvcError, SvcRejected
-from .stories import code_task, criteria, qa_task
+from .stories import code_task, criteria, parse_review, qa_task, review_task
 from .taiga import Project, Taiga, TaigaError, tag_names
 from .verdict import Verdict, evaluate, safe_screenshot
 
@@ -647,11 +648,14 @@ class Worker:
         # from collect instead of paying for the coding run again.
         workdir = repo.job_dir(job.branch)
         prepared = self._last_event(job.id, "prepared")
-        resume = (job.phase in ("collect", "gates", "qa") and workdir.exists()
+        resume = (job.phase in ("collect", "gates", "review", "qa") and workdir.exists()
                   and prepared is not None)
         report = ""
+        siblings: list[Path] | None = None
+        unavailable: list[str] = []
         if resume:
             base_sha = prepared["base"]
+            main_sha = prepared.get("main") or base_sha
             self._event(job.id, "resumed", {"phase": job.phase})
         else:
             # prepare
@@ -661,85 +665,52 @@ class Worker:
                         else main_sha)
             workdir = repo.prepare(job.branch)
             siblings, unavailable = self._siblings(route, job)
-            self._event(job.id, "prepared", {"base": base_sha})
+            self._event(job.id, "prepared", {"base": base_sha, "main": main_sha})
             self._check_qa_repos(route)
             checks.run_install(self._runner, self._path(workdir),
                                checks.install_payloads(rc, route.runbook), workdir, rc.name)
 
-            # code
-            self._set(job.id, phase="code")
-            task = code_task(str(workdir), job.story_ref, story["subject"],
-                             story.get("description") or "", job.feedback,
-                             siblings=[str(d) for d in siblings], unavailable=unavailable)
-            kit = self._skill_set(job.id, role.skills, "code")
-            self._pin_prompt_version(job.id, route, kit)
-            system = render_role(role, route.config.repos, bool(kit.entries))
-            self._check_budget(route.config.slug, job.id)
-            report, cost = self.agent.run("awak.code", role.model, system, task,
-                                          slug=route.config.slug, role_id=role.id,
-                                          profile=kit.profile, job_id=job.id)
-            self._add_cost(job.id, cost)
-            self._set(job.id, phase="collect")
-            self._runner("commit", path=self._path(workdir),
-                         message=f"awak: uncommitted changes from attempt {n} "
-                                 f"(US #{job.story_ref})")
-        self._ours(story["id"], {"in-progress"}, project)
+        # code -> collect -> gates -> review, looping inside the attempt: a
+        # failed check or a blocking review goes straight back to the coder
+        # (with its last report) instead of costing an attempt and a card move.
+        rounds = 1 + max(0, self.s.awak_fix_rounds)
+        feedback, prev_sha = job.feedback, ""
+        reviewed: tuple[list[dict], str, str] | None = None  # gates passed, review blocked
+        for r in range(1, rounds + 1):
+            if r > 1 or not resume:
+                if siblings is None:
+                    siblings, unavailable = self._siblings(route, job)
+                report = self._code(job, route, story, workdir, n, feedback, siblings,
+                                    unavailable, previous_report=report if r > 1 else "",
+                                    fix_round=r > 1)
+            self._ours(story["id"], {"in-progress"}, project)
+            if reviewed is not None and repo.collect(job.branch) == prev_sha:
+                # The coder changed nothing after the review (its report says
+                # why): the reviewed commit, gates passed, goes on to QA.
+                self._event(job.id, "review_declined", {"sha": prev_sha})
+                sha = prev_sha
+                gates, qa_mode, qa_note = reviewed
+                break
+            sha, built = self._build(job, route, workdir, base_sha, report, prev_sha)
+            prev_sha, reviewed = sha, None
+            if isinstance(built, Fail):
+                fail = built
+            else:
+                gates, qa_mode, qa_note = built
+                reviewed = built
+                fail = self._review(job, route, story, workdir, sha, main_sha,
+                                    final=r == rounds)
+                if fail is None:
+                    break
+            if r == rounds:
+                return _with_report(fail, report)
+            feedback = secrets.redact(fail.feedback, self.redact_values_for(project.slug))
+            self._event(job.id, "fix_round", {"round": r + 1, "of": rounds})
+            self._say(story["id"], job.id,
+                      f"{fail.comment}\n\nAwak memperbaiki di percobaan yang sama "
+                      f"(putaran {r + 1}/{rounds}).", n)
 
-        # collect
-        self._set(job.id, phase="collect")
-        sha = repo.collect(job.branch)
-        # A card put back in Ready keeps its branch. With no human feedback and
-        # work already on the branch, "nothing to add" is a fair answer: check
-        # the existing tip instead of failing the attempt.
-        recheck = (sha == base_sha and not self._job(job.id).feedback
-                   and bool(repo.changed_files(job.branch)))
-        if recheck:
-            self._event(job.id, "recheck", {"sha": sha})
-        if sha == base_sha and not recheck:
-            return Fail("You made no commit. Implement the story and commit it.",
-                        "Awak tidak menghasilkan commit. Laporan Awak:\n\n"
-                        + _quote(report))
-        files = repo.changed_files(job.branch)
-        outside = out_of_scope(files, role.allowed_paths, role.denied_paths)
-        if outside:
-            limits = []
-            if role.allowed_paths:
-                limits.append("allowed: " + ", ".join(role.allowed_paths))
-            if role.denied_paths:
-                limits.append("never: " + ", ".join(role.denied_paths))
-            return Fail("These files are outside your role's scope ("
-                        + "; ".join(limits) + "). Revert: " + ", ".join(outside),
-                        f"Awak mengubah berkas di luar cakupan peran {role.name}: "
-                        + ", ".join(f"`{f}`" for f in outside))
-        leaked = secrets.files_with_secrets(repo.diff_from_main(job.branch),
-                                            self.scan_values_for(job.project_slug))
-        if leaked:
-            return Fail("Your change contains a secret or key-like value in: "
-                        + ", ".join(leaked) + ". Remove it.",
-                        "Diff mengandung nilai mirip secret di "
-                        + ", ".join(f"`{f}`" for f in leaked) + "; branch tidak di-push.")
-        repo.push_branch(job.branch)
-        self._set(job.id, last_sha=sha)
-
-        # gates
-        qa_mode, qa_note = self._qa_mode(route)
-        gates: list[dict] = []
-        if qa_mode != "off":
-            self._set(job.id, phase="gates")
-            payloads = checks.gate_payloads(rc, route.runbook, files, workdir)
-            gates = checks.run_gates(
-                self._runner, self._path(workdir), payloads,
-                self.compose_for(job, route.runbook, workdir)
-                if checks.needs_compose(payloads) else None)
-        failed = [g for g in gates if not g.get("ok")]
         table = "\n".join(f"- {'✅' if g.get('ok') else '❌'} {g['name']}" for g in gates)
-        if failed:
-            fb = "\n\n".join(f"$ {g['name']}\n{g.get('output', '')[-3000:]}" for g in failed)
-            return Fail("These checks failed:\n" + fb,
-                        f"Branch `{job.branch}` @ `{sha[:8]}` gagal di pemeriksaan otomatis:\n"
-                        f"{table}\n\n" + "\n\n".join(
-                            f"**{g['name']}**\n```\n{g.get('output', '')[-1200:]}\n```"
-                            for g in failed))
         if qa_mode != "browser":
             return self._done_without_qa(project, job, story, workdir, sha, route, n,
                                          qa_mode, qa_note, gates)
@@ -778,10 +749,133 @@ class Worker:
             if mode == "auto":
                 Merger(self).merge(self._job(job.id), project, story, require_qa_rerun=True)
             return None
-        return Fail("QA failed these acceptance criteria:\n" + verdict.failures(),
-                    f"QA gagal untuk `{sha[:8]}`:\n{_table(verdict, evidence)}\n\n"
-                    f"Kembali ke In progress; Awak akan memperbaiki.")
+        return _with_report(Fail("QA failed these acceptance criteria:\n" + verdict.failures(),
+                                 f"QA gagal untuk `{sha[:8]}`:\n{_table(verdict, evidence)}\n\n"
+                                 f"Kembali ke In progress; Awak akan memperbaiki."), report)
 
+    def _code(self, job: AwakJob, route: Route, story: dict, workdir: Path, n: int,
+              feedback: str, siblings: list[Path], unavailable: list[str], *,
+              previous_report: str = "", fix_round: bool = False) -> str:
+        """One coding run; anything it left uncommitted is committed for it.
+        Returns its report."""
+        role = route.role
+        self._set(job.id, phase="code")
+        task = code_task(str(workdir), job.story_ref, story["subject"],
+                         story.get("description") or "", feedback,
+                         siblings=[str(d) for d in siblings], unavailable=unavailable,
+                         previous_report=previous_report, fix_round=fix_round)
+        kit = self._skill_set(job.id, role.skills, "code")
+        self._pin_prompt_version(job.id, route, kit)
+        system = render_role(role, route.config.repos, bool(kit.entries))
+        self._check_budget(route.config.slug, job.id)
+        report, cost = self.agent.run("awak.code", role.model, system, task,
+                                      slug=route.config.slug, role_id=role.id,
+                                      profile=kit.profile, job_id=job.id)
+        self._add_cost(job.id, cost)
+        self._set(job.id, phase="collect")
+        self._runner("commit", path=self._path(workdir),
+                     message=f"awak: uncommitted changes from attempt {n} "
+                             f"(US #{job.story_ref})")
+        return report
+
+    def _build(self, job: AwakJob, route: Route, workdir: Path, base_sha: str, report: str,
+               prev_sha: str) -> tuple[str, "Fail | tuple[list[dict], str, str]"]:
+        """Collect, the scope and secret checks, push, and the gates. Returns
+        the collected sha and a Fail, or (gates, qa mode, qa note).
+        `prev_sha`: the tip after the round before (a fix round must add a
+        commit); empty in the first round."""
+        repo, rc, role = route.repo, route.rc, route.role
+        self._set(job.id, phase="collect")
+        sha = repo.collect(job.branch)
+        if prev_sha:
+            if sha == prev_sha:
+                return sha, Fail("You made no new commit in this fix round. Fix the problems "
+                                 "above and commit.",
+                                 "Awak tidak membuat commit baru di putaran perbaikan. "
+                                 "Laporan Awak:\n\n" + _quote(report))
+        else:
+            # A card put back in Ready keeps its branch. With no human feedback
+            # and work already on the branch, "nothing to add" is a fair answer:
+            # check the existing tip instead of failing the attempt.
+            recheck = (sha == base_sha and not self._job(job.id).feedback
+                       and bool(repo.changed_files(job.branch)))
+            if recheck:
+                self._event(job.id, "recheck", {"sha": sha})
+            if sha == base_sha and not recheck:
+                return sha, Fail("You made no commit. Implement the story and commit it.",
+                                 "Awak tidak menghasilkan commit. Laporan Awak:\n\n"
+                                 + _quote(report))
+        files = repo.changed_files(job.branch)
+        outside = out_of_scope(files, role.allowed_paths, role.denied_paths)
+        if outside:
+            limits = []
+            if role.allowed_paths:
+                limits.append("allowed: " + ", ".join(role.allowed_paths))
+            if role.denied_paths:
+                limits.append("never: " + ", ".join(role.denied_paths))
+            return sha, Fail("These files are outside your role's scope ("
+                             + "; ".join(limits) + "). Revert: " + ", ".join(outside),
+                             f"Awak mengubah berkas di luar cakupan peran {role.name}: "
+                             + ", ".join(f"`{f}`" for f in outside))
+        leaked = secrets.files_with_secrets(repo.diff_from_main(job.branch),
+                                            self.scan_values_for(job.project_slug))
+        if leaked:
+            return sha, Fail("Your change contains a secret or key-like value in: "
+                             + ", ".join(leaked) + ". Remove it.",
+                             "Diff mengandung nilai mirip secret di "
+                             + ", ".join(f"`{f}`" for f in leaked) + "; branch tidak di-push.")
+        repo.push_branch(job.branch)
+        self._set(job.id, last_sha=sha)
+
+        qa_mode, qa_note = self._qa_mode(route)
+        gates: list[dict] = []
+        if qa_mode != "off":
+            self._set(job.id, phase="gates")
+            payloads = checks.gate_payloads(rc, route.runbook, files, workdir)
+            gates = checks.run_gates(
+                self._runner, self._path(workdir), payloads,
+                self.compose_for(job, route.runbook, workdir)
+                if checks.needs_compose(payloads) else None)
+        failed = [g for g in gates if not g.get("ok")]
+        if failed:
+            table = "\n".join(f"- {'✅' if g.get('ok') else '❌'} {g['name']}" for g in gates)
+            fb = "\n\n".join(f"$ {g['name']}\n{g.get('output', '')[-3000:]}" for g in failed)
+            return sha, Fail("These checks failed:\n" + fb,
+                             f"Branch `{job.branch}` @ `{sha[:8]}` gagal di pemeriksaan "
+                             f"otomatis:\n{table}\n\n" + "\n\n".join(
+                                 f"**{g['name']}**\n```\n{g.get('output', '')[-1200:]}\n```"
+                                 for g in failed))
+        return sha, (gates, qa_mode, qa_note)
+
+    def _review(self, job: AwakJob, route: Route, story: dict, workdir: Path, sha: str,
+                main_sha: str, *, final: bool) -> Fail | None:
+        """A read-only review of the diff against the story by the coding
+        role's model. Blocking findings are a Fail (a fix round); in the last
+        round they are only recorded, and QA decides. The workspace is put
+        back to `sha` afterwards, whatever the reviewer touched."""
+        if not self.s.awak_review:
+            return None
+        role = route.role
+        self._set(job.id, phase="review")
+        kit = self._skill_set(job.id, [], "review")
+        system = render("reviewer", role.prompt_overlay, scope_for(role, route.config.repos))
+        task = review_task(str(workdir), job.story_ref, story["subject"],
+                           story.get("description") or "", main_sha)
+        self._check_budget(route.config.slug, job.id)
+        text, cost = self.agent.run("awak.review", role.model, system, task,
+                                    slug=route.config.slug, role_id=role.id,
+                                    profile=kit.profile, job_id=job.id)
+        self._add_cost(job.id, cost)
+        self._runner("discard", path=self._path(workdir), sha=sha)
+        review = parse_review(text)
+        self._event(job.id, "review", {"verdict": review.verdict, "final": final,
+                                       "issues": review.issues})
+        if not review.blocking() or final:
+            return None
+        listed = review.feedback()
+        return Fail("A reviewer read your change against the story and found these "
+                    "problems. Fix them; if one is wrong, say why in your report:\n" + listed,
+                    f"Review kode untuk `{sha[:8]}` menemukan masalah:\n{listed}")
     def _qa_mode(self, route: Route) -> tuple[str, str]:
         return qa_mode_for(route.config, route.rc, route.runbook, self.s.host_git)
 
@@ -1401,6 +1495,14 @@ def _done_tail(mode: str, branch: str, repo: Repo) -> str:
                 f"menunggu Merge di Kemudi.")
     return (f"Pindah ke Done dengan tag `{DONE_TAG}`; merge otomatis ke "
             f"`{repo.default_branch}` berjalan.")
+
+
+def _with_report(fail: Fail, report: str) -> Fail:
+    """The next attempt starts a fresh run: tell it what the last one did."""
+    if not report.strip():
+        return fail
+    return Fail(fail.feedback + "\n\nYour report from that attempt (what you already did):\n"
+                + report.strip()[-2000:], fail.comment)
 
 
 def _quote(text: str) -> str:

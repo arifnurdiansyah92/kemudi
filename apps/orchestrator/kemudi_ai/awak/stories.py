@@ -1,6 +1,8 @@
 """Story text <-> acceptance criteria, and the prompts that use them."""
 
+import json
 import re
+from dataclasses import dataclass
 
 AC_HEADING = "Acceptance criteria"
 _AC_LINE = re.compile(r"^\s*[-*]\s*(?:\[[ xX]\]\s*)?(.+?)\s*$")
@@ -48,14 +50,28 @@ Reply with one JSON object: {"stories": [{"subject", "description", "criteria", 
 }
 
 
+WORK_METHOD = """How to work:
+1. Read the code the story touches (routes, components, API, tests) before changing anything.
+2. List the acceptance criteria for yourself and decide how each one will be met.
+3. Implement, then run the repo's checks on what you changed and fix what they report.
+4. Go through the acceptance criteria one by one against your change before you finish.
+In your report, say for each acceptance criterion how your change meets it."""
+
+
 def code_task(workspace: str, ref: int, subject: str, description: str,
               feedback: str = "", siblings: list[str] | None = None,
-              unavailable: list[str] | None = None) -> str:
+              unavailable: list[str] | None = None, previous_report: str = "",
+              fix_round: bool = False) -> str:
+    """`fix_round`: a further run inside the same attempt (the checks or the
+    review found problems in the run just before); `previous_report` is what
+    the agent reported last time, so it does not start from nothing."""
     parts = [
         f"Workspace: {workspace}",
         f"User story #{ref}: {subject}",
         "",
         description.strip(),
+        "",
+        WORK_METHOD,
     ]
     if siblings:
         parts += [
@@ -73,13 +89,63 @@ def code_task(workspace: str, ref: int, subject: str, description: str,
             "out; do not rely on reading them: " + ", ".join(unavailable),
         ]
     if feedback:
-        parts += [
-            "",
-            "This is a rework attempt. Your previous commit(s) are on this branch. "
-            "Fix these problems found by checks or review:",
-            feedback.strip(),
-        ]
+        lead = ("This is a fix round: you already worked on this story and your commit(s) "
+                "are on this branch. Fix these problems, found by the checks or by a "
+                "reviewer, and commit again:" if fix_round else
+                "This is a rework attempt. Your previous commit(s) are on this branch. "
+                "Fix these problems found by checks or review:")
+        parts += ["", lead, feedback.strip()]
+    if previous_report.strip():
+        parts += ["", "Your report from the previous run (what you already did):",
+                  previous_report.strip()[-3000:]]
     return "\n".join(parts)
+
+
+def review_task(workspace: str, ref: int, subject: str, description: str, base: str) -> str:
+    return "\n".join([
+        f"Workspace: {workspace}",
+        f"Review the change for user story #{ref}: {subject}",
+        "",
+        description.strip(),
+        "",
+        f"The change is `git diff {base}...HEAD` (run `git log --oneline {base}..HEAD` "
+        "for its commits). Do not modify anything. End with the JSON verdict.",
+    ])
+
+
+@dataclass
+class Review:
+    verdict: str  # "approve" | "changes" | "unparsed"
+    issues: list[dict]
+
+    def blocking(self) -> bool:
+        return self.verdict == "changes" and bool(self.issues)
+
+    def feedback(self) -> str:
+        return "\n".join(
+            f"- {i['file'] or '(general)'}: {i['problem']}"
+            + (f" Fix: {i['fix']}" if i["fix"] else "") for i in self.issues)
+
+
+def parse_review(text: str) -> Review:
+    """The reviewer's last JSON verdict. Anything unreadable counts as no
+    verdict (the change goes on to QA), never as a block."""
+    text = text or ""
+    decoder = json.JSONDecoder()
+    for m in reversed(list(re.finditer(r"\{", text))):
+        try:
+            data, _ = decoder.raw_decode(text[m.start():])
+        except ValueError:
+            continue
+        if not isinstance(data, dict) or "verdict" not in data:
+            continue
+        verdict = str(data.get("verdict") or "").lower()
+        raw = data.get("issues") if isinstance(data.get("issues"), list) else []
+        issues = [{k: str(i.get(k) or "")[:600] for k in ("file", "problem", "fix")}
+                  for i in raw if isinstance(i, dict) and i.get("problem")][:10]
+        if verdict in ("approve", "changes"):
+            return Review(verdict, issues)
+    return Review("unparsed", [])
 
 
 def qa_task(workspace: str, ref: int, subject: str, criteria_list: list[str],

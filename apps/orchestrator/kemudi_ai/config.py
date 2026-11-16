@@ -58,6 +58,18 @@ class Settings(BaseSettings):
     poll_interval_s: float = 20.0
     max_attempts: int = 3
     max_infra_errors: int = 3
+    # Inside one attempt: after a coding run whose checks or review fail, Awak
+    # fixes it this many more times before the attempt counts as failed (no
+    # card move, the agent keeps its previous report).
+    awak_fix_rounds: int = 2
+    # A read-only reviewer run (the coding role's model) reads the diff against
+    # the story after the gates pass and before QA; its blocking findings go
+    # back to the coder as a fix round.
+    awak_review: bool = True
+    # Sent as `reasoning_effort` on Awak's model calls that do not set one
+    # (none, low, medium, high, xhigh); empty sends nothing. For providers
+    # that map it to extended thinking (OpenRouter, Claude relays, OpenAI).
+    awak_reasoning_effort: str = ""
     lang: str = "id"
 
     # --- Awak project setup (docs/superpowers/specs/2026-11-14-awak-project-setup-design.md)

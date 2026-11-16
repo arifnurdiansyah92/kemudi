@@ -93,9 +93,11 @@ def git(cwd, *args):
 class FakeAgent:
     """Coding runs call `code(workdir, n)`; QA runs write nothing."""
 
-    def __init__(self, code=None, fail_with=None):
+    def __init__(self, code=None, fail_with=None, reviews=None):
         self.code = code or (lambda workdir, n: commit_file(workdir, f"feature{n}.txt", "x"))
         self.fail_with = fail_with or []
+        # Reviewer answers, in order; approve once they run out.
+        self.reviews = list(reviews or [])
         self.calls: list[tuple[str, str]] = []
         self.runs: list[dict] = []
 
@@ -113,6 +115,9 @@ class FakeAgent:
             n = sum(1 for p, _ in self.calls if p == "awak.code")
             self.code(Path(workdir), n)
             return "changed things", 10.0
+        if purpose == "awak.review":
+            return (self.reviews.pop(0) if self.reviews
+                    else '{"verdict": "approve", "issues": []}'), 3.0
         if purpose == "awak.qa":
             workdir = Path(task.splitlines()[0].removeprefix("Workspace: ").strip())
             spec = workdir / ".qa" / "spec" / "story.spec.ts"

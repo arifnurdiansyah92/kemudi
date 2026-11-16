@@ -736,3 +736,28 @@ def test_proxy_uses_a_saved_insecure_connection(agent_client, upstream):
                           json={"model": _alias(agent_client), "messages": []})
     assert r.status_code == 200
     assert str(seen[-1].url) == "http://8.8.8.8/v1/chat/completions"
+
+
+def test_proxy_adds_reasoning_effort_when_configured(agent_client, upstream):
+    seen, _ = upstream
+    agent_client.settings.ai_base_url = "https://server.example/v1"
+    agent_client.settings.ai_api_key = "server-key-123456"
+    msgs = [{"role": "user", "content": "x"}]
+    # Off by default: the body goes through as Hermes sent it.
+    agent_client.post("/llm/v1/chat/completions", headers=PROXY,
+                      json={"model": _alias(agent_client), "messages": msgs})
+    assert "reasoning_effort" not in json.loads(seen[-1].content)
+    agent_client.settings.awak_reasoning_effort = "High"
+    agent_client.post("/llm/v1/chat/completions", headers=PROXY,
+                      json={"model": _alias(agent_client), "messages": msgs})
+    assert json.loads(seen[-1].content)["reasoning_effort"] == "high"
+    # What the caller set itself wins.
+    agent_client.post("/llm/v1/chat/completions", headers=PROXY,
+                      json={"model": _alias(agent_client), "messages": msgs,
+                            "reasoning_effort": "low"})
+    assert json.loads(seen[-1].content)["reasoning_effort"] == "low"
+    # An unknown level is never forwarded.
+    agent_client.settings.awak_reasoning_effort = "turbo"
+    agent_client.post("/llm/v1/chat/completions", headers=PROXY,
+                      json={"model": _alias(agent_client), "messages": msgs})
+    assert "reasoning_effort" not in json.loads(seen[-1].content)

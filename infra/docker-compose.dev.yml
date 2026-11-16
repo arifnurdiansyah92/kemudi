@@ -174,6 +174,11 @@ services:
       KEMUDI_AWAK_API_KEY: "${KEMUDI_AWAK_API_KEY:-}"
       KEMUDI_AWAK_MODEL: "${KEMUDI_AWAK_MODEL:-deepseek-flash}"
       KEMUDI_QA_MODEL: "${KEMUDI_QA_MODEL:-deepseek-flash}"
+      # Fix rounds inside one attempt, the reviewer run before QA, and the
+      # thinking level sent to the model (empty: none sent).
+      KEMUDI_AWAK_FIX_ROUNDS: "${KEMUDI_AWAK_FIX_ROUNDS:-2}"
+      KEMUDI_AWAK_REVIEW: "${KEMUDI_AWAK_REVIEW:-true}"
+      KEMUDI_AWAK_REASONING_EFFORT: "${KEMUDI_AWAK_REASONING_EFFORT-high}"
       KEMUDI_RUNNER_KEY: "${KEMUDI_RUNNER_KEY:-}"
       KEMUDI_SVC_KEY: "${KEMUDI_SVC_KEY:-}"
       # Fernet key that encrypts the SSH keys Kemudi generates (Project
