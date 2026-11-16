@@ -34,6 +34,13 @@ All notable changes to Kemudi are documented in this file. The format follows
 
 ### Fixed
 
+- **"Run it again" no longer forces a needless commit.** When a story sent back
+  with a comment already has work on its branch and Awak judges no code change
+  is needed (e.g. QA failed for an infra reason), the existing tip is checked
+  again and goes to QA instead of failing the round, which used to push Awak
+  into a cosmetic commit just to have one. The reviewer now gets the person's
+  request and blocks when it asked for a change the diff does not have. With
+  the review off, a rework without a commit still fails, as before.
 - **QA login failing after an app restart in the sandbox.** svc published an
   exposed compose service on a random host port, which Docker changes when it
   restarts the container (`restart: on-failure`, e.g. a backend that loses a

@@ -852,13 +852,17 @@ class Worker:
                                  "Awak tidak membuat commit baru di putaran perbaikan. "
                                  "Laporan Awak:\n\n" + _quote(report))
         else:
-            # A card put back in Ready keeps its branch. With no human feedback
-            # and work already on the branch, "nothing to add" is a fair answer:
-            # check the existing tip instead of failing the attempt.
-            recheck = (sha == base_sha and not self._job(job.id).feedback
+            # A card sent back keeps its branch. With work already on it,
+            # "nothing to add" can be the right answer (a QA failure that was
+            # not the code, "just run it again"): the existing tip is checked
+            # again instead of failing the attempt. With a person's feedback
+            # that takes the reviewer, which is told what they asked and
+            # blocks when it asked for a change the diff does not have.
+            feedback = self._job(job.id).feedback
+            recheck = (sha == base_sha and (not feedback or self.s.awak_review)
                        and bool(repo.changed_files(job.branch)))
             if recheck:
-                self._event(job.id, "recheck", {"sha": sha})
+                self._event(job.id, "recheck", {"sha": sha, "feedback": bool(feedback)})
             if sha == base_sha and not recheck:
                 return sha, Fail("You made no commit. Implement the story and commit it.",
                                  "Awak tidak menghasilkan commit. Laporan Awak:\n\n"
@@ -918,7 +922,8 @@ class Worker:
         kit = self._skill_set(job.id, [], "review")
         system = render("reviewer", role.prompt_overlay, scope_for(role, route.config.repos))
         task = review_task(str(workdir), job.story_ref, story["subject"],
-                           story.get("description") or "", main_sha)
+                           story.get("description") or "", main_sha,
+                           human_feedback=self._job(job.id).feedback)
         self._check_budget(route.config.slug, job.id)
         text, cost = self.agent.run("awak.review", role.model, system, task,
                                     slug=route.config.slug, role_id=role.id,
