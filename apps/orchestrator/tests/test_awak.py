@@ -232,6 +232,58 @@ def test_gives_up_after_max_attempts_and_blocks(tmp_path, repo):
     assert not w.tick()  # blocked stories are left alone
 
 
+def test_moving_a_blocked_story_back_unblocks_it_and_reworks(tmp_path, repo):
+    runner = FakeRunner(tmp_path / "ws", qa=["fail", "fail", "fail", "pass"])
+    agent = FakeAgent()
+    w, taiga, sessions = make_worker(tmp_path, repo, agent, runner)
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    assert taiga.story(1)["is_blocked"]
+    assert "pindahkan kartu ke In progress" in taiga.texts(1)[-1]
+    taiga.human_comment(1, "Pakai warna merah untuk badge")
+    assert not w.tick()  # a comment alone is no answer yet
+    taiga.human_move(1, "in-progress")
+    assert w.tick()
+    st = taiga.story(1)
+    assert not st["is_blocked"] and st["blocked_note"] == ""
+    assert ["needs-human", None] not in st["tags"] and ["agent-ready", None] in st["tags"]
+    assert "Pakai warna merah" in [t for p, t in agent.calls if p == "awak.code"][-1]
+    assert taiga.status_of(1) == "done"
+    assert job_of(sessions).attempts == 1  # a fresh set of attempts
+
+
+def test_a_human_block_or_an_unanswered_one_stays(tmp_path, repo):
+    runner = FakeRunner(tmp_path / "ws", qa=["fail", "fail", "fail"])
+    w, taiga, sessions = make_worker(tmp_path, repo, FakeAgent(), runner)
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    taiga.human_comment(1, "nanti saya cek")
+    assert not w.tick() and taiga.story(1)["is_blocked"]
+    # Blocked by a person (no needs-human tag): never lifted by Awak.
+    taiga.add(2, 13, "Lain", DESC, status="in-progress")
+    taiga.update_story(2, is_blocked=True)
+    taiga.human_move(2, "ready")
+    assert not w.tick()
+    assert taiga.story(2)["is_blocked"]
+
+
+def test_human_moved_after_block_reads_the_history():
+    from kemudi_ai.awak.worker import human_moved_after_block
+
+    bots = {"awak"}
+
+    def h(t, user, diff):
+        return {"created_at": f"2026-11-16T00:00:{t:02d}Z", "user": {"username": user},
+                "values_diff": diff}
+
+    blocked = h(2, "awak", {"is_blocked": [False, True]})
+    assert human_moved_after_block([h(3, "pm", {"status": [4, 3]}), blocked], bots) == "pm"
+    assert human_moved_after_block([blocked, h(1, "pm", {"status": [2, 3]})], bots) == ""
+    assert human_moved_after_block([h(3, "pm", {"status": [4, 3]})], bots) == ""
+    assert human_moved_after_block([blocked, h(3, "awak", {"status": [3, 4]}),
+                                    h(4, "pm", {"tags": [[], ["x"]]})], bots) == ""
+
+
 def test_no_commit_is_fixed_in_the_same_attempt(tmp_path, repo):
     agent = FakeAgent(code=lambda d, n: None if n == 1 else commit_file(d, "f.txt", "x"))
     runner = FakeRunner(tmp_path / "ws", qa=["pass"])

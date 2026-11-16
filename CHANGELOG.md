@@ -8,6 +8,13 @@ All notable changes to Kemudi are documented in this file. The format follows
 
 ### Added
 
+- **Moving a blocked story back restarts Awak.** When Awak blocks a story
+  (`needs-human`) and a person then moves it to In progress or Ready, Awak
+  lifts the block itself and picks it up (In progress: rework with the latest
+  human comment; Ready: start over). Before, the card also had to be
+  unblocked by hand, although the block comment said moving it was enough. A
+  block a person set, or a comment without a move, still leaves it alone. The
+  block comment now says how to send the story back.
 - **Intake reads the project's code.** Drafting stories now reads the project's
   repos (default branch, straight from Awak's bare repos): README, manifest and
   a file map first, then the files the model picks (up to 20, 120K chars). The
