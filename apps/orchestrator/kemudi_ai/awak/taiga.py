@@ -128,6 +128,10 @@ class Taiga:
         r = self._req("GET", f"/history/userstory/{story_id}", params={"type": "comment"})
         return [h for h in r.json() if (h.get("comment") or "").strip()]
 
+    def history(self, story_id: int) -> list[dict]:
+        """Every change of the story (status, tags, block...), newest first."""
+        return self._req("GET", f"/history/userstory/{story_id}").json()
+
     # --- writes ---------------------------------------------------------
     def create_story(self, project_id: int, **fields) -> dict:
         return self._req("POST", "/userstories", json={"project": project_id, **fields}).json()

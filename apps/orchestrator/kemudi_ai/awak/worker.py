@@ -46,6 +46,34 @@ log = logging.getLogger(__name__)
 
 
 
+
+UNBLOCK_HINT = ("Setelah penyebabnya beres: tulis arahan di komentar, lalu pindahkan kartu ke "
+                "In progress (lanjut dari pekerjaan yang ada, dengan arahan Anda) atau ke Ready "
+                "(mulai ulang). Awak membuka blokirnya sendiri saat kartu dipindahkan.")
+
+
+def human_moved_after_block(history: list[dict], bots: set[str]) -> str:
+    """The username of a human who changed the story's status after the bot's
+    last block, or "". `history` is Taiga's userstory history (any order)."""
+    if history and all(h.get("created_at") for h in history):
+        history = sorted(history, key=lambda h: h["created_at"])
+    else:
+        history = list(reversed(history))  # Taiga lists newest first
+    blocked_at = None
+    for i, h in enumerate(history):
+        user = (h.get("user") or {}).get("username")
+        diff = h.get("values_diff") or {}
+        if user in bots and list(diff.get("is_blocked") or [])[-1:] == [True]:
+            blocked_at = i
+    if blocked_at is None:
+        return ""
+    for h in history[blocked_at + 1:]:
+        user = (h.get("user") or {}).get("username")
+        if user and user not in bots and "status" in (h.get("values_diff") or {}):
+            return user
+    return ""
+
+
 class Stop(Exception):
     """A human took the story over; stop quietly (with one comment)."""
 
@@ -499,6 +527,8 @@ class Worker:
             for st in self.taiga.stories(project.id, project.status(status), TAG):
                 if not st.get("is_blocked"):
                     candidates.append((status, st))
+                elif status in ("ready", "in-progress") and self._unblock_if_moved(project, st):
+                    candidates.append((status, self.taiga.story(st["id"])))
         candidates.sort(key=lambda x: x[1]["ref"])
         with self.sessions() as db:
             mode = config_store.load(db, project.slug).merge_mode
@@ -535,6 +565,34 @@ class Worker:
                 record_event(db, job.id, "picked", {"status": status})
                 return job.id, st
         return None
+
+    def _unblock_if_moved(self, project: Project, st: dict) -> bool:
+        """A story Awak blocked (`needs-human`) that a human then moved to Ready
+        or In progress: that move is the answer the block asked for, so Awak
+        lifts the block itself (a PM should not also have to find the Blocked
+        toggle). Only a status change by a non-bot user after Awak's block
+        counts; a block a human set, or one nobody answered, stays."""
+        if HUMAN_TAG not in tag_names(st):
+            return False
+        with self.sessions() as db:
+            job = db.query(AwakJob).filter_by(project_slug=project.slug,
+                                              story_id=st["id"]).one_or_none()
+            if job is None or job.state != "failed":
+                return False
+            job_id = job.id
+        try:
+            moved = human_moved_after_block(self.taiga.history(st["id"]),
+                                            {self.taiga.username, self.s.qa_username})
+        except TaigaError as e:
+            log.warning("history of story %s: %s", st["id"], e)
+            return False
+        if not moved:
+            return False
+        tags = sorted(set(tag_names(st)) - {HUMAN_TAG})
+        self.taiga.update_story(st["id"], version=st["version"], is_blocked=False,
+                                blocked_note="", tags=tags)
+        self._event(job_id, "unblocked", {"by": moved})
+        return True
 
     def _reset(self, job: AwakJob, feedback: str, fresh: bool = False) -> None:
         job.attempts, job.infra_errors, job.feedback = 0, 0, feedback
@@ -1296,7 +1354,7 @@ class Worker:
         self.taiga.update_story(st["id"], version=st["version"], is_blocked=True,
                                 blocked_note=reason[:200], tags=tags, assigned_to=owner)
         self._set(job_id, state="failed")  # keep phase: unblocking resumes
-        self._say(st["id"], job_id, f"Butuh bantuan manusia. {reason}")
+        self._say(st["id"], job_id, f"Butuh bantuan manusia. {reason}\n\n{UNBLOCK_HINT}")
 
     def _job(self, job_id: int) -> AwakJob:
         with self.sessions() as db:

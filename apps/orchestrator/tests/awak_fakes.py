@@ -16,6 +16,8 @@ class FakeTaiga:
         self.me = {"id": 99, "username": username}
         self.stories_by_id: dict[int, dict] = {}
         self.comments_by_id: dict[int, list[dict]] = {}
+        self.history_by_id: dict[int, list[dict]] = {}
+        self._clock = 0
         self.attachments: list[tuple[int, str]] = []
         self.logins = 0
 
@@ -46,6 +48,15 @@ class FakeTaiga:
     def comments(self, sid):
         return list(self.comments_by_id[sid])
 
+    def history(self, sid):
+        return list(reversed(self.history_by_id.get(sid, [])))  # Taiga: newest first
+
+    def _log(self, sid, user, diff):
+        self._clock += 1
+        self.history_by_id.setdefault(sid, []).append(
+            {"user": {"username": user}, "values_diff": diff,
+             "created_at": f"2026-11-16T00:00:{self._clock:02d}Z"})
+
     def create_story(self, project_id, **fields):
         sid = max(self.stories_by_id, default=0) + 1
         st = self.add(sid, sid + 100, fields["subject"], fields.get("description", ""),
@@ -64,6 +75,9 @@ class FakeTaiga:
                                              "comment": comment})
         if "tags" in fields:
             fields["tags"] = [[t, None] for t in fields["tags"]]
+        diff = {k: [st.get(k), v] for k, v in fields.items() if st.get(k) != v}
+        if diff:
+            self._log(sid, self.username, diff)
         st.update(fields)
         st["version"] += 1
         return dict(st)
@@ -78,6 +92,13 @@ class FakeTaiga:
     # helpers for tests
     def human_comment(self, sid, text):
         self.comments_by_id[sid].append({"user": {"username": "pm"}, "comment": text})
+
+    def human_move(self, sid, status, user="pm"):
+        """A person drags the card to `status` (logged in the history)."""
+        st = self.stories_by_id[sid]
+        self._log(sid, user, {"status": [st["status"], STATUSES[status]]})
+        st["status"] = STATUSES[status]
+        st["version"] += 1
 
     def status_of(self, sid):
         return {v: k for k, v in STATUSES.items()}[self.stories_by_id[sid]["status"]]
