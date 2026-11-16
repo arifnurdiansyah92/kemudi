@@ -102,7 +102,7 @@ def test_svc_up(svc, fake):
     # 3: only the vault file, deleted afterwards
     assert fake.env_file_seen == f'JWT_SECRET_KEY="{secret}"\n'
     pd = svc.RUN_DIR / "demo-us1"
-    assert sorted(p.name for p in pd.iterdir()) == ["compose.json"]
+    assert sorted(p.name for p in pd.iterdir()) == ["compose.json", "port"]
     # 5: build the built services, start everything with --wait
     assert build["args"][-1] == "backend" and build["timeout"] == svc.BUILD_TIMEOUT
     assert "--wait" in start["args"] and start["args"][-3:] == ["backend", "postgres", "redis"]
@@ -110,7 +110,44 @@ def test_svc_up(svc, fake):
                for c in (build, start))
     final = json.loads((pd / "compose.json").read_text())
     assert final["services"]["backend"]["image"] == "kemudi-demo-us1-backend"
-    assert final["services"]["backend"]["ports"] == ["0.0.0.0::5000"]
+    port = int((pd / "port").read_text())
+    assert svc.PORT_MIN <= port <= svc.PORT_MAX
+    assert final["services"]["backend"]["ports"] == [f"0.0.0.0:{port}:5000"]
+
+
+def test_svc_up_keeps_the_host_port_of_the_project(svc, fake):
+    # A random host port moves when Docker restarts the container; a pinned
+    # one does not, and a second up of the project keeps it.
+    up(svc)
+    pd = svc.RUN_DIR / "demo-us1"
+    first = json.loads((pd / "compose.json").read_text())["services"]["backend"]["ports"]
+    up(svc)
+    assert json.loads((pd / "compose.json").read_text())["services"]["backend"]["ports"] == first
+    # another project never gets the same one
+    taken = int((pd / "port").read_text())
+    assert all(svc.pick_port() != taken for _ in range(50))
+
+
+def test_svc_up_takes_another_port_when_it_is_busy(svc, fake):
+    ups = []
+
+    def hook(verb):
+        if verb == "up":
+            ups.append(json.loads((svc.RUN_DIR / "demo-us1" / "compose.json").read_text())
+                       ["services"]["backend"]["ports"][0])
+            fake.fail["up"] = ((1, "", "Bind for 0.0.0.0:21000 failed: port is already "
+                                "allocated") if len(ups) == 1 else (0, "", ""))
+
+    fake.hook = hook
+    res = up(svc)
+    assert res["ok"], res
+    assert len(ups) == 2 and ups[0] != ups[1]
+    assert (svc.RUN_DIR / "demo-us1" / "port").read_text() == ups[1].split(":")[1]
+
+
+def test_svc_up_without_expose_pins_nothing(svc, fake):
+    up(svc, expose=None, up=["postgres"])
+    assert not (svc.RUN_DIR / "demo-us1" / "port").exists()
 
 
 def test_svc_up_subset_and_no_wait(svc, fake):

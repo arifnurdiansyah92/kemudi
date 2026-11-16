@@ -32,6 +32,17 @@ All notable changes to Kemudi are documented in this file. The format follows
   `KEMUDI_ADMIN_USER_IDS`. `/users/me` now returns `is_superuser`, and
   Kemudi AI's `GET /me` returns `superadmin`.
 
+### Fixed
+
+- **QA login failing after an app restart in the sandbox.** svc published an
+  exposed compose service on a random host port, which Docker changes when it
+  restarts the container (`restart: on-failure`, e.g. a backend that loses a
+  start-up race). QA then talked to a dead port and the login failed
+  (`ECONNREFUSED`), blocking the story. svc now pins one host port per project
+  (20000–29999, `SVC_PORT_MIN`/`SVC_PORT_MAX`), keeps it across `svc_up`s and
+  takes another one if Docker says it is busy. The QA login's own error now
+  comes last in the block comment, so it is no longer cut off by the app log.
+
 ### Changed
 
 - Awak works in a loop inside each attempt: when the checks fail or a reviewer

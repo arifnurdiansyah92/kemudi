@@ -509,8 +509,11 @@ def request_environment(raw) -> dict[str, dict[str, str]]:
 
 
 def rewrite(doc: dict, project: str, expose: tuple[str, int] | None,
-            environment: dict[str, dict[str, str]] | None = None) -> dict:
-    """Step 5, on the interpolated reduced file: the compose file svc runs."""
+            environment: dict[str, dict[str, str]] | None = None,
+            host_port: int | None = None) -> dict:
+    """Step 5, on the interpolated reduced file: the compose file svc runs.
+    `host_port` pins the exposed port's host side; without it Docker picks a
+    random one, which changes whenever the container restarts."""
     services = doc.get("services") or {}
     if expose and expose[0] not in services:
         raise Refused(f"expose: no service {expose[0]!r} among the started services")
@@ -538,7 +541,7 @@ def rewrite(doc: dict, project: str, expose: tuple[str, int] | None,
         s["pids_limit"] = min(pids, PIDS_CAP) if pids and pids > 0 else PIDS_CAP
         s.pop("ports", None)
         if expose and expose[0] == name:
-            s["ports"] = [f"0.0.0.0::{expose[1]}"]
+            s["ports"] = [f"0.0.0.0:{host_port or ''}:{expose[1]}"]
         over = (environment or {}).get(name)
         if over:
             env = s.get("environment") or {}

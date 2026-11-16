@@ -1075,9 +1075,10 @@ class Worker:
             app_logs = (compose.exposed_logs()
                         if compose is not None and report.get("login_error") else "")
         if report.get("login_error"):
+            # The login's own error last: comments and events keep the tail.
             logs = str(report["login_error"])
             if app_logs:
-                logs += "\n\n" + app_logs
+                logs = f"{app_logs}\n\n--- login QA ---\n{logs}"
             raise checks.ServiceFailed(
                 "login QA (qa.login) gagal; periksa selector dan nilai vault di runbook, atau "
                 "kembalikan story ke In progress jika story ini mengubah halaman login.",
