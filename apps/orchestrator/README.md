@@ -122,6 +122,9 @@ move it to In progress and write what is wrong in a comment.
 | `KEMUDI_LLM_STREAM_USAGE` | `true` | the proxy asks for usage in streamed answers (`stream_options.include_usage`) |
 | `KEMUDI_TOKEN_BUDGET_RECOMMENDED` | `50000000` | the monthly token budget Project settings → Agent suggests when none is set |
 | `KEMUDI_MAX_ATTEMPTS` | `3` | |
+| `KEMUDI_AWAK_FIX_ROUNDS` | `2` | extra coding runs inside one attempt when the gates or the review fail, before the attempt counts |
+| `KEMUDI_AWAK_REVIEW` | `true` | a read-only review of the diff against the story (coding role's model) before QA |
+| `KEMUDI_AWAK_REASONING_EFFORT` | empty (compose: `high`) | `reasoning_effort` added to Awak's model calls by the `/llm/v1` proxy |
 
 ### Boundaries
 

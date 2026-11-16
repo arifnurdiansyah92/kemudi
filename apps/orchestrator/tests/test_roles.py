@@ -210,5 +210,5 @@ def test_allowed_paths_limit_changes(tmp_path, repo):
     w.tick()
     assert any("outside.txt" in t and "di luar cakupan" in t for t in taiga.texts(1))
     assert taiga.status_of(1) == "done"
-    with sessions() as db:
-        assert db.query(AwakJob).one().attempts == 2
+    with sessions() as db:  # fixed in a fix round of the same attempt
+        assert db.query(AwakJob).one().attempts == 1

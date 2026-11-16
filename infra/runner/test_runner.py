@@ -285,6 +285,38 @@ def test_clean_check_reports_head_and_every_stray_path(runner, tmp_path):
     assert res["head"] == head
 
 
+def test_discard_puts_the_workspace_back_to_the_commit(runner, tmp_path):
+    d = tmp_path / "demo" / "us-3" / "web"
+    d.mkdir(parents=True)
+    _git(d, "init", "-q", "-b", "main")
+    _git(d, "config", "user.email", "t@t")
+    _git(d, "config", "user.name", "t")
+    _git(d, "config", "core.autocrlf", "false")
+    (d / ".gitignore").write_text("node_modules/\n")
+    (d / "app.ts").write_text("export const a = 1\n")
+    _git(d, "add", "-A")
+    _git(d, "commit", "-q", "-m", "init")
+    head = (d / ".git" / "refs" / "heads" / "main").read_text().strip()
+    # What a read-only run should not have done: edit, hide the edit, add a
+    # file, commit.
+    (d / "app.ts").write_text("export const a = 2\n")
+    _git(d, "update-index", "--assume-unchanged", "app.ts")
+    (d / "notes.md").write_text("x")
+    (d / "node_modules").mkdir()
+    (d / "node_modules" / "i.js").write_text("x")
+    (d / "b.ts").write_text("x")
+    _git(d, "add", "b.ts")
+    _git(d, "commit", "-q", "-m", "reviewer commit")
+
+    assert runner.op_discard({"path": "demo/us-3/web", "sha": head}) == {"ok": True}
+    res = runner.op_clean_check({"path": "demo/us-3/web"})
+    assert res["head"] == head
+    assert {(e["status"], e["path"]) for e in res["entries"]} == {("!!", "node_modules/")}
+    assert (d / "app.ts").read_text() == "export const a = 1\n"
+    assert runner.op_discard({"path": "demo/us-3/web", "sha": "main; rm -rf /"}) == {
+        "infra_error": "discard needs a commit sha"}
+
+
 # --- uid split: the server is root, every child runs as CHILD_UID -------------
 
 

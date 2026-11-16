@@ -18,6 +18,21 @@ All notable changes to Kemudi are documented in this file. The format follows
   `KEMUDI_ADMIN_USER_IDS`. `/users/me` now returns `is_superuser`, and
   Kemudi AI's `GET /me` returns `superadmin`.
 
+### Changed
+
+- Awak works in a loop inside each attempt: when the checks fail or a reviewer
+  finds a problem, the coder fixes it straight away with its previous report
+  (up to `KEMUDI_AWAK_FIX_ROUNDS`, default 2) instead of using up an attempt
+  and moving the card back.
+- Awak reviews its own change before QA: a read-only reviewer run reads the
+  diff against the story and its acceptance criteria, and its blocking
+  findings go back to the coder (`KEMUDI_AWAK_REVIEW`, default on).
+- Awak's model calls now ask the model to think (`reasoning_effort`, set with
+  `KEMUDI_AWAK_REASONING_EFFORT`, `high` in the Compose files). Before this,
+  OpenAI-compatible providers ran Awak without extended thinking.
+- The coding task asks Awak to check each acceptance criterion before it
+  finishes, and a rework attempt carries the previous attempt's report.
+
 ### Security
 
 - Rupiah values are for project admins: the rate card, baseline item prices,

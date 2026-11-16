@@ -558,7 +558,7 @@ def test_worker_runs_code_and_qa_through_the_roles_skill_sets(tmp_path, repo):
         routed = db.query(AwakEvent).filter_by(job_id=job.id, kind="routed").one().detail
         runs = [e.detail for e in db.query(AwakEvent).filter_by(job_id=job.id, kind="skills")]
     assert routed["skills"] == ["impeccable"]
-    assert [r["phase"] for r in runs] == ["code", "qa"]
+    assert [r["phase"] for r in runs] == ["code", "review", "qa"]
     assert runs[0]["profile"] == kit.profile
     assert [x["slug"] for x in runs[0]["skills"]] == ["impeccable"]
     assert runs[0]["dropped"] == [{"slug": "gone", "reason": "missing"}]

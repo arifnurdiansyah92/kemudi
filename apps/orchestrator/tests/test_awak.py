@@ -188,7 +188,8 @@ def test_happy_path_moves_to_done_with_evidence(tmp_path, repo):
     texts = taiga.texts(1)
     assert "QA lulus" in texts[-1] and "belum di-merge" in texts[-1]
     assert job_of(sessions).state == "passed"
-    assert runner.calls == ["install", "commit", "gates", "qa_reset", "qa", "clean_check"]
+    assert runner.calls == ["install", "commit", "gates", "discard", "qa_reset", "qa",
+                            "clean_check"]
     assert not w.tick()  # nothing left
 
 
@@ -231,14 +232,14 @@ def test_gives_up_after_max_attempts_and_blocks(tmp_path, repo):
     assert not w.tick()  # blocked stories are left alone
 
 
-def test_no_commit_is_a_failed_attempt(tmp_path, repo):
+def test_no_commit_is_fixed_in_the_same_attempt(tmp_path, repo):
     agent = FakeAgent(code=lambda d, n: None if n == 1 else commit_file(d, "f.txt", "x"))
     runner = FakeRunner(tmp_path / "ws", qa=["pass"])
     w, taiga, sessions = make_worker(tmp_path, repo, agent, runner)
     taiga.add(1, 12, "Badge jumlah", DESC)
     w.tick()
     assert any("tidak menghasilkan commit" in t for t in taiga.texts(1))
-    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 2
+    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 1
 
 
 def test_secret_in_diff_is_never_pushed(tmp_path, repo, host):
@@ -534,3 +535,118 @@ def test_runbook_generated_trailing_slash_is_the_same_path():
                                        "generated": ["out/", "public/sw.js"]}],
                              "services": [], "env": []}, {"r"})
     assert problems == [] and rb.apps[0].generated == ["out", "public/sw.js"]
+
+
+# --- fix rounds and review inside one attempt -----------------------------------
+
+CHANGES = ('Looked at it.\n{"verdict": "changes", "issues": [{"file": "a.ts", '
+           '"problem": "AC2 count ignores archived stories", "fix": "filter them"}]}')
+
+
+def test_parse_review():
+    from kemudi_ai.awak.stories import parse_review
+    r = parse_review(CHANGES)
+    assert r.blocking() and r.issues[0]["file"] == "a.ts"
+    assert "AC2 count" in r.feedback() and "Fix: filter them" in r.feedback()
+    fenced = parse_review('```json\n{"verdict": "approve", "issues": []}\n```')
+    assert fenced.verdict == "approve" and not fenced.blocking()
+    # Unreadable or "changes" without issues never blocks.
+    assert parse_review("no json {here").verdict == "unparsed"
+    assert not parse_review('{"verdict": "changes", "issues": []}').blocking()
+    assert not parse_review('{"verdict": "maybe"}').blocking()
+
+
+def test_gate_failure_is_fixed_inside_the_attempt(tmp_path, repo):
+    runner = FakeRunner(tmp_path / "ws", qa=["pass"], gates=[
+        {"gates": [{"name": "tsc -b", "ok": False, "output": "error TS2322: nope"}]},
+    ])
+    agent = FakeAgent()
+    w, taiga, sessions = make_worker(tmp_path, repo, agent, runner)
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    assert taiga.status_of(1) == "done"
+    code_tasks = [t for p, t in agent.calls if p == "awak.code"]
+    assert len(code_tasks) == 2
+    assert "fix round" in code_tasks[1] and "TS2322" in code_tasks[1]
+    assert "changed things" in code_tasks[1]  # its previous report
+    assert job_of(sessions).attempts == 1  # no attempt used, no card bounce
+    assert any("putaran 2/3" in t for t in taiga.texts(1))
+
+
+def test_review_findings_go_back_to_the_coder(tmp_path, repo):
+    runner = FakeRunner(tmp_path / "ws", qa=["pass"])
+    agent = FakeAgent(reviews=[CHANGES])
+    w, taiga, sessions = make_worker(tmp_path, repo, agent, runner)
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 1
+    purposes = [p for p, _ in agent.calls]
+    assert purposes == ["awak.code", "awak.review", "awak.code", "awak.review", "awak.qa"]
+    code_tasks = [t for p, t in agent.calls if p == "awak.code"]
+    assert "AC2 count ignores archived stories" in code_tasks[1]
+    review = next(r for r in agent.runs if r["purpose"] == "awak.review")
+    assert "senior engineer reviewing" in review["system"]
+    assert "git diff " in review["task"] and "...HEAD" in review["task"]
+    assert any("Review kode" in t for t in taiga.texts(1))
+    # The reviewer's workspace is put back to the reviewed commit each time.
+    discards = [p for op, p in runner.payloads if op == "discard"]
+    assert len(discards) == 2 and all(len(p["sha"]) == 40 for p in discards)
+
+
+def test_review_in_the_last_round_does_not_block(tmp_path, repo):
+    runner = FakeRunner(tmp_path / "ws", qa=["pass"])
+    agent = FakeAgent(reviews=[CHANGES] * 3)
+    w, taiga, sessions = make_worker(tmp_path, repo, agent, runner)
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    assert [p for p, _ in agent.calls].count("awak.code") == 3
+    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 1
+
+
+def test_coder_may_decline_a_review(tmp_path, repo):
+    agent = FakeAgent(reviews=[CHANGES],
+                      code=lambda d, n: commit_file(d, "f.txt", "x") if n == 1 else None)
+    runner = FakeRunner(tmp_path / "ws", qa=["pass"])
+    w, taiga, sessions = make_worker(tmp_path, repo, agent, runner)
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 1
+    assert [p for p, _ in agent.calls].count("awak.review") == 1
+    assert runner.calls.count("gates") == 1  # the reviewed commit is not re-checked
+
+
+def test_fix_rounds_used_up_cost_one_attempt(tmp_path, repo):
+    bad = {"gates": [{"name": "eslint", "ok": False, "output": "no-unused-vars"}]}
+    runner = FakeRunner(tmp_path / "ws", qa=["pass"], gates=[bad, bad, bad])
+    agent = FakeAgent()
+    w, taiga, sessions = make_worker(tmp_path, repo, agent, runner)
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 2
+    code_tasks = [t for p, t in agent.calls if p == "awak.code"]
+    assert len(code_tasks) == 4
+    assert "rework attempt" in code_tasks[3] and "Your report from that attempt" in code_tasks[3]
+
+
+def test_no_new_commit_in_a_fix_round_fails_the_round(tmp_path, repo):
+    bad = {"gates": [{"name": "eslint", "ok": False, "output": "no-unused-vars"}]}
+    agent = FakeAgent(code=lambda d, n: commit_file(d, f"f{n}.txt", "x") if n != 2 else None)
+    runner = FakeRunner(tmp_path / "ws", qa=["pass"], gates=[bad])
+    w, taiga, sessions = make_worker(tmp_path, repo, agent, runner)
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    assert any("tidak membuat commit baru" in t for t in taiga.texts(1))
+    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 1
+
+
+def test_review_and_fix_rounds_can_be_turned_off(tmp_path, repo):
+    runner = FakeRunner(tmp_path / "ws", qa=["pass"], gates=[
+        {"gates": [{"name": "tsc -b", "ok": False, "output": "error TS2322: nope"}]},
+    ])
+    agent = FakeAgent()
+    w, taiga, sessions = make_worker(tmp_path, repo, agent, runner)
+    w.s.awak_fix_rounds, w.s.awak_review = 0, False
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    assert "awak.review" not in [p for p, _ in agent.calls]
+    assert taiga.status_of(1) == "done" and job_of(sessions).attempts == 2

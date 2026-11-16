@@ -39,6 +39,9 @@ _HOP = {"content-length", "transfer-encoding", "connection", "keep-alive", "cont
         "set-cookie"}
 
 
+REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh")
+
+
 def get_upstream_transport() -> httpx.AsyncBaseTransport | None:
     """Overridden in tests with an httpx.MockTransport."""
     return None
@@ -148,6 +151,10 @@ async def chat_completions(
         return _error(503, "no model connection: set one in Project settings -> Agent, "
                            "or KEMUDI_AI_BASE_URL on the server")
     body["model"] = conn.model
+    effort = settings.awak_reasoning_effort.strip().lower()
+    if (effort in REASONING_EFFORTS and "reasoning_effort" not in body
+            and "reasoning" not in body and "thinking" not in body):
+        body["reasoning_effort"] = effort
     streaming = bool(body.get("stream"))
     if streaming and settings.llm_stream_usage and "stream_options" not in body:
         body["stream_options"] = {"include_usage": True}
