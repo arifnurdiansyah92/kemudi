@@ -75,7 +75,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.file:
             path = Path(args.file)
             body += "\n\n" + extract_text(path.name, path.read_bytes())
-        drafts = draft_stories(llm, body, args.lang)
+        from .awak import repo_context
+
+        with S() as db:
+            ctx = repo_context.load(db, settings, args.project)
+        drafts = draft_stories(llm, body, args.lang, ctx)
         bot = Taiga(settings.taiga_api_url, settings.awak_username, settings.awak_password)
         for c in create_stories(bot, args.project, drafts):
             state = "Ready" if c["ready"] else f"New ({c['reason']})"

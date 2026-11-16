@@ -1487,10 +1487,15 @@ async def intake_draft(
     _: TaigaUser = Depends(member),
     llm: LLM = Depends(get_llm),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
-    """Drafts only: nothing is created in Taiga."""
+    """Drafts only: nothing is created in Taiga. The project's repos (default
+    branch) are read as context, so the stories fit the existing code."""
+    from starlette.concurrency import run_in_threadpool
+
     from ..documents import extract_text
     from ..llm import LLMError
+    from . import repo_context
     from .intake import draft_stories
 
     body = text.strip()
@@ -1501,8 +1506,12 @@ async def intake_draft(
             raise HTTPException(400, str(e)) from e
     if not body.strip():
         raise HTTPException(400, "send text or a file")
+    def run():
+        ctx = repo_context.load(db, settings, slug)
+        return ctx, draft_stories(llm, body, lang, ctx)
+
     try:
-        drafts = draft_stories(llm, body, lang)
+        ctx, drafts = await run_in_threadpool(run)
     except LLMError as e:
         raise HTTPException(502, f"the model did not return stories: {e}") from e
     areas = _enabled_areas(db, slug)
@@ -1511,7 +1520,7 @@ async def intake_draft(
         ready, reason = d.auto_ready(areas)
         out.append({"subject": d.subject, "description": d.description,
                     "criteria": d.criteria, "area": d.area, "ready": ready, "reason": reason})
-    return {"drafts": out}
+    return {"drafts": out, "context": ctx.summary()}
 
 
 @intake_router.post("/create")

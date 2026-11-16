@@ -1,12 +1,16 @@
 """Text (or an extracted document) -> small user stories on the board."""
 
+import logging
 from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from ..llm import LLM, LLMError
-from .stories import INTAKE_SYSTEM, format_description
+from .repo_context import MAX_PICK, RepoContext
+from .stories import INTAKE_CODE_RULES, INTAKE_PICK_SYSTEM, INTAKE_SYSTEM, format_description
 from .taiga import Taiga
+
+log = logging.getLogger(__name__)
 
 TAG = "agent-ready"
 MAX_CRITERIA = 4
@@ -86,8 +90,40 @@ class StoryDraft(BaseModel):
         return True, ""
 
 
-def draft_stories(llm: LLM, text: str, lang: str = "id") -> list[StoryDraft]:
-    reply = llm.json("awak.intake", INTAKE_SYSTEM.get(lang, INTAKE_SYSTEM["id"]), text)
+def _with_code(llm: LLM, text: str, lang: str, context: RepoContext) -> tuple[str, str]:
+    """(system, user) for the drafting call with the project's code: the model
+    first picks the files it wants from the overview, then drafts with their
+    content. A failed pick still drafts with the overview."""
+    overview = context.overview()
+    files = ""
+    try:
+        picked = llm.json("awak.intake.files", INTAKE_PICK_SYSTEM.format(max_pick=MAX_PICK),
+                          f"## Requirement\n{text}\n\n## Repositories\n{overview}")
+        files = context.read(picked.get("files") or [])
+    except LLMError as e:
+        log.warning("intake: file pick failed, drafting with the overview only: %s", e)
+    system = (INTAKE_SYSTEM.get(lang, INTAKE_SYSTEM["id"])
+              + INTAKE_CODE_RULES.get(lang, INTAKE_CODE_RULES["id"])
+              + f"\nRepo project: {context.roles()}.")
+    head = "Kebutuhan" if lang == "id" else "Requirement"
+    code = "Kode project saat ini" if lang == "id" else "The project's current code"
+    read = "Isi file yang relevan" if lang == "id" else "Relevant files"
+    user = f"## {head}\n{text}\n\n## {code}\n{overview}"
+    if files:
+        user += f"\n\n## {read}\n{files}"
+    return system, user
+
+
+def draft_stories(llm: LLM, text: str, lang: str = "id",
+                  context: RepoContext | None = None) -> list[StoryDraft]:
+    """`context`: the project's repos (repo_context.load); the stories are then
+    drafted against the existing code. None or empty drafts from the text
+    alone."""
+    if context:
+        system, user = _with_code(llm, text, lang, context)
+    else:
+        system, user = INTAKE_SYSTEM.get(lang, INTAKE_SYSTEM["id"]), text
+    reply = llm.json("awak.intake", system, user)
     out = []
     for raw in reply.get("stories") or []:
         try:

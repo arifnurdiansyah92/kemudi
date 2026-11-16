@@ -8,6 +8,13 @@ All notable changes to Kemudi are documented in this file. The format follows
 
 ### Added
 
+- **Intake reads the project's code.** Drafting stories now reads the project's
+  repos (default branch, straight from Awak's bare repos): README, manifest and
+  a file map first, then the files the model picks (up to 20, 120K chars). The
+  stories use the page, route and endpoint names that really exist, skip what
+  is already built and say where the change goes. The drafts page says which
+  repos and how many files were read; a repo that cannot be fetched is named
+  and left out. The intake prompt no longer assumes Kemudi's own layout.
 - **Portfolio** (`/portfolio`): a superadmin-only helicopter view of every
   project on one screen, with red/amber/green health and the reason behind each
   colour (sprint progress against time, contract checks waiting for the PM,

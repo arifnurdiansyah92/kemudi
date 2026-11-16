@@ -37,17 +37,39 @@ def criteria(description: str) -> list[str]:
 from .prompts import CODE_SYSTEM, QA_SYSTEM  # noqa: E402,F401
 
 INTAKE_SYSTEM = {
-    "id": """Anda product owner untuk Kemudi, aplikasi manajemen proyek (fork Taiga) dengan frontend React di apps/web dan backend Django di services/kemudi-back. Pecah kebutuhan yang diberikan menjadi user story kecil yang masing-masing bisa dikerjakan dan diuji dalam satu sesi.
+    "id": """Anda product owner sebuah project perangkat lunak. Pecah kebutuhan yang diberikan menjadi user story kecil yang masing-masing bisa dikerjakan dan diuji dalam satu sesi.
 Aturan:
-- Tiap story: "subject" (kalimat perintah singkat), "description" (konteks 1–3 kalimat), "criteria" (1–4 kriteria penerimaan yang bisa diuji lewat UI atau API), dan "area": "web" jika cukup mengubah apps/web, "backend" jika perlu mengubah backend, "both" jika keduanya.
+- Tiap story: "subject" (kalimat perintah singkat), "description" (konteks 1–3 kalimat), "criteria" (1–4 kriteria penerimaan yang bisa diuji lewat UI atau API), dan "area": "web" jika cukup mengubah frontend (repo berperan web/mobile), "backend" jika perlu mengubah backend (repo berperan api), "both" jika keduanya.
 - Jangan menambah fitur yang tidak diminta.
 Balas satu objek JSON: {"stories": [{"subject", "description", "criteria", "area"}]}.""",
-    "en": """You are the product owner for Kemudi, a project management app (a Taiga fork) with a React frontend in apps/web and a Django backend in services/kemudi-back. Split the given requirements into small user stories, each doable and testable in one session.
+    "en": """You are the product owner of a software project. Split the given requirements into small user stories, each doable and testable in one session.
 Rules:
-- Each story: "subject" (short imperative), "description" (1–3 sentences of context), "criteria" (1–4 acceptance criteria testable through the UI or API), and "area": "web" if apps/web alone is enough, "backend" if the backend must change, "both" if both.
+- Each story: "subject" (short imperative), "description" (1–3 sentences of context), "criteria" (1–4 acceptance criteria testable through the UI or API), and "area": "web" if the frontend alone is enough (a repo with role web/mobile), "backend" if the backend must change (a repo with role api), "both" if both.
 - Do not add features nobody asked for.
 Reply with one JSON object: {"stories": [{"subject", "description", "criteria", "area"}]}.""",
 }
+
+# Added to INTAKE_SYSTEM when the project's code is in the message.
+INTAKE_CODE_RULES = {
+    "id": """
+Kode project saat ini ada di pesan (peta file, README, dan isi file yang relevan). Gunakan:
+- Sesuaikan story dengan yang sudah ada: pakai nama halaman, menu, route, endpoint, model, dan label UI yang benar-benar ada di kode. Jangan mengarang nama.
+- Jangan buat story untuk hal yang sudah ada di kode, kecuali kebutuhan meminta mengubahnya; kalau sebagian sudah ada, story hanya mencakup sisanya.
+- Di "description", sebut di mana perubahan kira-kira terjadi (halaman/route, file, atau endpoint) sebagai petunjuk untuk developer.
+- Tentukan "area" dari repo yang perlu diubah: repo berperan web/mobile = "web", api = "backend", keduanya = "both".
+- Kalau kebutuhan bertentangan dengan kode atau tidak jelas, tulis asumsi Anda di "description".""",
+    "en": """
+The project's current code is in the message (file map, README and the relevant files). Use it:
+- Fit the stories to what exists: use the page, menu, route, endpoint, model and UI label names that are really in the code. Never invent names.
+- No story for what the code already does, unless the requirement changes it; when part exists, the story covers only the rest.
+- In "description", say where the change likely goes (page/route, file or endpoint) as a hint for the developer.
+- Set "area" from the repos that must change: role web/mobile = "web", api = "backend", both = "both".
+- When the requirement conflicts with the code or is unclear, state your assumption in "description".""",
+}
+
+INTAKE_PICK_SYSTEM = """You prepare to split a requirement into user stories for this software project. Below the requirement is an overview of the project's repositories: README, manifest and file map.
+Choose the files whose content you need to read to know what already exists and where the change would go: routes and navigation, the pages/screens, API handlers, models/schemas, shared types, i18n strings. Choose at most {max_pick}, most useful first; only paths that appear in the file map.
+Reply with one JSON object: {{"files": [{{"repo": "<repo name>", "path": "<path as in the map>"}}]}}."""
 
 
 WORK_METHOD = """How to work:

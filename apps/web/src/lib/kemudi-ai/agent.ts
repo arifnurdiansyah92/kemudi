@@ -1254,6 +1254,13 @@ export type IntakeDraftOut = {
   reason: string
 }
 
+/** The repos (and files) intake read as context; absent from older servers. */
+export type IntakeContext = {
+  repos: string[]
+  files: string[]
+  unavailable: string[]
+}
+
 export type IntakeDraftIn = {
   subject: string
   description: string
@@ -1270,7 +1277,8 @@ export type IntakeStory = {
   reason: string
 }
 
-/** Drafts only, nothing reaches Taiga. The model can take half a minute. */
+/** Drafts only, nothing reaches Taiga. The server reads the project's repos
+ * and calls the model twice, which can take a few minutes. */
 export function useIntakeDraft(slug: string) {
   return useMutation({
     mutationFn: async (input: {
@@ -1283,18 +1291,18 @@ export function useIntakeDraft(slug: string) {
       form.append('lang', input.lang)
       if (input.file) form.append('file', input.file)
       return (
-        await api.post<{ drafts: IntakeDraftOut[] }>(
-          `/projects/${slug}/intake/draft`,
-          form,
-          {
-            ...base,
-            timeout: 180_000,
-            // The shared client defaults to JSON, which makes axios turn a
-            // FormData body into JSON; the orchestrator expects multipart.
-            headers: { 'Content-Type': 'multipart/form-data' },
-          }
-        )
-      ).data.drafts
+        await api.post<{
+          drafts: IntakeDraftOut[]
+          context?: IntakeContext
+        }>(`/projects/${slug}/intake/draft`, form, {
+          ...base,
+          // Just under the gateway's 300 s read timeout.
+          timeout: 290_000,
+          // The shared client defaults to JSON, which makes axios turn a
+          // FormData body into JSON; the orchestrator expects multipart.
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+      ).data
     },
   })
 }

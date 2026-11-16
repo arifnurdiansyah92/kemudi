@@ -693,13 +693,16 @@
       "badFile": "Only PDF and DOCX files can be read.",
       "language": "Story language",
       "submit": "Draft stories",
-      "drafting": "Drafting stories. This can take about half a minute.",
+      "drafting": "Reading the project's code and drafting stories. This can take a minute or two.",
       "failed": "No drafts this time"
     },
     "drafts": {
       "title": "Drafts",
       "summary": "{{ready}} will go to Ready, {{waiting}} will wait in New. Nothing is in the backlog until you create them.",
       "empty": "The model found no stories in this text. Add more detail and draft again.",
+      "context": "Drafted against the code of {{repos}} ({{count}} files read).",
+      "noContext": "Drafted from the text alone, without the project's code (add its repositories in the Agent settings).",
+      "unavailable": "Could not read: {{repos}}.",
       "story": "Story {{n}}",
       "subject": "Subject",
       "subjectShort": "Write at least 3 characters.",

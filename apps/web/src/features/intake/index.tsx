@@ -8,6 +8,7 @@ import {
   useAgentSettings,
   useIntakeCreate,
   useIntakeDraft,
+  type IntakeContext,
   type IntakeStory,
 } from '@/lib/kemudi-ai/agent'
 import { cn } from '@/lib/utils'
@@ -39,6 +40,7 @@ export function Intake() {
     () => toLanguage(i18n.language) ?? 'id'
   )
   const [drafts, setDrafts] = useState<DraftState[] | null>(null)
+  const [context, setContext] = useState<IntakeContext | undefined>()
   const [created, setCreated] = useState<IntakeStory[] | null>(null)
 
   const reset = () => {
@@ -93,6 +95,7 @@ export function Intake() {
           ) : drafts ? (
             <DraftList
               drafts={drafts}
+              context={context}
               onChange={(next) => {
                 setDrafts(next)
                 if (create.isError) create.reset()
@@ -125,7 +128,12 @@ export function Intake() {
               onSubmit={() =>
                 draft.mutate(
                   { text, lang, file },
-                  { onSuccess: (out) => setDrafts(toState(out)) }
+                  {
+                    onSuccess: (out) => {
+                      setDrafts(toState(out.drafts))
+                      setContext(out.context)
+                    },
+                  }
                 )
               }
             />
