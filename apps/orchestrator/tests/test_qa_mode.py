@@ -293,7 +293,48 @@ def test_ready_again_with_work_on_the_branch_rechecks_without_a_new_commit(tmp_p
     assert not any("tidak menghasilkan commit" in t for t in taiga.texts(1))
 
 
-def test_human_rework_without_a_commit_still_fails(tmp_path, repo):
+def test_human_rework_without_a_commit_fails_when_there_is_no_reviewer(tmp_path, repo):
+    from .awak_fakes import STATUSES
+
+    def code(d, n):
+        if n == 1:
+            commit_file(d, "feature1.txt", "x")
+
+    w, taiga, sessions, runner = _worker(tmp_path, repo, "gates", agent=FakeAgent(code=code))
+    w.s.awak_review = False
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    taiga.human_comment(1, "Warnanya salah, ganti biru.")
+    taiga.stories_by_id[1]["status"] = STATUSES["in-progress"]
+    w.tick()
+    assert any("tidak menghasilkan commit" in t for t in taiga.texts(1))
+
+
+def test_human_rework_without_a_commit_goes_to_the_reviewer_with_the_request(tmp_path, repo):
+    """No new commit on a rework: the reviewer, told what the person asked,
+    decides; a change it asked for and the diff lacks sends it back."""
+    from .awak_fakes import STATUSES
+
+    def code(d, n):
+        if n == 1:
+            commit_file(d, "feature1.txt", "x")
+
+    changes = '{"verdict": "changes", "issues": [{"file": "", "problem": "warna belum biru"}]}'
+    agent = FakeAgent(code=code, reviews=["", changes])
+    w, taiga, sessions, runner = _worker(tmp_path, repo, "gates", agent=agent)
+    taiga.add(1, 12, "Badge jumlah", DESC)
+    w.tick()
+    taiga.human_comment(1, "Warnanya salah, ganti biru.")
+    taiga.stories_by_id[1]["status"] = STATUSES["in-progress"]
+    w.tick()
+    reviews = [r["task"] for r in agent.runs if r["purpose"] == "awak.review"]
+    assert "ganti biru" in reviews[1]
+    assert any("warna belum biru" in t for t in taiga.texts(1))
+    assert not any(t.startswith("**Awak**") and "tidak menghasilkan commit" in t
+                   for t in taiga.texts(1)[:3])
+
+
+def test_rework_that_only_asks_for_a_rerun_passes_without_a_commit(tmp_path, repo):
     from .awak_fakes import STATUSES
 
     def code(d, n):
@@ -303,7 +344,10 @@ def test_human_rework_without_a_commit_still_fails(tmp_path, repo):
     w, taiga, sessions, runner = _worker(tmp_path, repo, "gates", agent=FakeAgent(code=code))
     taiga.add(1, 12, "Badge jumlah", DESC)
     w.tick()
-    taiga.human_comment(1, "Warnanya salah, ganti biru.")
+    first = job_of(sessions).last_sha
+    taiga.human_comment(1, "QA tadi gagal karena infra, kode tidak perlu diubah; ulangi.")
     taiga.stories_by_id[1]["status"] = STATUSES["in-progress"]
     w.tick()
-    assert any("tidak menghasilkan commit" in t for t in taiga.texts(1))
+    assert taiga.status_of(1) == "done" and job_of(sessions).last_sha == first
+    assert job_of(sessions).attempts == 1
+    assert not any("tidak menghasilkan commit" in t for t in taiga.texts(1))

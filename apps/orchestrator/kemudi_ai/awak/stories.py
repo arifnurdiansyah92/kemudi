@@ -123,8 +123,12 @@ def code_task(workspace: str, ref: int, subject: str, description: str,
     return "\n".join(parts)
 
 
-def review_task(workspace: str, ref: int, subject: str, description: str, base: str) -> str:
-    return "\n".join([
+def review_task(workspace: str, ref: int, subject: str, description: str, base: str,
+                human_feedback: str = "") -> str:
+    """`human_feedback`: what a person asked when they sent the story back;
+    the reviewer checks the change does it (a request for a code change the
+    diff does not have is blocking)."""
+    parts = [
         f"Workspace: {workspace}",
         f"Review the change for user story #{ref}: {subject}",
         "",
@@ -132,7 +136,17 @@ def review_task(workspace: str, ref: int, subject: str, description: str, base: 
         "",
         f"The change is `git diff {base}...HEAD` (run `git log --oneline {base}..HEAD` "
         "for its commits). Do not modify anything. End with the JSON verdict.",
-    ])
+    ]
+    if human_feedback.strip():
+        parts += [
+            "",
+            "A person sent this story back with this request. Check the change does what "
+            "it asks; if it asks for a code change the diff does not have, that is a "
+            "blocking issue. If it only asks to run the checks or QA again, there is "
+            "nothing to block for:",
+            human_feedback.strip()[:2000],
+        ]
+    return "\n".join(parts)
 
 
 @dataclass
