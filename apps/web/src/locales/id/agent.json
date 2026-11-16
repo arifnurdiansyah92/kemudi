@@ -687,13 +687,16 @@
       "badFile": "Hanya file PDF dan DOCX yang dapat dibaca.",
       "language": "Bahasa story",
       "submit": "Susun draf story",
-      "drafting": "Menyusun draf story. Proses ini bisa memakan waktu sekitar setengah menit.",
+      "drafting": "Membaca kode project dan menyusun draf story. Proses ini bisa memakan waktu satu sampai dua menit.",
       "failed": "Draf belum dapat disusun"
     },
     "drafts": {
       "title": "Draf",
       "summary": "{{ready}} masuk ke Ready, {{waiting}} menunggu di New. Belum ada yang masuk ke backlog sampai Anda membuatnya.",
       "empty": "Model tidak menemukan story dalam teks ini. Tambahkan detail lalu susun ulang.",
+      "context": "Disusun dengan membaca kode {{repos}} ({{count}} file dibaca).",
+      "noContext": "Disusun dari teks saja, tanpa kode project (tambahkan repositorinya di pengaturan Agent).",
+      "unavailable": "Tidak bisa dibaca: {{repos}}.",
       "story": "Story {{n}}",
       "subject": "Judul",
       "subjectShort": "Tulis minimal 3 karakter.",

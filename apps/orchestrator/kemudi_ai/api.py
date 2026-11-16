@@ -556,8 +556,15 @@ async def intake(
             raise HTTPException(400, str(e)) from e
     if not body.strip():
         raise HTTPException(400, "send text or a file")
+    from starlette.concurrency import run_in_threadpool
+
+    from .awak import repo_context
+
+    def run():
+        return draft_stories(llm, body, lang, repo_context.load(db, settings, slug))
+
     try:
-        drafts = draft_stories(llm, body, lang)
+        drafts = await run_in_threadpool(run)
     except LLMError as e:
         raise HTTPException(502, f"the model did not return stories: {e}") from e
     try:

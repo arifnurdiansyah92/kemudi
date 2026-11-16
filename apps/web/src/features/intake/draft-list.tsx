@@ -1,6 +1,10 @@
 import { AlertCircle, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { agentError, INTAKE_MAX_DRAFTS } from '@/lib/kemudi-ai/agent'
+import {
+  agentError,
+  INTAKE_MAX_DRAFTS,
+  type IntakeContext,
+} from '@/lib/kemudi-ai/agent'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { DraftRow } from './draft-row'
@@ -8,6 +12,7 @@ import { SUBJECT_MIN, type DraftState } from './drafts'
 
 export function DraftList({
   drafts,
+  context,
   onChange,
   onCreate,
   onDiscard,
@@ -15,6 +20,7 @@ export function DraftList({
   createError,
 }: {
   drafts: DraftState[]
+  context?: IntakeContext
   onChange: (drafts: DraftState[]) => void
   onCreate: () => void
   onDiscard: () => void
@@ -42,6 +48,7 @@ export function DraftList({
             })}
           </p>
         )}
+        {context && <ContextNote context={context} />}
       </div>
 
       {drafts.length === 0 ? (
@@ -90,5 +97,26 @@ export function DraftList({
         </Button>
       </div>
     </section>
+  )
+}
+
+/** Which code the drafts were made against, so a PM knows how far to trust
+ * the page and endpoint names in them. */
+function ContextNote({ context }: { context: IntakeContext }) {
+  const { t } = useTranslation('agent')
+  return (
+    <p className='mt-1 text-xs text-muted-foreground'>
+      {context.repos.length > 0
+        ? t('intake.drafts.context', {
+            repos: context.repos.join(', '),
+            count: context.files.length,
+          })
+        : t('intake.drafts.noContext')}
+      {context.unavailable.length > 0 &&
+        ' ' +
+          t('intake.drafts.unavailable', {
+            repos: context.unavailable.join(', '),
+          })}
+    </p>
   )
 }

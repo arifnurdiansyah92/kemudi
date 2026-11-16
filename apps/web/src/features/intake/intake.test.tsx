@@ -223,6 +223,35 @@ describe('Intake', () => {
       .toBeEnabled()
   })
 
+  it('says which code the drafts were made against', async () => {
+    settings(true)
+    vi.spyOn(api, 'post').mockImplementation(async (url: string) => {
+      if (url.endsWith('/intake/draft'))
+        return {
+          data: {
+            drafts,
+            context: {
+              repos: ['web', 'api'],
+              files: ['web:src/routes.tsx', 'api:app/urls.py'],
+              unavailable: ['mobile'],
+            },
+          },
+        }
+      throw new Error(`unexpected POST ${url}`)
+    })
+
+    const screen = await renderIntake()
+    await screen.getByLabelText('Text').fill('brief')
+    await screen.getByRole('button', { name: 'Draft stories' }).click()
+    await expect
+      .element(
+        screen.getByText(
+          'Drafted against the code of web, api (2 files read). Could not read: mobile.'
+        )
+      )
+      .toBeVisible()
+  })
+
   it('says stories wait when Awak is off, linking admins to the setting', async () => {
     settings(false)
     const screen = await renderIntake()
