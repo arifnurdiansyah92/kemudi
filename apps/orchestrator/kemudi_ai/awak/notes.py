@@ -62,7 +62,14 @@ def listing(db: Session, slug: str) -> list[dict]:
     rows = (db.query(AwakNote).filter_by(project_slug=slug)
             .order_by(AwakNote.id.desc()).all())
     return [{"id": r.id, "repo_id": r.repo_id, "text": r.text, "job_id": r.job_id,
-             "at": r.at.isoformat() if r.at else None} for r in rows]
+             "at": _iso(r.at)} for r in rows]
+
+
+def _iso(at: datetime | None) -> str | None:
+    """SQLite hands the time back without its zone; it is UTC."""
+    if at is None:
+        return None
+    return (at if at.tzinfo else at.replace(tzinfo=UTC)).isoformat()
 
 
 def delete(db: Session, slug: str, note_id: int) -> bool:

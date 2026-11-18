@@ -264,6 +264,7 @@ def test_notes_api_lists_for_members_and_deletes_for_admins(agent_client):
     r = agent_client.get("/projects/demo/agent/notes", headers=MEMBER)
     assert r.status_code == 200
     assert [n["text"] for n in r.json()["notes"]] == ["Run migrations with flask db upgrade"]
+    assert r.json()["notes"][0]["at"].endswith("+00:00")  # UTC, said so: the browser shows local time
     assert agent_client.delete(f"/projects/demo/agent/notes/{mine}",
                                headers=MEMBER).status_code == 403
     assert agent_client.delete(f"/projects/demo/agent/notes/{other}",
