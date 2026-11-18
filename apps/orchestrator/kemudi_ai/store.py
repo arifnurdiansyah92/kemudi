@@ -299,6 +299,10 @@ class AwakJob(Base):
     attempts: Mapped[int] = mapped_column(default=0)
     infra_errors: Mapped[int] = mapped_column(default=0)
     feedback: Mapped[str] = mapped_column(Text, default="")
+    # Where `feedback` came from: human (a person sent the card back), qa
+    # (browser QA failed), checks (gates or review), service (the app did not
+    # start); '' on rows from before the column, read as human.
+    feedback_kind: Mapped[str] = mapped_column(String(10), default="")
     last_sha: Mapped[str] = mapped_column(String(64), default="")
     cost_idr: Mapped[float] = mapped_column(default=0.0)
     started_at: Mapped[datetime] = mapped_column(default=now)
@@ -643,6 +647,48 @@ class AwakWorkerLease(Base):
     id: Mapped[int] = mapped_column(primary_key=True)  # always 1
     holder: Mapped[str] = mapped_column(String(200))
     expires_at: Mapped[datetime] = mapped_column()
+
+
+class ProductRun(Base):
+    """One run of a product agent (kemudi_ai/product/): research or a report
+    that ends in a Markdown document. Times are aware UTC."""
+
+    __tablename__ = "product_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_slug: Mapped[str] = mapped_column(String(200), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # competitor|features|report|custom
+    title: Mapped[str] = mapped_column(String(200), default="")
+    brief: Mapped[str] = mapped_column(Text, default="")
+    lang: Mapped[str] = mapped_column(String(5), default="id")
+    options: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    # queued, running, done, failed
+    status: Mapped[str] = mapped_column(String(10), default="queued")
+    # While running: context | research | data | writing.
+    stage: Mapped[str] = mapped_column(String(20), default="")
+    error: Mapped[str] = mapped_column(Text, default="")
+    # Whether the open web was read for it (kemudi-riset).
+    web: Mapped[bool] = mapped_column(default=False)
+    report: Mapped[str] = mapped_column(Text, default="")
+    suggestions: Mapped[list[Any]] = mapped_column(default=list)
+    sources: Mapped[list[Any]] = mapped_column(default=list)
+    created_by: Mapped[str] = mapped_column(String(200), default="")
+    created_by_id: Mapped[int | None] = mapped_column(default=None)
+    created_at: Mapped[datetime] = mapped_column(default=now)
+    started_at: Mapped[datetime | None] = mapped_column(default=None)
+    finished_at: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class AwakNote(Base):
+    """A hint a coding run left about a repo for the next run there
+    (awak/notes.py). Model-written: data, never instructions."""
+
+    __tablename__ = "awak_notes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(default=now)
+    project_slug: Mapped[str] = mapped_column(String(200), index=True)
+    repo_id: Mapped[int | None] = mapped_column(default=None)
+    job_id: Mapped[int | None] = mapped_column(default=None)
+    text: Mapped[str] = mapped_column(String(300))
 
 
 class AwakEvent(Base):

@@ -65,6 +65,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import socket
@@ -78,6 +79,8 @@ KEY = os.environ.get("KEMUDI_RUNNER_KEY", "")
 GATEWAY = os.environ.get("KEMUDI_DEV_GATEWAY", "http://kemudi-gateway")
 CONFIG = "/opt/runner/playwright.config.cjs"
 LOGIN_SCRIPT = os.environ.get("RUNNER_LOGIN_SCRIPT", "/opt/runner/login.cjs")
+# Reads a failed test's Playwright trace (as the child): what the browser saw.
+TRACE_SCRIPT = os.environ.get("RUNNER_TRACE_SCRIPT", "/opt/runner/trace_evidence.py")
 # Where compose services publish their ports (kemudi-dindnet); the only host
 # `external` URLs and the health op may name.
 DIND_HOST = os.environ.get("RUNNER_DIND_HOST", "kemudi-dind")
@@ -393,6 +396,22 @@ def _wait_http(url: str, seconds: float, ok=lambda status: status < 500,
     return False
 
 
+def _trace_evidence(trace: str) -> dict:
+    """The failed requests and console errors of one failed test, read from
+    its trace by a child process ({} when it cannot be read)."""
+    try:
+        p = subprocess.run([sys.executable, "-I", TRACE_SCRIPT, trace], capture_output=True,
+                           text=True, timeout=60, cwd="/", env=child_env(), **child_kw())
+        data = json.loads(p.stdout) if p.returncode == 0 else {}
+    except (subprocess.TimeoutExpired, OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    http = [h for h in data.get("http") or [] if isinstance(h, dict)][:8]
+    console = [str(c)[:300] for c in data.get("console") or []][:8]
+    return {"http": http, "console": console} if http or console else {}
+
+
 def _parse_report(path: Path) -> tuple[list[dict], str]:
     """Tests from Playwright's JSON report, and any load/compile error."""
     text = read_as_child(path)
@@ -409,9 +428,14 @@ def _parse_report(path: Path) -> tuple[list[dict], str]:
                 shots = [a["path"] for a in res.get("attachments") or []
                          if a.get("contentType") == "image/png" and a.get("path")]
                 err = res.get("error") or {}
-                tests.append({"title": spec.get("title", ""), "status": res.get("status", ""),
-                              "error": (err.get("message") or "")[:1500],
-                              "screenshots": shots})
+                test = {"title": spec.get("title", ""), "status": res.get("status", ""),
+                        "error": (err.get("message") or "")[:1500],
+                        "screenshots": shots}
+                trace = next((a["path"] for a in res.get("attachments") or []
+                              if a.get("name") == "trace" and a.get("path")), None)
+                if trace and test["status"] != "passed":
+                    test["evidence"] = _trace_evidence(trace)
+                tests.append(test)
         for child in suite.get("suites") or []:
             walk(child)
 

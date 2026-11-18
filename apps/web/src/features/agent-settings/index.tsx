@@ -27,6 +27,7 @@ import { Jobs } from './jobs'
 import { ProjectLlmSection } from './llm-connection'
 import { Machine } from './machine'
 import { DeployCommand, MergePolicy, QaModeControl } from './merge-policy'
+import { AgentNotes } from './notes'
 import { Repos } from './repos'
 import { Roles } from './roles'
 import { RunbookCard } from './runbook'
@@ -109,6 +110,12 @@ export function AgentSettingsPage() {
             canEdit={canEdit}
           />
         )}
+      </SettingsSection>
+      <SettingsSection
+        title={t('notes.title')}
+        description={t('notes.description')}
+      >
+        <AgentNotes slug={slug} canEdit={canEdit} />
       </SettingsSection>
       <SettingsSection
         title={t('jobs.title')}

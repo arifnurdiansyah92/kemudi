@@ -107,6 +107,18 @@ class Settings(BaseSettings):
     # What the Agent settings suggest as a monthly budget when none is set.
     token_budget_recommended: int = 50_000_000
 
+    # --- Product agents (kemudi_ai/product/): research and reports
+    # kemudi-riset: Hermes with web tools only (infra/riset/config.yaml).
+    # Empty = no web research service; the agents that want the web then
+    # answer from the model's own knowledge and say so in the report.
+    riset_url: str = ""
+    riset_api_key: str = ""
+    riset_timeout_s: float = 900.0
+    # Runs a project may have queued or running at once, and how many run at
+    # the same time on this server.
+    product_max_active: int = 2
+    product_workers: int = 2
+
     # --- Awak skills (docs/superpowers/specs/2026-11-14-awak-skills-design.md)
     # Kemudi instance admins: they manage the skill library (project admins
     # only assign enabled skills). Taiga user ids (comma-separated; `GET

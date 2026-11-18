@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import Settings
 from ..store import AwakJob, AwakKey, AwakProject, AwakWorkerLease, record_event
-from . import checks, config_store, llm_conn, runbook, secrets, skills, ssh, usage, vault
+from . import checks, config_store, llm_conn, notes, runbook, secrets, skills, ssh, usage, vault
 from .config_store import QA_MODES, ProjectConfig, RepoConfig, RoleConfig
 from .crypto import SecretKeyMissing
 from .agent import Agent, AgentError
@@ -38,7 +38,7 @@ from .prompts import (RoleScope, out_of_scope, prompt_version, render, render_ro
                       scope_for)
 from .runner import Runner, RunnerError, RunnerRejected
 from .svc import Svc, SvcError, SvcRejected
-from .stories import code_task, criteria, parse_review, qa_task, review_task
+from .stories import code_task, criteria, parse_report, parse_review, qa_task, review_task
 from .taiga import Project, Taiga, TaigaError, tag_names
 from .verdict import Verdict, evaluate, safe_screenshot
 
@@ -91,6 +91,9 @@ class Infra(Exception):
 class Fail:
     feedback: str
     comment: str
+    # What found the problem: "checks" (scope, secrets, gates, review) or
+    # "qa" (the browser spec). Saved on the job with the feedback.
+    kind: str = "checks"
 
 
 @dataclass
@@ -596,6 +599,7 @@ class Worker:
 
     def _reset(self, job: AwakJob, feedback: str, fresh: bool = False) -> None:
         job.attempts, job.infra_errors, job.feedback = 0, 0, feedback
+        job.feedback_kind = "human" if feedback else ""
         job.started_at, job.cost_idr, job.phase = now(), 0.0, ""
         job.merge_state, job.merged_sha, job.merge_error = "", "", ""
         if fresh:
@@ -649,7 +653,7 @@ class Worker:
                         "works on the default branch: fix your change so it does.",
                         self.redact_values_for(project.slug))
                     job = self._set(job_id, attempts=job.attempts + 1, feedback=feedback,
-                                    phase="")
+                                    feedback_kind="service", phase="")
                     self._move(story["id"], project.status("in-progress"))
                     self._say(story["id"], job_id, f"Gagal: {e}{logs}\n\nKembali ke In "
                               "progress; Awak akan memperbaiki.")
@@ -686,7 +690,8 @@ class Worker:
             if result is None:  # passed
                 return
             feedback = secrets.redact(result.feedback, self.redact_values_for(project.slug))
-            job = self._set(job_id, attempts=job.attempts + 1, feedback=feedback, phase="")
+            job = self._set(job_id, attempts=job.attempts + 1, feedback=feedback,
+                            feedback_kind=result.kind, phase="")
             self._move(story["id"], project.status("in-progress"))
             self._say(story["id"], job_id, result.comment)
 
@@ -741,6 +746,19 @@ class Worker:
                 report = self._code(job, route, story, workdir, n, feedback, siblings,
                                     unavailable, previous_report=report if r > 1 else "",
                                     fix_round=r > 1)
+                reason, _ = parse_report(report)
+                if reason:
+                    # Outside the role's scope: a wider role of the same repo
+                    # takes the story over in this attempt; without one a
+                    # person decides, now, instead of two more attempts.
+                    route = self._escalate(project, job, story, route, reason, n)
+                    report = self._code(job, route, story, workdir, n, feedback, siblings,
+                                        unavailable, previous_report=report, fix_round=True,
+                                        taken_over=reason)
+                    again, _ = parse_report(report)
+                    if again:
+                        repo.collect(job.branch)
+                        raise NeedsHuman(_blocked_text(route.role.name, again, wider=False))
             self._ours(story["id"], {"in-progress"}, project)
             if reviewed is not None and repo.collect(job.branch) == prev_sha:
                 # The coder changed nothing after the review (its report says
@@ -807,21 +825,34 @@ class Worker:
             if mode == "auto":
                 Merger(self).merge(self._job(job.id), project, story, require_qa_rerun=True)
             return None
-        return _with_report(Fail("QA failed these acceptance criteria:\n" + verdict.failures(),
-                                 f"QA gagal untuk `{sha[:8]}`:\n{_table(verdict, evidence)}\n\n"
-                                 f"Kembali ke In progress; Awak akan memperbaiki."), report)
+        seen = "\n".join(f"- AC{c.n}: {c.evidence}" for c in verdict.criteria
+                         if not c.passed and c.evidence)
+        return _with_report(Fail(
+            "QA failed these acceptance criteria:\n" + verdict.failures()
+            + "\n\nFind the cause before you change code: a failed request or console "
+              "error listed above usually names it. If the cause is outside your scope, "
+              "say so with BLOCKED instead of changing something else."
+            + _spec_block(workdir),
+            f"QA gagal untuk `{sha[:8]}`:\n{_table(verdict, evidence)}\n\n"
+            + (f"Yang terlihat di browser saat gagal:\n{seen}\n\n" if seen else "")
+            + "Kembali ke In progress; Awak akan memperbaiki.", kind="qa"), report)
 
     def _code(self, job: AwakJob, route: Route, story: dict, workdir: Path, n: int,
               feedback: str, siblings: list[Path], unavailable: list[str], *,
-              previous_report: str = "", fix_round: bool = False) -> str:
+              previous_report: str = "", fix_round: bool = False,
+              taken_over: str = "") -> str:
         """One coding run; anything it left uncommitted is committed for it.
-        Returns its report."""
+        Returns its report. The run gets the notes earlier runs left about
+        the repo, and its own `NOTE:` lines are kept for the next one."""
         role = route.role
         self._set(job.id, phase="code")
+        with self.sessions() as db:
+            known = notes.recent(db, route.config.slug, route.rc.id)
         task = code_task(str(workdir), job.story_ref, story["subject"],
                          story.get("description") or "", feedback,
                          siblings=[str(d) for d in siblings], unavailable=unavailable,
-                         previous_report=previous_report, fix_round=fix_round)
+                         previous_report=previous_report, fix_round=fix_round,
+                         notes=known, taken_over=taken_over)
         kit = self._skill_set(job.id, role.skills, "code")
         self._pin_prompt_version(job.id, route, kit)
         system = render_role(role, route.config.repos, bool(kit.entries))
@@ -834,7 +865,37 @@ class Worker:
         self._runner("commit", path=self._path(workdir),
                      message=f"awak: uncommitted changes from attempt {n} "
                              f"(US #{job.story_ref})")
+        _, learned = parse_report(report)
+        if learned:
+            with self.sessions() as db:
+                added = notes.add(db, route.config.slug, route.rc.id, learned, job.id,
+                                  self.scan_values_for(route.config.slug))
+            if added:
+                self._event(job.id, "notes", {"added": added})
         return report
+
+    def _escalate(self, project: Project, job: AwakJob, story: dict, route: Route,
+                  reason: str, n: int) -> Route:
+        """The coder reported the story cannot be done in its role's scope.
+        A Fullstack role (area both) that has the same repo takes the job
+        over, pinned for the rework too; otherwise the card is blocked with
+        the reason (NeedsHuman)."""
+        role = route.role
+        wider = route.config.role_for_area("both")
+        usable = (wider is not None and wider.id != role.id
+                  and route.rc.id in wider.repo_ids)
+        if role.area == "both" or not usable:
+            route.repo.collect(job.branch)  # keep what the run committed
+            raise NeedsHuman(_blocked_text(role.name, reason,
+                                           wider=role.area != "both"))
+        self._set(job.id, role_id=wider.id)
+        self._event(job.id, "escalated", {"from": role.id, "to": wider.id,
+                                          "reason": reason[:1000]})
+        self._say(story["id"], job.id,
+                  f"Peran {role.name} melaporkan penyebabnya di luar cakupannya:\n\n"
+                  f"{_quote(reason)}\n\nDilanjutkan oleh peran {wider.name} di percobaan "
+                  "yang sama.", n)
+        return self._route(self._job(job.id), story, project.slug)
 
     def _build(self, job: AwakJob, route: Route, workdir: Path, base_sha: str, report: str,
                prev_sha: str) -> tuple[str, "Fail | tuple[list[dict], str, str]"]:
@@ -921,9 +982,12 @@ class Worker:
         self._set(job.id, phase="review")
         kit = self._skill_set(job.id, [], "review")
         system = render("reviewer", role.prompt_overlay, scope_for(role, route.config.repos))
+        current = self._job(job.id)
+        by_human = current.feedback_kind in ("", "human")
         task = review_task(str(workdir), job.story_ref, story["subject"],
                            story.get("description") or "", main_sha,
-                           human_feedback=self._job(job.id).feedback)
+                           human_feedback=current.feedback if by_human else "",
+                           failure="" if by_human else current.feedback)
         self._check_budget(route.config.slug, job.id)
         text, cost = self.agent.run("awak.review", role.model, system, task,
                                     slug=route.config.slug, role_id=role.id,
@@ -1011,17 +1075,19 @@ class Worker:
         plan = runbook_qa(route.runbook)
         token = self.qa_taiga.login() if plan is None else ""
         spec_feedback = ""
+        previous = self._last_qa_failure(job.id)
         for _ in range(2):
             self._runner("qa_reset", path=self._path(workdir))
             if plan is None:
                 task = qa_task(str(workdir), job.story_ref, story["subject"], texts,
-                               self.s.qa_project, spec_feedback, app_dir=route.rc.subdir)
+                               self.s.qa_project, spec_feedback, app_dir=route.rc.subdir,
+                               previous=previous)
             else:
                 task = qa_task(str(workdir), job.story_ref, story["subject"], texts, "",
                                spec_feedback, app_dirs=plan["app_dirs"],
                                env_names=plan["qa_env"],
                                login_path=(plan["login"] or {}).get("path"),
-                               backing=plan["compose"])
+                               backing=plan["compose"], previous=previous)
             self._check_budget(route.config.slug, job.id)
             _, cost = self.agent.run("awak.qa", model, system, task, slug=route.config.slug,
                                      role_id=qa_role.id if qa_role else None,
@@ -1037,7 +1103,33 @@ class Worker:
             spec_feedback = verdict.reason
         if verdict.outcome in ("spec", "infra"):
             raise Infra(f"QA tidak dapat berjalan: {verdict.reason}")
+        if verdict.outcome == "fail":
+            # For the next attempt: the coder and the spec writer both see
+            # what failed and the spec that said so (the workspace is cloned
+            # fresh, so the file itself is gone by then).
+            self._event(job.id, "qa_failed", {"failures": verdict.failures()[:4000],
+                                              "spec": _spec_text(workdir)})
         return verdict
+
+    def _last_qa_failure(self, job_id: int) -> str:
+        """The failed criteria and the spec of this job's last failed QA, as
+        text for the next spec; '' when there is none since the story last
+        started from Ready."""
+        from ..store import AwakEvent
+
+        with self.sessions() as db:
+            rows = (db.query(AwakEvent)
+                    .filter(AwakEvent.job_id == job_id,
+                            AwakEvent.kind.in_(("qa_failed", "picked")))
+                    .order_by(AwakEvent.id.desc()).limit(20).all())
+        for row in rows:
+            detail = row.detail or {}
+            if row.kind == "picked":
+                if detail.get("status") == "ready":
+                    return ""
+                continue
+            return _qa_failure_text(detail)
+        return ""
 
     def qa_payload(self, plan: dict | None, token: str, rc: RepoConfig,
                    external: dict[str, str] | None = None, login: dict | None = None,
@@ -1566,7 +1658,51 @@ def _with_report(fail: Fail, report: str) -> Fail:
     if not report.strip():
         return fail
     return Fail(fail.feedback + "\n\nYour report from that attempt (what you already did):\n"
-                + report.strip()[-2000:], fail.comment)
+                + report.strip()[-2000:], fail.comment, fail.kind)
+
+
+SPEC_CHARS = 6000
+
+
+def _spec_text(workdir: Path) -> str:
+    """The QA spec in the workspace ('' when there is none or it is not a
+    plain file inside it)."""
+    try:
+        spec_dir = (workdir / ".qa" / "spec").resolve(strict=True)
+        for p in sorted(spec_dir.glob("*.spec.ts")):
+            if p.is_symlink() or not p.is_file() or spec_dir not in p.resolve().parents:
+                continue
+            with p.open("r", encoding="utf-8", errors="replace") as fh:
+                return fh.read(SPEC_CHARS)
+    except OSError:
+        pass
+    return ""
+
+
+def _spec_block(workdir: Path) -> str:
+    spec = _spec_text(workdir)
+    if not spec.strip():
+        return ""
+    return ("\n\nThe spec that failed (written by QA from the criteria; it is not in "
+            "your workspace any more):\n```ts\n" + spec.strip() + "\n```")
+
+
+def _qa_failure_text(detail: dict) -> str:
+    failures = str(detail.get("failures") or "").strip()
+    if not failures:
+        return ""
+    spec = str(detail.get("spec") or "").strip()
+    return failures + (f"\n\nThat spec:\n```ts\n{spec}\n```" if spec else "")
+
+
+def _blocked_text(role: str, reason: str, wider: bool) -> str:
+    """The card comment when a coder reported BLOCKED and nobody wider can
+    take over. `wider`: a Fullstack role for the repo would have helped."""
+    tail = ("Tambahkan peran Fullstack untuk repo ini di Pengaturan proyek → Agen, pecah "
+            "jadi story lain, atau ubah story." if wider else
+            "Putuskan atau ubah story-nya, atau pecah jadi story lain.")
+    return (f"peran {role} melaporkan story ini tidak bisa diselesaikan di cakupannya:\n\n"
+            f"{_quote(reason)}\n\n{tail}")
 
 
 def _quote(text: str) -> str:

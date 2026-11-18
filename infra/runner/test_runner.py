@@ -683,3 +683,86 @@ def test_programs_lists_only_installed_allowed_programs(monkeypatch):
     import runner as r
     monkeypatch.setattr(r.shutil, "which", lambda p: "/usr/bin/" + p if p in {"node", "npm"} else None)
     assert r.op_programs({}) == {"ok": True, "programs": ["node", "npm"]}
+
+
+def _trace_zip(path, network=(), events=(), resources=None):
+    import json
+    import zipfile
+
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("0-trace.network", "\n".join(json.dumps(
+            {"type": "resource-snapshot", "snapshot": n}) for n in network))
+        z.writestr("0-trace.trace", "\n".join(json.dumps(e) for e in events) + "\nnot json\n")
+        for name, body in (resources or {}).items():
+            z.writestr(f"resources/{name}", body)
+
+
+def _trace_module():
+    spec = importlib.util.spec_from_file_location("trace_evidence_under_test",
+                                                  HERE / "trace_evidence.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_trace_evidence_lists_failed_requests_and_console_errors(tmp_path):
+    def snap(method, url, status, sha="", mime="application/json"):
+        return {"request": {"method": method, "url": url},
+                "response": {"status": status, "content": {"_sha1": sha, "mimeType": mime}}}
+
+    z = tmp_path / "trace.zip"
+    _trace_zip(z, network=[
+        snap("GET", "http://localhost:5200/admin/users", 200),
+        snap("DELETE", "http://localhost:5200/api/admin/users/7?x=1", 500, "aa.json"),
+        snap("DELETE", "http://localhost:5200/api/admin/users/7?x=1", 500, "aa.json"),  # same
+        snap("GET", "http://localhost:5200/logo.png", 404, "bb.png", "image/png"),
+        snap("POST", "http://localhost:5200/api/x", -1),
+    ], events=[
+        {"type": "console", "messageType": "error", "text": "TypeError: x is undefined"},
+        {"type": "console", "messageType": "error",
+         "text": "Failed to load resource: the server responded with a status of 500"},
+        {"type": "console", "messageType": "log", "text": "hello"},
+        {"type": "event", "method": "pageError",
+         "params": {"error": {"error": {"message": "boom"}}}},
+    ], resources={"aa.json": '{"error":\n "Internal server error"}', "bb.png": "\x89PNG"})
+    out = _trace_module().evidence(str(z))
+    assert out["http"] == [
+        {"method": "DELETE", "url": "/api/admin/users/7?x=1", "status": 500,
+         "body": '{"error": "Internal server error"}'},
+        {"method": "GET", "url": "/logo.png", "status": 404, "body": ""},
+        {"method": "POST", "url": "/api/x", "status": -1, "body": ""},
+    ]
+    assert out["console"] == ["TypeError: x is undefined", "Uncaught boom"]
+
+
+def test_trace_evidence_survives_a_broken_trace(tmp_path):
+    bad = tmp_path / "trace.zip"
+    bad.write_bytes(b"not a zip")
+    mod = _trace_module()
+    assert mod.evidence(str(bad)) == {"http": [], "console": []}
+    assert mod.evidence(str(tmp_path / "missing.zip")) == {"http": [], "console": []}
+
+
+def test_a_failed_test_carries_its_trace_evidence(runner, tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setattr(runner, "TRACE_SCRIPT", str(HERE / "trace_evidence.py"))
+    z = tmp_path / "trace.zip"
+    _trace_zip(z, network=[{"request": {"method": "DELETE", "url": "http://h/api/u/1"},
+                            "response": {"status": 500, "content": {}}}])
+
+    def result(status, attach):
+        return {"status": status, "error": {"message": "nope"} if status != "passed" else None,
+                "attachments": attach}
+
+    trace = {"name": "trace", "contentType": "application/zip", "path": str(z)}
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps({"suites": [{"specs": [
+        {"title": "AC1: ok", "tests": [{"results": [result("passed", [trace])]}]},
+        {"title": "AC2: bad", "tests": [{"results": [result("failed", [trace])]}]},
+        {"title": "AC3: bad, no trace", "tests": [{"results": [result("failed", [])]}]},
+    ]}]}))
+    tests, _ = runner._parse_report(report)
+    assert "evidence" not in tests[0] and "evidence" not in tests[2]
+    assert tests[1]["evidence"] == {"http": [{"method": "DELETE", "url": "/api/u/1",
+                                              "status": 500, "body": ""}], "console": []}

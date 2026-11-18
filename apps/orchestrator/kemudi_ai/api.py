@@ -23,6 +23,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from .auth import ProjectAccess, TaigaUser, current_user
 from . import audit, cr_check, portfolio, retention
 from .awak import agent_api, llm_proxy, marketplace_api, skills_api, usage_api
+from .product import api as product_api
+from .product import service as product_service
 from .backtest import metrics, run_backtest
 from .baseline import BaselineItem, draft_baseline
 from .config import Settings, check_production, get_settings
@@ -73,6 +75,8 @@ async def _lifespan(_app: FastAPI):
         enabled = config_store.enabled_slugs(db)
     if settings.awak_project_slugs() or enabled:
         agent_api.start_worker_once(settings, sessions)
+    # Product agent runs do not survive a restart: end the ones left behind.
+    product_service.recover(sessions)
     # ai_calls retention: at start (before serving), then daily.
     retention.purge_safely(sessions, settings)
     purge = asyncio.create_task(retention.purge_loop(sessions, settings))
@@ -88,6 +92,7 @@ async def _lifespan(_app: FastAPI):
 app = FastAPI(title="Kemudi AI", lifespan=_lifespan)
 app.include_router(agent_api.router)
 app.include_router(agent_api.intake_router)
+app.include_router(product_api.router)
 app.include_router(skills_api.router)
 app.include_router(marketplace_api.router)
 # Internal only (kemudi-sandbox): the gateway does not route /llm/.

@@ -252,6 +252,29 @@ describe('Intake', () => {
       .toBeVisible()
   })
 
+  it('starts from text handed over by another page, once', async () => {
+    settings(true)
+    sessionStorage.setItem(
+      'kemudi.intake.prefill',
+      JSON.stringify({ slug: 'demo', text: '1. Guided setup' })
+    )
+    const screen = await renderIntake()
+    await expect
+      .element(screen.getByLabelText('Text'))
+      .toHaveValue('1. Guided setup')
+    expect(sessionStorage.getItem('kemudi.intake.prefill')).toBeNull()
+  })
+
+  it('ignores text handed over for another project', async () => {
+    settings(true)
+    sessionStorage.setItem(
+      'kemudi.intake.prefill',
+      JSON.stringify({ slug: 'other', text: 'not for this project' })
+    )
+    const screen = await renderIntake()
+    await expect.element(screen.getByLabelText('Text')).toHaveValue('')
+  })
+
   it('says stories wait when Awak is off, linking admins to the setting', async () => {
     settings(false)
     const screen = await renderIntake()

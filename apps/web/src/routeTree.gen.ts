@@ -47,6 +47,7 @@ import { Route as AuthenticatedProjectsImportServiceRouteImport } from './routes
 import { Route as AuthenticatedProjectSlugSplatRouteImport } from './routes/_authenticated/project/$slug/$'
 import { Route as AuthenticatedPSlugTimelineRouteImport } from './routes/_authenticated/p/$slug/timeline'
 import { Route as AuthenticatedPSlugTeamRouteImport } from './routes/_authenticated/p/$slug/team'
+import { Route as AuthenticatedPSlugResearchRouteImport } from './routes/_authenticated/p/$slug/research'
 import { Route as AuthenticatedPSlugKanbanRouteImport } from './routes/_authenticated/p/$slug/kanban'
 import { Route as AuthenticatedPSlugIssuesRouteImport } from './routes/_authenticated/p/$slug/issues'
 import { Route as AuthenticatedPSlugIntakeRouteImport } from './routes/_authenticated/p/$slug/intake'
@@ -278,6 +279,12 @@ const AuthenticatedPSlugTeamRoute = AuthenticatedPSlugTeamRouteImport.update({
   path: '/team',
   getParentRoute: () => AuthenticatedPSlugRouteRoute,
 } as any)
+const AuthenticatedPSlugResearchRoute =
+  AuthenticatedPSlugResearchRouteImport.update({
+    id: '/research',
+    path: '/research',
+    getParentRoute: () => AuthenticatedPSlugRouteRoute,
+  } as any)
 const AuthenticatedPSlugKanbanRoute =
   AuthenticatedPSlugKanbanRouteImport.update({
     id: '/kanban',
@@ -466,6 +473,7 @@ export interface FileRoutesByFullPath {
   '/p/$slug/intake': typeof AuthenticatedPSlugIntakeRoute
   '/p/$slug/issues': typeof AuthenticatedPSlugIssuesRoute
   '/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
+  '/p/$slug/research': typeof AuthenticatedPSlugResearchRoute
   '/p/$slug/team': typeof AuthenticatedPSlugTeamRoute
   '/p/$slug/timeline': typeof AuthenticatedPSlugTimelineRoute
   '/project/$slug/$': typeof AuthenticatedProjectSlugSplatRoute
@@ -527,6 +535,7 @@ export interface FileRoutesByTo {
   '/p/$slug/intake': typeof AuthenticatedPSlugIntakeRoute
   '/p/$slug/issues': typeof AuthenticatedPSlugIssuesRoute
   '/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
+  '/p/$slug/research': typeof AuthenticatedPSlugResearchRoute
   '/p/$slug/team': typeof AuthenticatedPSlugTeamRoute
   '/p/$slug/timeline': typeof AuthenticatedPSlugTimelineRoute
   '/project/$slug/$': typeof AuthenticatedProjectSlugSplatRoute
@@ -593,6 +602,7 @@ export interface FileRoutesById {
   '/_authenticated/p/$slug/intake': typeof AuthenticatedPSlugIntakeRoute
   '/_authenticated/p/$slug/issues': typeof AuthenticatedPSlugIssuesRoute
   '/_authenticated/p/$slug/kanban': typeof AuthenticatedPSlugKanbanRoute
+  '/_authenticated/p/$slug/research': typeof AuthenticatedPSlugResearchRoute
   '/_authenticated/p/$slug/team': typeof AuthenticatedPSlugTeamRoute
   '/_authenticated/p/$slug/timeline': typeof AuthenticatedPSlugTimelineRoute
   '/_authenticated/project/$slug/$': typeof AuthenticatedProjectSlugSplatRoute
@@ -659,6 +669,7 @@ export interface FileRouteTypes {
     | '/p/$slug/intake'
     | '/p/$slug/issues'
     | '/p/$slug/kanban'
+    | '/p/$slug/research'
     | '/p/$slug/team'
     | '/p/$slug/timeline'
     | '/project/$slug/$'
@@ -720,6 +731,7 @@ export interface FileRouteTypes {
     | '/p/$slug/intake'
     | '/p/$slug/issues'
     | '/p/$slug/kanban'
+    | '/p/$slug/research'
     | '/p/$slug/team'
     | '/p/$slug/timeline'
     | '/project/$slug/$'
@@ -785,6 +797,7 @@ export interface FileRouteTypes {
     | '/_authenticated/p/$slug/intake'
     | '/_authenticated/p/$slug/issues'
     | '/_authenticated/p/$slug/kanban'
+    | '/_authenticated/p/$slug/research'
     | '/_authenticated/p/$slug/team'
     | '/_authenticated/p/$slug/timeline'
     | '/_authenticated/project/$slug/$'
@@ -1099,6 +1112,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPSlugTeamRouteImport
       parentRoute: typeof AuthenticatedPSlugRouteRoute
     }
+    '/_authenticated/p/$slug/research': {
+      id: '/_authenticated/p/$slug/research'
+      path: '/research'
+      fullPath: '/p/$slug/research'
+      preLoaderRoute: typeof AuthenticatedPSlugResearchRouteImport
+      parentRoute: typeof AuthenticatedPSlugRouteRoute
+    }
     '/_authenticated/p/$slug/kanban': {
       id: '/_authenticated/p/$slug/kanban'
       path: '/kanban'
@@ -1353,6 +1373,7 @@ interface AuthenticatedPSlugRouteRouteChildren {
   AuthenticatedPSlugIntakeRoute: typeof AuthenticatedPSlugIntakeRoute
   AuthenticatedPSlugIssuesRoute: typeof AuthenticatedPSlugIssuesRoute
   AuthenticatedPSlugKanbanRoute: typeof AuthenticatedPSlugKanbanRoute
+  AuthenticatedPSlugResearchRoute: typeof AuthenticatedPSlugResearchRoute
   AuthenticatedPSlugTeamRoute: typeof AuthenticatedPSlugTeamRoute
   AuthenticatedPSlugTimelineRoute: typeof AuthenticatedPSlugTimelineRoute
   AuthenticatedPSlugIndexRoute: typeof AuthenticatedPSlugIndexRoute
@@ -1373,6 +1394,7 @@ const AuthenticatedPSlugRouteRouteChildren: AuthenticatedPSlugRouteRouteChildren
     AuthenticatedPSlugIntakeRoute: AuthenticatedPSlugIntakeRoute,
     AuthenticatedPSlugIssuesRoute: AuthenticatedPSlugIssuesRoute,
     AuthenticatedPSlugKanbanRoute: AuthenticatedPSlugKanbanRoute,
+    AuthenticatedPSlugResearchRoute: AuthenticatedPSlugResearchRoute,
     AuthenticatedPSlugTeamRoute: AuthenticatedPSlugTeamRoute,
     AuthenticatedPSlugTimelineRoute: AuthenticatedPSlugTimelineRoute,
     AuthenticatedPSlugIndexRoute: AuthenticatedPSlugIndexRoute,

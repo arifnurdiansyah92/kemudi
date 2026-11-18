@@ -17,6 +17,9 @@ module.exports = defineConfig({
     // Kemudi's QA login, or the runbook's qa.login (login.cjs); else logged out.
     ...(env.QA_STATE ? { storageState: env.QA_STATE } : {}),
     screenshot: { mode: 'on', fullPage: true },
+    // A failed test keeps its trace: the runner reads the failed requests and
+    // console errors from it (trace_evidence.py), so the failure says why.
+    trace: 'retain-on-failure',
     viewport: { width: 1440, height: 900 },
     locale: 'en-US',
   },

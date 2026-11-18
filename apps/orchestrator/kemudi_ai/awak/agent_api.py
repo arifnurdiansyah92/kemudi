@@ -540,6 +540,30 @@ def get_agent_jobs(slug: str, acc: ProjectAccess = Depends(access), db: Session 
     return {"jobs": [_job_out(j, acc.is_admin) for j in jobs]}
 
 
+# --- notes -------------------------------------------------------------------
+# What coding runs left about the project's repos for the next run
+# (awak/notes.py). Members read them; an admin deletes a wrong one.
+
+
+@router.get("/notes")
+def get_agent_notes(slug: str, _: TaigaUser = Depends(member), db: Session = Depends(get_db)):
+    from . import notes
+
+    repos = {r.id: r.name for r in config_store.load(db, slug).repos}
+    return {"notes": [{**n, "repo": repos.get(n["repo_id"], "")}
+                      for n in notes.listing(db, slug)]}
+
+
+@router.delete("/notes/{note_id}", status_code=204)
+def delete_agent_note(slug: str, note_id: int, user: TaigaUser = Depends(admin),
+                      db: Session = Depends(get_db)):
+    from . import notes
+
+    if not notes.delete(db, slug, note_id):
+        raise HTTPException(404, "no such note")
+    record_decision(db, actor(user), "awak_note", slug, {"op": "delete", "id": note_id})
+
+
 # --- repos -------------------------------------------------------------------
 
 # Mirrors infra/runner/runner.py ALLOWED_PROGRAMS (the runner enforces it).

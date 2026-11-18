@@ -200,6 +200,9 @@ services:
       KEMUDI_AI_MODEL: "${KEMUDI_AI_MODEL:-deepseek-flash}"
       KEMUDI_AI_DB_URL: "sqlite:////var/lib/kemudi-ai/kemudi-ai.db"
       KEMUDI_TAIGA_API_URL: "http://kemudi-back:8000/api/v1"
+      # Product agents: the web researcher (profile riset); empty = no web.
+      KEMUDI_RISET_URL: "${KEMUDI_RISET_URL:-}"
+      KEMUDI_RISET_API_KEY: "${KEMUDI_RISET_API_KEY:-}"
       # Empty KEMUDI_AWAK_PROJECTS keeps the Awak worker off.
       KEMUDI_AWAK_PROJECTS: "${KEMUDI_AWAK_PROJECTS:-}"
       KEMUDI_AWAK_PASSWORD: "${KEMUDI_AWAK_PASSWORD:-}"
@@ -243,7 +246,7 @@ services:
       - kemudi-skills-fetch:/var/lib/kemudi-ai/skills-fetch:ro
       # No /host-git here (dev mounts the checkout's .git): in production Awak
       # works on repositories added by SSH URL in Project settings -> Agent.
-    networks: [default, kemudi-sandbox, kemudi-svcnet]
+    networks: [default, kemudi-sandbox, kemudi-svcnet, kemudi-risetnet]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request as r; r.urlopen('http://127.0.0.1:8700/health', timeout=5)"]
       interval: 10s
@@ -303,6 +306,50 @@ services:
     volumes:
       - ./hermes/config.yaml:/etc/hermes/config.yaml:ro
       - kemudi-hermes-data:/opt/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8642/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  # --- Product agents' web researcher (profile riset) -----------------------
+  # Hermes with web tools only (infra/riset/config.yaml): searches and reads
+  # the open web for the product agents. It reaches the internet and is
+  # reached by the orchestrator; it shares no network with the database,
+  # Taiga or the Awak sandbox. Off by default: without it the product agents
+  # answer from the model's knowledge and say so. Enable with --profile riset
+  # and KEMUDI_RISET_URL=http://kemudi-riset:8642/v1 (docs/install.md).
+  kemudi-riset:
+    image: ghcr.io/arifnurdiansyah92/kemudi-hermes:${KEMUDI_VERSION:-1.0.0}
+    profiles: [riset]
+    labels: *experimental
+    command: ["gateway", "run"]
+    environment:
+      API_SERVER_ENABLED: "true"
+      API_SERVER_HOST: "0.0.0.0"
+      API_SERVER_PORT: "8642"
+      API_SERVER_KEY: "${KEMUDI_RISET_API_KEY:-}"
+      API_SERVER_MODEL_NAME: "kemudi-riset"
+      KEMUDI_AI_BASE_URL: "${KEMUDI_AI_BASE_URL:-}"
+      KEMUDI_AI_API_KEY: "${KEMUDI_AI_API_KEY:-}"
+      KEMUDI_AI_MODEL: "${KEMUDI_AI_MODEL:-deepseek-flash}"
+      # Optional keys for your own search backend (see infra/riset/config.yaml).
+      TAVILY_API_KEY: "${TAVILY_API_KEY:-}"
+      EXA_API_KEY: "${EXA_API_KEY:-}"
+      FIRECRAWL_API_KEY: "${FIRECRAWL_API_KEY:-}"
+      BRAVE_SEARCH_API_KEY: "${BRAVE_SEARCH_API_KEY:-}"
+      SEARXNG_URL: "${SEARXNG_URL:-}"
+    volumes:
+      - ./riset/config.yaml:/etc/hermes/config.yaml:ro
+      - kemudi-riset-data:/opt/data
+    networks: [kemudi-risetnet, kemudi-riset-egress]
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 2g
+    pids_limit: 512
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8642/health"]
       interval: 10s
@@ -443,6 +490,7 @@ volumes:
   kemudi-async-rabbitmq-data:
   kemudi-events-rabbitmq-data:
   kemudi-hermes-data:
+  kemudi-riset-data:
   kemudi-ai-data:
   kemudi-awak-data:
   kemudi-awak-workspace:
@@ -465,3 +513,7 @@ networks:
     internal: true
   kemudi-svcnet:
     internal: true
+  # kemudi-orchestrator -> kemudi-riset, and kemudi-riset's way to the internet.
+  kemudi-risetnet:
+    internal: true
+  kemudi-riset-egress: {}

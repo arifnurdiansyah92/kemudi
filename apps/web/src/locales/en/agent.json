@@ -614,6 +614,21 @@
       "failed": "Failed"
     }
   },
+  "notes": {
+    "title": "Awak's notes",
+    "description": "Short hints Awak wrote about a repository for its own next runs. It reads them as hints, never as instructions. Delete one that is wrong.",
+    "empty": "No notes yet. They appear after Awak works on stories.",
+    "unavailable": "The notes could not be loaded.",
+    "delete": "Delete note",
+    "deleted": "Note deleted.",
+    "showAll_one": "Show all {{count}} note",
+    "showAll_other": "Show all {{count}} notes",
+    "confirmDelete": {
+      "title": "Delete this note?",
+      "desc": "Awak will no longer get this hint on its next runs.",
+      "confirm": "Delete"
+    }
+  },
   "usage": {
     "title": "Usage and budget",
     "description": "Model tokens and cost of Awak's work on this project, and the limits that stop it before it runs up a bill.",
@@ -752,5 +767,117 @@
     "merged": "Merged into {{target}}.",
     "failed": "Merge failed: {{reason}}",
     "noReason": "no reason given"
+  },
+  "research": {
+    "title": "Product research",
+    "intro": "Pick an agent, write a brief and start. The research runs in the background and ends in a report you can read here, copy or download.",
+    "unavailable": "The research agents could not be loaded. Check that the Kemudi AI orchestrator is running.",
+    "kinds": {
+      "competitor": {
+        "label": "Competitor research",
+        "description": "Searches the web for competitors, their features, pricing and positioning.",
+        "placeholder": "Optional. Name the competitors or paste their URLs, and say what to focus on, for example pricing or onboarding."
+      },
+      "features": {
+        "label": "Feature suggestions",
+        "description": "Reads the project's code and backlog, then proposes features worth building.",
+        "placeholder": "Optional. Say which part of the product or which users to focus on."
+      },
+      "report": {
+        "label": "Project data report",
+        "description": "Turns stories, throughput, cycle time and Awak results into a delivery report.",
+        "placeholder": "Optional. Say who the report is for or what it should highlight."
+      },
+      "custom": {
+        "label": "Custom research",
+        "description": "Answers a brief you write yourself, using the web when it is available.",
+        "placeholder": "Write what you want researched, the context, and what the result should look like."
+      }
+    },
+    "new": {
+      "title": "New research",
+      "agent": "Agent",
+      "brief": "Brief",
+      "briefOptional": "Brief (optional)",
+      "briefShort": "Write at least {{count}} characters.",
+      "period": "Period",
+      "periodDays_one": "Last {{count}} day",
+      "periodDays_other": "Last {{count}} days",
+      "basedOn": "Based on competitor research",
+      "basedOnNone": "None",
+      "basedOnHint": "Optional. The suggestions will take the findings of that research into account.",
+      "language": "Report language",
+      "start": "Start research",
+      "duration": "Takes 1 to 15 minutes and runs in the background. You can leave this page.",
+      "noWeb": {
+        "title": "No web research on this server",
+        "body": "The web research service is not set up, so the result will rest on what the model already knows and may be out of date."
+      }
+    },
+    "runs": {
+      "title": "Research",
+      "loadFailed": "The research list could not be loaded",
+      "emptyTitle": "No research yet",
+      "emptyBody": "Start one with the form. Its report will be listed here for everyone in the project."
+    },
+    "status": {
+      "queued": "Queued",
+      "running": "Running",
+      "done": "Done",
+      "failed": "Failed"
+    },
+    "stage": {
+      "queued": "Waiting for its turn",
+      "working": "Working",
+      "context": "Reading the project context",
+      "research": "Searching the web",
+      "data": "Fetching project data",
+      "writing": "Writing the report"
+    },
+    "detail": {
+      "new": "New research",
+      "by": "by {{who}}",
+      "brief": "Brief",
+      "noBrief": "No brief was given.",
+      "period_one": "Period: last {{count}} day",
+      "period_other": "Period: last {{count}} days",
+      "basedOn": "Based on research #{{id}}",
+      "noWebUsed": "Written without web research, from what the model already knows. Some of it may be out of date.",
+      "waiting": "This takes 1 to 15 minutes. You can leave this page; the research keeps running and this view updates by itself.",
+      "failedTitle": "The research failed",
+      "failedFallback": "The server gave no reason.",
+      "report": "Report",
+      "emptyReport": "The research finished without a report.",
+      "sources": "Sources",
+      "copy": "Copy Markdown",
+      "copied": "Report copied",
+      "copyFailed": "The report could not be copied",
+      "download": "Download .md",
+      "delete": "Delete",
+      "deleteRunning": "A running research cannot be deleted.",
+      "deleteTitle": "Delete this research?",
+      "deleteBody": "\"{{title}}\" and its report will be removed for everyone in the project. This cannot be undone.",
+      "deleted": "Research deleted",
+      "loadFailed": "The research could not be loaded",
+      "notFoundTitle": "Research not found",
+      "notFoundBody": "It may have been deleted, or the link belongs to another project."
+    },
+    "suggestions": {
+      "title": "Suggestions",
+      "hint": "Pick the ones worth building and send them to Intake to become story drafts.",
+      "selected": "{{count}} of {{total}} selected",
+      "selectAll": "Select all",
+      "selectNone": "Clear selection",
+      "problem": "Problem",
+      "proposal": "Proposal",
+      "value": "Value",
+      "evidence": "Evidence",
+      "effort": {
+        "S": "Small effort",
+        "M": "Medium effort",
+        "L": "Large effort"
+      },
+      "send": "Send to Intake"
+    }
   }
 }
