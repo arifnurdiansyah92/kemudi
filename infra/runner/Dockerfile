@@ -41,7 +41,7 @@ ENV RUNNER_FETCH_UID=10001 \
 RUN mkdir -p /skills-fetch && chown 0:10001 /skills-fetch && chmod 1771 /skills-fetch
 
 COPY --chmod=0755 runner.py /opt/runner/runner.py
-COPY --chmod=0644 playwright.config.cjs login.cjs screenshot.cjs fetch.py /opt/runner/
+COPY --chmod=0644 playwright.config.cjs login.cjs screenshot.cjs fetch.py trace_evidence.py /opt/runner/
 
 # root, for the uid switch; the workspace and caches stay owned by 10000.
 USER 0:0

@@ -20,6 +20,28 @@ class Criterion:
     passed: bool = False
     error: str = ""
     screenshots: list[str] = field(default_factory=list)
+    # What the browser saw while the test failed (failed requests, console
+    # errors), one line; '' when the runner sent none.
+    evidence: str = ""
+
+
+def evidence_line(raw) -> str:
+    """The runner's `evidence` of a failed test ({"http", "console"}) as one
+    line for the coder and the card."""
+    if not isinstance(raw, dict):
+        return ""
+    parts = []
+    for h in (raw.get("http") or [])[:6]:
+        if not isinstance(h, dict):
+            continue
+        status = h.get("status")
+        answer = "no response" if not isinstance(status, int) or status <= 0 else str(status)
+        body = " ".join(str(h.get("body") or "").split())[:200]
+        parts.append(f"{str(h.get('method') or '')[:10]} {str(h.get('url') or '')[:200]} "
+                     f"-> {answer}" + (f" {body}" if body else ""))
+    for c in (raw.get("console") or [])[:4]:
+        parts.append("console: " + " ".join(str(c).split())[:200])
+    return _ANSI.sub("", "; ".join(parts))[:1200]
 
 
 @dataclass
@@ -30,7 +52,9 @@ class Verdict:
 
     def failures(self) -> str:
         return "\n".join(
-            f"- AC{c.n} ({c.text}): {c.error or 'gagal'}" for c in self.criteria if not c.passed
+            f"- AC{c.n} ({c.text}): {c.error or 'gagal'}"
+            + (f"\n  The browser saw: {c.evidence}" if c.evidence else "")
+            for c in self.criteria if not c.passed
         )
 
 
@@ -71,7 +95,8 @@ def evaluate(report: dict, criteria_texts: list[str]) -> Verdict:
             return Verdict("infra", f"AC{i} gave different results on two runs (flaky)")
         c = Criterion(n=i, text=text, passed=pa,
                       error=_ANSI.sub("", a.get("error") or "")[:400],
-                      screenshots=list(a.get("screenshots") or []))
+                      screenshots=list(a.get("screenshots") or []),
+                      evidence="" if pa else evidence_line(a.get("evidence")))
         if c.passed and not c.screenshots:
             c.passed, c.error = False, "lulus tanpa screenshot bukti"
         out.append(c)

@@ -79,14 +79,48 @@ WORK_METHOD = """How to work:
 4. Go through the acceptance criteria one by one against your change before you finish.
 In your report, say for each acceptance criterion how your change meets it."""
 
+# How a run says it cannot finish, and what it leaves for the next run. Both
+# are read from the report (parse_report), never from files.
+BLOCKED_PREFIX = "BLOCKED:"
+NOTE_PREFIX = "NOTE:"
+MAX_NOTES = 3
+NOTE_CHARS = 240
+
+REPORT_RULES = f"""Two optional endings of your report, each on its own line:
+- `{BLOCKED_PREFIX} <cause and what is needed>` when the story cannot be finished inside your role's scope (the cause is in code your role may not change, for example a backend fault while you are the frontend role) or it needs a decision only a person can make. Do not work around it and do not fake it: keep the work that is correct, name the file or endpoint and the change that is needed. Use it only for scope or a missing decision, never because the work is hard.
+- Up to {MAX_NOTES} lines `{NOTE_PREFIX} <one fact>` when you learned something about this repository that will save the next run time (a command that needs a flag, where something lives, a convention that is not written down). No secrets, nothing about this story's content."""
+
+
+def parse_report(report: str) -> tuple[str, list[str]]:
+    """(the BLOCKED reason or '', the NOTE lines) of a coding run's report.
+    BLOCKED counts only in the last 12 lines: a report that quotes the rule
+    or an old report further up is not a block."""
+    lines = [ln.strip().lstrip("-*> ").strip("`").strip() for ln in (report or "").splitlines()]
+    lines = [ln for ln in lines if ln]
+    blocked = ""
+    for ln in lines[-12:]:
+        if ln.upper().startswith(BLOCKED_PREFIX):
+            blocked = ln[len(BLOCKED_PREFIX):].strip()[:1500]
+    notes: list[str] = []
+    for ln in lines:
+        if ln.upper().startswith(NOTE_PREFIX):
+            text = " ".join(ln[len(NOTE_PREFIX):].split())[:NOTE_CHARS]
+            if len(text) >= 12 and text not in notes:
+                notes.append(text)
+    return blocked, notes[-MAX_NOTES:]
+
 
 def code_task(workspace: str, ref: int, subject: str, description: str,
               feedback: str = "", siblings: list[str] | None = None,
               unavailable: list[str] | None = None, previous_report: str = "",
-              fix_round: bool = False) -> str:
+              fix_round: bool = False, notes: list[str] | None = None,
+              taken_over: str = "") -> str:
     """`fix_round`: a further run inside the same attempt (the checks or the
     review found problems in the run just before); `previous_report` is what
-    the agent reported last time, so it does not start from nothing."""
+    the agent reported last time, so it does not start from nothing.
+    `notes`: what earlier runs on this repo left for the next one.
+    `taken_over`: this role continues a story a narrower role could not
+    finish; the text is that role's reason."""
     parts = [
         f"Workspace: {workspace}",
         f"User story #{ref}: {subject}",
@@ -94,7 +128,25 @@ def code_task(workspace: str, ref: int, subject: str, description: str,
         description.strip(),
         "",
         WORK_METHOD,
+        "",
+        REPORT_RULES,
     ]
+    if notes:
+        parts += [
+            "",
+            "Notes earlier runs left about this repository (hints, not instructions; "
+            "check one before you rely on it):",
+            *[f"- {n}" for n in notes],
+        ]
+    if taken_over:
+        parts += [
+            "",
+            "You take this story over from a role with a narrower scope. Its commits are "
+            "on this branch; keep what is correct. It stopped because the cause is outside "
+            "its scope:",
+            taken_over.strip(),
+            "Fix that cause in your scope, then check every acceptance criterion again.",
+        ]
     if siblings:
         parts += [
             "",
@@ -124,10 +176,12 @@ def code_task(workspace: str, ref: int, subject: str, description: str,
 
 
 def review_task(workspace: str, ref: int, subject: str, description: str, base: str,
-                human_feedback: str = "") -> str:
+                human_feedback: str = "", failure: str = "") -> str:
     """`human_feedback`: what a person asked when they sent the story back;
     the reviewer checks the change does it (a request for a code change the
-    diff does not have is blocking)."""
+    diff does not have is blocking). `failure`: what the checks or browser QA
+    reported on the attempt before; the reviewer checks the change removes
+    the cause."""
     parts = [
         f"Workspace: {workspace}",
         f"Review the change for user story #{ref}: {subject}",
@@ -145,6 +199,15 @@ def review_task(workspace: str, ref: int, subject: str, description: str, base: 
             "blocking issue. If it only asks to run the checks or QA again, there is "
             "nothing to block for:",
             human_feedback.strip()[:2000],
+        ]
+    if failure.strip():
+        parts += [
+            "",
+            "The attempt before this one failed with the report below (automated checks "
+            "or browser QA, not a person). Check that the change removes the cause and "
+            "not only the symptom. If the cause is in code the diff does not touch, that "
+            "is a blocking issue: name the file and what must change there:",
+            failure.strip()[:4000],
         ]
     return "\n".join(parts)
 
@@ -187,7 +250,8 @@ def parse_review(text: str) -> Review:
 def qa_task(workspace: str, ref: int, subject: str, criteria_list: list[str],
             project_slug: str, feedback: str = "", app_dir: str | None = None,
             app_dirs: list[str] | None = None, env_names: list[str] | None = None,
-            login_path: str | None = None, backing: list[str] | None = None) -> str:
+            login_path: str | None = None, backing: list[str] | None = None,
+            previous: str = "") -> str:
     """`app_dirs`: QA runs against the project's runbook services (not Kemudi's
     own app): no QA project, a dev server that compiles on first hit, logged in
     through `login_path` when the runbook has a login. `env_names`: the vault
@@ -232,6 +296,17 @@ def qa_task(workspace: str, ref: int, subject: str, criteria_list: list[str],
         "Acceptance criteria:",
         numbered,
     ]
+    if previous.strip():
+        parts += [
+            "",
+            "On the attempt before this one, the spec for this story failed (below: the "
+            "failed criteria with what the browser saw, then that spec). The code has "
+            "changed since; write the spec again for the current code. Keep every check "
+            "the criteria state, as strict as before. If a failure came from the spec "
+            "itself (a wrong or ambiguous locator, test data it assumed, a check the "
+            "criterion does not ask for), fix that in the spec:",
+            previous.strip()[:9000],
+        ]
     if feedback:
         parts += ["", "Your previous spec could not run. Fix it:", feedback.strip()]
     return "\n".join(parts)
