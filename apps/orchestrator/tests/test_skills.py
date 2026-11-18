@@ -250,7 +250,10 @@ def test_seed_builtin_high_finding_is_stored_disabled(tmp_path):
 def test_seed_builtin_real_tree():
     S = make_session("sqlite:///:memory:")
     with S() as db:
-        assert skills.seed_builtin(db) == ["impeccable v1"]
+        assert skills.seed_builtin(db) == [
+            "impeccable v1", "playwright-best-practices v1", "systematic-debugging v1",
+            "test-driven-development v1", "verification-before-completion v1"]
+        assert skills.seed_builtin(db) == []
         sk = db.get(AwakSkill, "impeccable")
         assert sk.enabled and sk.license == "Apache-2.0"
         assert sk.origin["commit"] == "1995764b4936f2bfbf4eb719cb37b384a45ceacb"
@@ -293,4 +296,24 @@ def test_env_example_names_no_admin():
 
 def test_builtin_skills_seeded_at_start(agent_client):
     with agent_client.S() as db:
-        assert db.get(AwakSkill, "impeccable") is not None
+        for slug in ("impeccable", "systematic-debugging", "verification-before-completion",
+                     "test-driven-development", "playwright-best-practices"):
+            sk = db.get(AwakSkill, slug)
+            # enabled: no vendored skill may carry a high scan finding
+            assert sk is not None and sk.enabled and sk.source == "builtin", slug
+
+
+def test_vendored_skills_name_their_origin():
+    import json
+
+    from kemudi_ai.awak import skills
+
+    sources = json.loads((skills.BUILTIN_DIR / "sources.json").read_text(encoding="utf-8"))
+    dirs = {p.name for p in skills.BUILTIN_DIR.iterdir() if p.is_dir()}
+    assert dirs == set(sources)
+    for slug, src in sources.items():
+        assert src["license"] and src["repo"] and len(src["commit"]) == 40, slug
+        assert any(n.upper().startswith("LICENSE")
+                   for n in skills.read_dir(skills.BUILTIN_DIR / slug)), slug
+    for slugs in skills.TEMPLATE_DEFAULTS.values():
+        assert set(slugs) <= dirs
