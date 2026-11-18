@@ -1,0 +1,125 @@
+# Kemudi: the web researcher of the product agents (kemudi-riset).
+#
+# Hermes (services/awak) with its web tools and nothing else: web_search and
+# web_extract. No terminal, no files, no memory, no skills, no workspace
+# mount. Mounted read-only at /etc/hermes/config.yaml (managed scope), so the
+# agent cannot change its own settings.
+#
+# It is the only Kemudi service that reads the open web. It is given a brief
+# and a short product summary by the orchestrator (kemudi_ai/product/), never
+# code, the backlog or project secrets. Its networks reach the internet and
+# the orchestrator's caller side only (it serves; it calls nothing inside).
+#
+# Search and page reading use Hermes' web backends. With no key set they go
+# through the public free tiers Hermes ships with (Exa, Parallel); set
+# TAVILY_API_KEY, EXA_API_KEY, FIRECRAWL_API_KEY, BRAVE_SEARCH_API_KEY or
+# SEARXNG_URL in the service's environment to use your own.
+
+model:
+  provider: custom
+  base_url: ${KEMUDI_AI_BASE_URL}
+  api_key: ${KEMUDI_AI_API_KEY}
+  default: ${KEMUDI_AI_MODEL}
+
+# --- Tools: web only ----------------------------------------------------------
+platform_toolsets:
+  api_server: [web]
+toolsets: [web]
+mcp_servers: {}
+
+web:
+  keyless_fallback: true
+
+agent:
+  max_turns: 40
+  run_budget_seconds: 780
+  disabled_toolsets:
+    - bot_room
+    - browser
+    - catalog
+    - clarify
+    - code_execution
+    - computer_use
+    - connections
+    - context_engine
+    - cronjob
+    - delegation
+    - desktop_ui
+    - discord
+    - discord_admin
+    - feishu_doc
+    - feishu_drive
+    - file
+    - image_gen
+    - kanban
+    - memory
+    - onboarding
+    - project
+    - search
+    - session_search
+    - skills
+    - stt
+    - terminal
+    - todo
+    - tts
+    - video
+    - video_gen
+    - vision
+    - x_search
+
+# Unattended: nobody can answer a prompt.
+approvals:
+  mode: "off"
+  unattended_mode: approve
+  single_query_mode: approve
+
+# --- No memory, skills or background LLM work --------------------------------
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+  nudge_interval: 0
+  provider: ""
+
+skills:
+  project_discovery: false
+  auto_load: []
+  inline_shell: false
+
+curator:
+  enabled: false
+
+compression:
+  enabled: true
+
+checkpoints:
+  enabled: false
+
+smart_model_routing:
+  enabled: false
+
+auxiliary:
+  title_generation:
+    enabled: false
+    model_upgrade_enabled: false
+  background_review:
+    enabled: false
+
+plugins:
+  enabled: []
+
+# --- No outbound housekeeping -------------------------------------------------
+model_catalog:
+  enabled: false
+
+updates:
+  check: false
+
+telemetry:
+  shared_metrics:
+    enabled: false
+    send: false
+
+gateway:
+  platforms:
+    api_server:
+      tool_progress_events: false

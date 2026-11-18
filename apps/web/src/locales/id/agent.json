@@ -610,6 +610,21 @@
       "failed": "Gagal"
     }
   },
+  "notes": {
+    "title": "Catatan Awak",
+    "description": "Petunjuk singkat yang ditulis Awak tentang sebuah repositori untuk pekerjaan berikutnya. Awak membacanya sebagai petunjuk, bukan sebagai perintah. Hapus catatan yang keliru.",
+    "empty": "Belum ada catatan. Catatan muncul setelah Awak mengerjakan story.",
+    "unavailable": "Catatan tidak dapat dimuat.",
+    "delete": "Hapus catatan",
+    "deleted": "Catatan dihapus.",
+    "showAll_one": "Tampilkan semua {{count}} catatan",
+    "showAll_other": "Tampilkan semua {{count}} catatan",
+    "confirmDelete": {
+      "title": "Hapus catatan ini?",
+      "desc": "Awak tidak akan mendapat petunjuk ini lagi pada pekerjaan berikutnya.",
+      "confirm": "Hapus"
+    }
+  },
   "usage": {
     "title": "Penggunaan dan anggaran",
     "description": "Token dan biaya model untuk pekerjaan Awak di proyek ini, serta batas yang menghentikannya sebelum tagihan membengkak.",
@@ -746,5 +761,117 @@
     "merged": "Merge ke {{target}} selesai.",
     "failed": "Merge gagal: {{reason}}",
     "noReason": "tanpa keterangan"
+  },
+  "research": {
+    "title": "Riset Produk",
+    "intro": "Pilih agent, tulis brief, lalu mulai. Riset berjalan di latar belakang dan menghasilkan laporan yang bisa Anda baca di sini, salin, atau unduh.",
+    "unavailable": "Agent riset tidak dapat dimuat. Pastikan orchestrator Kemudi AI sedang berjalan.",
+    "kinds": {
+      "competitor": {
+        "label": "Riset kompetitor",
+        "description": "Mencari kompetitor di web beserta fitur, harga, dan positioning mereka.",
+        "placeholder": "Opsional. Sebutkan nama atau URL kompetitor dan hal yang ingin difokuskan, misalnya harga atau onboarding."
+      },
+      "features": {
+        "label": "Saran upgrade fitur",
+        "description": "Membaca kode dan backlog proyek, lalu mengusulkan fitur yang layak dibangun.",
+        "placeholder": "Opsional. Sebutkan bagian produk atau kelompok pengguna yang ingin difokuskan."
+      },
+      "report": {
+        "label": "Laporan data proyek",
+        "description": "Mengolah story, throughput, cycle time, dan hasil kerja Awak menjadi laporan delivery.",
+        "placeholder": "Opsional. Sebutkan untuk siapa laporan ini atau hal yang perlu ditonjolkan."
+      },
+      "custom": {
+        "label": "Riset bebas",
+        "description": "Menjawab brief yang Anda tulis sendiri, memakai web bila tersedia.",
+        "placeholder": "Tulis hal yang ingin diriset, konteksnya, dan bentuk hasil yang Anda harapkan."
+      }
+    },
+    "new": {
+      "title": "Riset baru",
+      "agent": "Agent",
+      "brief": "Brief",
+      "briefOptional": "Brief (opsional)",
+      "briefShort": "Tulis minimal {{count}} karakter.",
+      "period": "Periode",
+      "periodDays_one": "{{count}} hari terakhir",
+      "periodDays_other": "{{count}} hari terakhir",
+      "basedOn": "Berdasarkan riset kompetitor",
+      "basedOnNone": "Tidak ada",
+      "basedOnHint": "Opsional. Saran fitur akan mempertimbangkan temuan riset tersebut.",
+      "language": "Bahasa laporan",
+      "start": "Mulai riset",
+      "duration": "Butuh 1 sampai 15 menit dan berjalan di latar belakang. Anda boleh meninggalkan halaman ini.",
+      "noWeb": {
+        "title": "Server ini belum punya riset web",
+        "body": "Layanan riset web belum dipasang, jadi hasilnya hanya bersandar pada pengetahuan model dan bisa saja sudah usang."
+      }
+    },
+    "runs": {
+      "title": "Riset",
+      "loadFailed": "Daftar riset tidak dapat dimuat",
+      "emptyTitle": "Belum ada riset",
+      "emptyBody": "Mulai riset pertama lewat formulir. Laporannya akan tampil di sini untuk semua anggota proyek."
+    },
+    "status": {
+      "queued": "Antre",
+      "running": "Berjalan",
+      "done": "Selesai",
+      "failed": "Gagal"
+    },
+    "stage": {
+      "queued": "Menunggu giliran",
+      "working": "Sedang dikerjakan",
+      "context": "Membaca konteks proyek",
+      "research": "Mencari di web",
+      "data": "Mengambil data proyek",
+      "writing": "Menulis laporan"
+    },
+    "detail": {
+      "new": "Riset baru",
+      "by": "oleh {{who}}",
+      "brief": "Brief",
+      "noBrief": "Tanpa brief.",
+      "period_one": "Periode: {{count}} hari terakhir",
+      "period_other": "Periode: {{count}} hari terakhir",
+      "basedOn": "Berdasarkan riset #{{id}}",
+      "noWebUsed": "Ditulis tanpa riset web, hanya dari pengetahuan model. Sebagian isinya bisa saja sudah usang.",
+      "waiting": "Butuh 1 sampai 15 menit. Anda boleh meninggalkan halaman ini; riset tetap berjalan dan tampilan ini diperbarui sendiri.",
+      "failedTitle": "Riset gagal",
+      "failedFallback": "Server tidak memberi alasan.",
+      "report": "Laporan",
+      "emptyReport": "Riset selesai tanpa laporan.",
+      "sources": "Sumber",
+      "copy": "Salin Markdown",
+      "copied": "Laporan disalin",
+      "copyFailed": "Laporan tidak dapat disalin",
+      "download": "Unduh .md",
+      "delete": "Hapus",
+      "deleteRunning": "Riset yang sedang berjalan tidak dapat dihapus.",
+      "deleteTitle": "Hapus riset ini?",
+      "deleteBody": "\"{{title}}\" beserta laporannya akan dihapus untuk semua anggota proyek. Tindakan ini tidak dapat dibatalkan.",
+      "deleted": "Riset dihapus",
+      "loadFailed": "Riset tidak dapat dimuat",
+      "notFoundTitle": "Riset tidak ditemukan",
+      "notFoundBody": "Mungkin sudah dihapus, atau tautannya milik proyek lain."
+    },
+    "suggestions": {
+      "title": "Saran fitur",
+      "hint": "Pilih saran yang layak dibangun, lalu kirim ke Intake untuk dijadikan draf story.",
+      "selected": "{{count}} dari {{total}} dipilih",
+      "selectAll": "Pilih semua",
+      "selectNone": "Kosongkan pilihan",
+      "problem": "Masalah",
+      "proposal": "Usulan",
+      "value": "Nilai",
+      "evidence": "Dasar",
+      "effort": {
+        "S": "Upaya kecil",
+        "M": "Upaya sedang",
+        "L": "Upaya besar"
+      },
+      "send": "Kirim ke Intake"
+    }
   }
 }

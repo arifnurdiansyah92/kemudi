@@ -17,6 +17,7 @@ import {
   ListOrdered,
   Palette,
   Radar,
+  Telescope,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useKemudiMe } from '@/lib/kemudi-ai/skills'
@@ -100,6 +101,11 @@ export function useNavGroups(): NavGroup[] {
       title: t('nav.intake'),
       url: `/p/${project.slug}/intake`,
       icon: Inbox,
+    })
+    items.push({
+      title: t('nav.research'),
+      url: `/p/${project.slug}/research`,
+      icon: Telescope,
     })
     items.push({
       title: t('contract:title'),

@@ -1183,6 +1183,44 @@ export function useAgentJobs(slug: string) {
   })
 }
 
+/* ---------- notes (what Awak wrote down for its next runs) ---------- */
+
+/** A hint Awak left about a repo; `repo` is '' when it names none. */
+export type AgentNote = {
+  id: number
+  repo_id: number | null
+  repo: string
+  text: string
+  job_id: number | null
+  at: string | null
+}
+
+/** Newest first. */
+export function useAgentNotes(slug: string) {
+  return useQuery({
+    queryKey: agentKey(slug, 'notes'),
+    queryFn: async () =>
+      (
+        await api.get<{ notes: AgentNote[] }>(
+          `/projects/${slug}/agent/notes`,
+          base
+        )
+      ).data.notes,
+  })
+}
+
+export function useDeleteAgentNote(slug: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/projects/${slug}/agent/notes/${id}`, base)
+    },
+    onError: onFail,
+    onSettled: () =>
+      qc.invalidateQueries({ queryKey: agentKey(slug, 'notes') }),
+  })
+}
+
 /* ---------- story: merge on approve ---------- */
 
 export const AWAITING_MERGE_TAG = 'awaiting-merge'

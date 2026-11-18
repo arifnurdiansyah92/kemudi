@@ -8,6 +8,35 @@ All notable changes to Kemudi are documented in this file. The format follows
 
 ### Added
 
+- **Product research** (`/p/<project>/research`, "Riset Produk"): four agents
+  for the people who decide what a project builds next. Each run works in the
+  background and ends in a Markdown report you can read, copy, download or
+  delete.
+  - *Competitor research* searches the web for the product's competitors and
+    reports features, pricing, strengths and gaps, every fact with its source.
+  - *Feature suggestions* reads the project's code and backlog (and a
+    competitor run, if you pick one) and proposes what to build, with the
+    problem, the proposal, value, effort and the evidence behind it. "Send to
+    Intake" turns the suggestions you select into story drafts.
+  - *Project data report* pulls the delivery data of the last 7 to 90 days
+    (stories, throughput, cycle time, the sprint, blocked and oldest work,
+    issues, Awak's results). Every number is computed by Kemudi; the model
+    only writes the summary, risks and recommendations around them.
+  - *Custom research* answers a free brief.
+
+  Web research runs in a new optional service, `kemudi-riset` (profile
+  `riset`): Hermes with web search and page reading only, on networks that
+  reach the internet and nothing else in the stack. It is given the brief and
+  a short product summary, never the code or the backlog. Without the service
+  the web agents still run, from the model's own knowledge, and the report
+  says so. Any project member starts and reads runs; the creator or a project
+  admin deletes them. See `docs/install.md`, "Product research".
+- **Awak keeps notes about a repo.** A coding run can end its report with
+  `NOTE:` lines (a command that needs a flag, where something lives); they are
+  stored per repo and given to later runs as hints, so the next story does not
+  rediscover them. Notes are short, never carry a secret-like value, are
+  capped at 30 per repo, and are listed in Project settings -> Agent ("Catatan
+  Awak"), where an admin deletes a wrong one.
 - **Moving a blocked story back restarts Awak.** When Awak blocks a story
   (`needs-human`) and a person then moves it to In progress or Ready, Awak
   lifts the block itself and picks it up (In progress: rework with the latest
@@ -52,6 +81,27 @@ All notable changes to Kemudi are documented in this file. The format follows
 
 ### Changed
 
+- **A failed QA now says why.** The runner keeps the Playwright trace of a
+  failed test and reads from it the requests that failed (method, path,
+  status, the start of the answer) and the console errors. They go to the
+  card ("Yang terlihat di browser saat gagal") and to Awak's rework, with the
+  spec that failed. Before, a rework only knew that "User deleted" never
+  appeared, not that `DELETE /api/admin/users/7` had answered 500, and spent
+  attempts changing the wrong thing.
+- **Awak says when the cause is outside its role, and a wider role takes
+  over.** A coder that finds the cause in code its role may not change (a
+  backend fault in a frontend story) ends its report with `BLOCKED:` and the
+  reason. If the project has a Fullstack role for the same repo, that role
+  continues the story in the same attempt and stays on it. Without one the
+  card is blocked at once with the reason and what to do, instead of using up
+  the remaining attempts.
+- **The reviewer and the QA spec writer learn from the last failure.** The
+  reviewer is told when the previous attempt failed in the checks or in QA
+  (it used to read that as a person's request) and blocks a change that
+  leaves the cause in place. The spec for a rework is written with the failed
+  criteria, what the browser saw and the previous spec, so a failure caused
+  by the spec itself (a wrong locator, a check the criterion does not ask
+  for) is fixed in the spec.
 - Awak works in a loop inside each attempt: when the checks fail or a reviewer
   finds a problem, the coder fixes it straight away with its previous report
   (up to `KEMUDI_AWAK_FIX_ROUNDS`, default 2) instead of using up an attempt

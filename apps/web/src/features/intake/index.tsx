@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { toLanguage } from '@/i18n'
 import { AlertCircle, FileText, Info, Loader2, X } from 'lucide-react'
@@ -21,6 +21,7 @@ import { Main } from '@/components/layout/main'
 import { useProject } from '@/features/project/use-project'
 import { DraftList } from './draft-list'
 import { draftsBody, toState, type DraftState } from './drafts'
+import { clearIntakePrefill, readIntakePrefill } from './prefill'
 
 const ACCEPT = '.pdf,.docx'
 const isDocument = (f: File) => /\.(pdf|docx)$/i.test(f.name)
@@ -34,7 +35,9 @@ export function Intake() {
   const draft = useIntakeDraft(slug)
   const create = useIntakeCreate(slug)
 
-  const [text, setText] = useState('')
+  // Text handed over by another page (product research); taken once.
+  const [text, setText] = useState(() => readIntakePrefill(slug))
+  useEffect(clearIntakePrefill, [])
   const [file, setFile] = useState<File | null>(null)
   const [lang, setLang] = useState<'id' | 'en'>(
     () => toLanguage(i18n.language) ?? 'id'
