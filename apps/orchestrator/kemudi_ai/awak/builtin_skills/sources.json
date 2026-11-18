@@ -7,8 +7,63 @@
     "plugin": "impeccable",
     "plugin_version": "4.9.1",
     "path": "plugin/skills/impeccable",
-    "extra_files": {"LICENSE": "LICENSE", "NOTICE.md": "NOTICE.md"},
-    "excluded": ["scripts/"],
+    "extra_files": {
+      "LICENSE": "LICENSE",
+      "NOTICE.md": "NOTICE.md"
+    },
+    "excluded": [
+      "scripts/"
+    ],
     "note": "scripts/ left out: its launcher downloads a binary on first run (Awak has no internet) and its data pushes the folder past the 2 MB limit; SKILL.md's 'Launcher unavailable' path applies."
+  },
+  "systematic-debugging": {
+    "title": "Systematic Debugging",
+    "license": "MIT",
+    "repo": "https://github.com/obra/superpowers",
+    "commit": "22f0b463e7a5e579904dd6211a520321035526f7",
+    "plugin": "superpowers",
+    "plugin_version": "7.0.2",
+    "path": "skills/systematic-debugging",
+    "extra_files": {
+      "LICENSE": "LICENSE",
+      "NOTICE.md": "(written by Kemudi)"
+    },
+    "note": "One line of SKILL.md changed (an environment-printing command replaced); see NOTICE.md."
+  },
+  "verification-before-completion": {
+    "title": "Verification Before Completion",
+    "license": "MIT",
+    "repo": "https://github.com/obra/superpowers",
+    "commit": "22f0b463e7a5e579904dd6211a520321035526f7",
+    "plugin": "superpowers",
+    "plugin_version": "7.0.2",
+    "path": "skills/verification-before-completion",
+    "extra_files": {
+      "LICENSE": "LICENSE"
+    }
+  },
+  "test-driven-development": {
+    "title": "Test-Driven Development",
+    "license": "MIT",
+    "repo": "https://github.com/obra/superpowers",
+    "commit": "22f0b463e7a5e579904dd6211a520321035526f7",
+    "plugin": "superpowers",
+    "plugin_version": "7.0.2",
+    "path": "skills/test-driven-development",
+    "extra_files": {
+      "LICENSE": "LICENSE"
+    }
+  },
+  "playwright-best-practices": {
+    "title": "Playwright Best Practices",
+    "license": "MIT",
+    "repo": "https://github.com/currents-dev/playwright-best-practices-skill",
+    "commit": "0b75b5835a87de1fdd202ba965f3bc5a27738fdf",
+    "path": "playwright-best-practices",
+    "extra_files": {
+      "LICENSE.md": "LICENSE.md",
+      "NOTICE.md": "(written by Kemudi)"
+    },
+    "note": "One line of core/configuration.md reworded (scan false positive); see NOTICE.md."
   }
 }

@@ -401,9 +401,14 @@ def resolve(db: Session, slugs: Iterable[str] | None) -> Resolved:
 # --- Role assignment ---------------------------------------------------------------
 
 # Skills a new role of a template gets (only those installed and enabled).
+# test-driven-development is vendored too but assigned by hand: its "no code
+# without a failing test first" costs a run its budget in a repo with no tests.
+_CODING = ("systematic-debugging", "verification-before-completion")
 TEMPLATE_DEFAULTS: dict[str, tuple[str, ...]] = {
-    "frontend": ("impeccable",),
-    "fullstack": ("impeccable",),
+    "frontend": ("impeccable", *_CODING),
+    "backend": _CODING,
+    "fullstack": ("impeccable", *_CODING),
+    "qa": ("playwright-best-practices",),
 }
 ROLE_TEMPLATES = ("frontend", "backend", "fullstack", "qa")
 MAX_ROLE_SKILLS = 20

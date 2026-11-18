@@ -18,6 +18,7 @@ from .test_roles import ROLE
 from .test_skills import skill_md
 
 LIB = "/skills"
+BUILTIN = {p.name for p in skills.BUILTIN_DIR.iterdir() if p.is_dir()}
 
 
 @pytest.fixture
@@ -393,7 +394,7 @@ def test_library_lists_everything_with_used_by(client):
     client.post("/projects/demo/agent/roles", headers=ADMIN, json=ROLE)  # gets impeccable
     out = client.get(f"{LIB}/library", headers=ADMIN).json()
     rows = {s["slug"]: s for s in out["skills"]}
-    assert set(rows) == {"demo", "impeccable"}
+    assert set(rows) == {"demo", *BUILTIN}
     assert rows["demo"]["enabled"] is False and rows["demo"]["used_by"] == []
     assert rows["impeccable"]["source"] == "builtin"
     assert [u["project"] for u in rows["impeccable"]["used_by"]] == ["demo"]
@@ -488,7 +489,7 @@ def test_project_picker_unchanged(client):
     before = client.get("/skills", headers=MEMBER).json()
     upload(client, demo_zip())
     assert client.get("/skills", headers=MEMBER).json() == before
-    assert [s["slug"] for s in before["skills"]] == ["impeccable"]
+    assert {s["slug"] for s in before["skills"]} == BUILTIN
     assert set(before["skills"][0]) == {"slug", "title", "source", "license", "enabled",
                                         "version", "scan_level", "description"}
 

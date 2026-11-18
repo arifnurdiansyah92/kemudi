@@ -8,6 +8,21 @@ All notable changes to Kemudi are documented in this file. The format follows
 
 ### Added
 
+- **More skills installed by default.** Four skills join Impeccable in the
+  library every installation starts with, each vendored at a pinned commit
+  with its licence:
+  - *Systematic Debugging* and *Verification Before Completion* (MIT, from
+    obra/superpowers): find the root cause before fixing, and run the check
+    before saying it passes. New Frontend, Backend and Fullstack roles get
+    both.
+  - *Playwright Best Practices* (MIT, from currents-dev): locators, waiting
+    and test data that do not flake. New QA roles get it.
+  - *Test-Driven Development* (MIT, from obra/superpowers) is installed but
+    assigned by hand, since it makes every change start with a failing test.
+
+  Roles that exist already keep their skills; "Reset to defaults" in a role's
+  skills, or the picker, adds the new ones.
+
 - **Product research** (`/p/<project>/research`, "Riset Produk"): four agents
   for the people who decide what a project builds next. Each run works in the
   background and ends in a Markdown report you can read, copy, download or
