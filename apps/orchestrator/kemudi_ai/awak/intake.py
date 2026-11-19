@@ -7,7 +7,13 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from ..llm import LLM, LLMError
 from .repo_context import MAX_PICK, RepoContext
-from .stories import INTAKE_CODE_RULES, INTAKE_PICK_SYSTEM, INTAKE_SYSTEM, format_description
+from .stories import (
+    INTAKE_CODE_RULES,
+    INTAKE_PICK_SYSTEM,
+    INTAKE_SYSTEM,
+    depends_line,
+    format_description,
+)
 from .taiga import Taiga
 
 log = logging.getLogger(__name__)
@@ -46,6 +52,25 @@ class StoryDraft(BaseModel):
     description: str = ""
     criteria: list[str] = Field(default_factory=list)
     area: Literal["web", "backend", "both"] = "web"
+    # Positions (the first draft is 1) of the drafts this one waits for.
+    depends_on: list[int] = Field(default_factory=list)
+
+    @field_validator("depends_on", mode="before")
+    @classmethod
+    def _deps(cls, v):
+        if not isinstance(v, (list, tuple)):
+            return []
+        out: list[int] = []
+        for x in v:
+            if isinstance(x, bool):
+                continue
+            try:
+                n = int(x)
+            except (TypeError, ValueError):
+                continue
+            if 0 < n <= 1000 and n not in out:
+                out.append(n)
+        return sorted(out)
 
     @field_validator("criteria", mode="before")
     @classmethod
@@ -132,7 +157,17 @@ def draft_stories(llm: LLM, text: str, lang: str = "id",
             continue
     if not out:
         raise LLMError("intake returned no usable stories", str(reply))
+    if len(out) != len(reply.get("stories") or []):
+        # A dropped story shifted the positions: its numbers no longer hold.
+        for d in out:
+            d.depends_on = []
     return out
+
+
+def earlier(depends_on: list[int], position: int) -> list[int]:
+    """The positions a draft at `position` (1-based) may wait for: earlier
+    drafts only, so the stories can be created in order and never in a ring."""
+    return [n for n in depends_on if 0 < n < position]
 
 
 HELD_REASON = "ditahan oleh PM saat intake"
@@ -148,13 +183,17 @@ def create_stories(taiga: Taiga, project_slug: str, drafts: list[StoryDraft],
     ready, new = project.status("ready"), project.status("new")
     created = []
     for i, d in enumerate(drafts):
+        refs = [created[n - 1]["ref"] for n in earlier(d.depends_on, i + 1)]
+        text = d.description.strip()
+        if refs:
+            text = f"{text}\n\n{depends_line(refs)}".strip()
         ok, why = d.auto_ready(enabled_areas)
         if ok and i in hold:
             ok, why = False, HELD_REASON
         story = taiga.create_story(
             project.id,
             subject=d.subject,
-            description=format_description(d.description, d.criteria),
+            description=format_description(text, d.criteria),
             status=ready if ok else new,
             tags=([TAG] if ok else []) + [area_tag(d.area)],
         )
@@ -165,5 +204,5 @@ def create_stories(taiga: Taiga, project_slug: str, drafts: list[StoryDraft],
                 f"Pindahkan ke Ready dan beri tag `{TAG}` setelah ditinjau.",
             )
         created.append({"id": story["id"], "ref": story["ref"], "subject": d.subject,
-                        "ready": ok, "reason": why})
+                        "ready": ok, "reason": why, "depends_on": refs})
     return created

@@ -14,6 +14,29 @@ def format_description(description: str, criteria: list[str]) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
+# A story that must wait for others says so on one line of its description
+# ("Depends on: #17, #18"; intake writes it, a person may too). Awak starts
+# the story only when each of them is finished (worker._waits_for).
+DEPENDS_LABEL = "Depends on"
+_DEPENDS_LINE = re.compile(
+    r"^[ \t>*_-]*(?:depends on|bergantung pada|tergantung pada)[ \t*_]*:(.*)$", re.I | re.M)
+_REF = re.compile(r"#(\d{1,9})\b")
+
+
+def depends_line(refs: list[int]) -> str:
+    return f"{DEPENDS_LABEL}: " + ", ".join(f"#{r}" for r in refs)
+
+
+def depends_on(description: str) -> list[int]:
+    """The story refs a description says it waits for, in order, once each."""
+    out: list[int] = []
+    for m in _DEPENDS_LINE.finditer(description or ""):
+        for r in _REF.findall(m.group(1)):
+            if int(r) not in out:
+                out.append(int(r))
+    return out
+
+
 def criteria(description: str) -> list[str]:
     """Bullet lines under an 'Acceptance criteria' heading (any level)."""
     out: list[str] = []
@@ -39,14 +62,16 @@ from .prompts import CODE_SYSTEM, QA_SYSTEM  # noqa: E402,F401
 INTAKE_SYSTEM = {
     "id": """Anda product owner sebuah project perangkat lunak. Pecah kebutuhan yang diberikan menjadi user story kecil yang masing-masing bisa dikerjakan dan diuji dalam satu sesi.
 Aturan:
-- Tiap story: "subject" (kalimat perintah singkat), "description" (konteks 1–3 kalimat), "criteria" (1–4 kriteria penerimaan yang bisa diuji lewat UI atau API), dan "area": "web" jika cukup mengubah frontend (repo berperan web/mobile), "backend" jika perlu mengubah backend (repo berperan api), "both" jika keduanya.
+- Tiap story: "subject" (kalimat perintah singkat), "description" (konteks 1–3 kalimat), "criteria" (1–4 kriteria penerimaan yang bisa diuji lewat UI atau API), dan "area" dari kode yang diubah: "web" jika hanya kode frontend (halaman, komponen UI), "backend" jika hanya kode server (API, model, database, migrasi, seed, tes backend), "both" jika keduanya.
+- Urutkan story sesuai urutan pengerjaan. "depends_on": nomor story lain di daftar ini (story pertama = 1) yang harus selesai lebih dulu karena story ini memakai hasilnya (model, endpoint, fungsi, halaman); hanya nomor yang lebih kecil, [] jika tidak ada.
 - Jangan menambah fitur yang tidak diminta.
-Balas satu objek JSON: {"stories": [{"subject", "description", "criteria", "area"}]}.""",
+Balas satu objek JSON: {"stories": [{"subject", "description", "criteria", "area", "depends_on"}]}.""",
     "en": """You are the product owner of a software project. Split the given requirements into small user stories, each doable and testable in one session.
 Rules:
-- Each story: "subject" (short imperative), "description" (1–3 sentences of context), "criteria" (1–4 acceptance criteria testable through the UI or API), and "area": "web" if the frontend alone is enough (a repo with role web/mobile), "backend" if the backend must change (a repo with role api), "both" if both.
+- Each story: "subject" (short imperative), "description" (1–3 sentences of context), "criteria" (1–4 acceptance criteria testable through the UI or API), and "area" from the code that changes: "web" for frontend code only (pages, UI components), "backend" for server code only (API, models, database, migrations, seeds, backend tests), "both" for both.
+- Put the stories in the order they should be built. "depends_on": the numbers of other stories in this list (the first story is 1) that must be finished first because this story uses what they add (a model, endpoint, function, page); smaller numbers only, [] when none.
 - Do not add features nobody asked for.
-Reply with one JSON object: {"stories": [{"subject", "description", "criteria", "area"}]}.""",
+Reply with one JSON object: {"stories": [{"subject", "description", "criteria", "area", "depends_on"}]}.""",
 }
 
 # Added to INTAKE_SYSTEM when the project's code is in the message.
@@ -56,14 +81,14 @@ Kode project saat ini ada di pesan (peta file, README, dan isi file yang relevan
 - Sesuaikan story dengan yang sudah ada: pakai nama halaman, menu, route, endpoint, model, dan label UI yang benar-benar ada di kode. Jangan mengarang nama.
 - Jangan buat story untuk hal yang sudah ada di kode, kecuali kebutuhan meminta mengubahnya; kalau sebagian sudah ada, story hanya mencakup sisanya.
 - Di "description", sebut di mana perubahan kira-kira terjadi (halaman/route, file, atau endpoint) sebagai petunjuk untuk developer.
-- Tentukan "area" dari repo yang perlu diubah: repo berperan web/mobile = "web", api = "backend", keduanya = "both".
+- Tentukan "area" dari kode yang perlu diubah, bukan dari nama repo: satu repo bisa berisi frontend dan backend sekaligus. Kode server di repo seperti itu tetap "backend".
 - Kalau kebutuhan bertentangan dengan kode atau tidak jelas, tulis asumsi Anda di "description".""",
     "en": """
 The project's current code is in the message (file map, README and the relevant files). Use it:
 - Fit the stories to what exists: use the page, menu, route, endpoint, model and UI label names that are really in the code. Never invent names.
 - No story for what the code already does, unless the requirement changes it; when part exists, the story covers only the rest.
 - In "description", say where the change likely goes (page/route, file or endpoint) as a hint for the developer.
-- Set "area" from the repos that must change: role web/mobile = "web", api = "backend", both = "both".
+- Set "area" from the code that must change, not from the repo's name: one repo can hold both a frontend and a backend. Server code in such a repo is still "backend".
 - When the requirement conflicts with the code or is unclear, state your assumption in "description".""",
 }
 
@@ -87,7 +112,7 @@ MAX_NOTES = 3
 NOTE_CHARS = 240
 
 REPORT_RULES = f"""Two optional endings of your report, each on its own line:
-- `{BLOCKED_PREFIX} <cause and what is needed>` when the story cannot be finished inside your role's scope (the cause is in code your role may not change, for example a backend fault while you are the frontend role) or it needs a decision only a person can make. Do not work around it and do not fake it: keep the work that is correct, name the file or endpoint and the change that is needed. Use it only for scope or a missing decision, never because the work is hard.
+- `{BLOCKED_PREFIX} <cause and what is needed>` when the story cannot be finished inside your role's scope (the cause is in code your role may not change, for example a backend fault while you are the frontend role) or it needs a decision only a person can make. Do not work around it and do not fake it: keep the work that is correct, name the file or endpoint and the change that is needed. Use it only for scope or a missing decision, never because the work is hard. These are not blocks, so finish the work and say them in the report instead: a test runner, interpreter, package or network that is missing in your sandbox (Kemudi runs the project's checks and the browser tests after you); a check you could not run; a choice you can make sensibly yourself, such as a name, a default or a list of values (make it, and say what you chose and why).
 - Up to {MAX_NOTES} lines `{NOTE_PREFIX} <one fact>` when you learned something about this repository that will save the next run time (a command that needs a flag, where something lives, a convention that is not written down). No secrets, nothing about this story's content."""
 
 

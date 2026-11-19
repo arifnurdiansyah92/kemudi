@@ -8,6 +8,14 @@ All notable changes to Kemudi are documented in this file. The format follows
 
 ### Added
 
+- **Stories that wait for each other.** Intake now puts the stories in build
+  order and says which ones each story needs first; the drafts show it
+  ("Starts after story 1") and the created story carries one line in its
+  description, `Depends on: #17, #18`. Awak leaves such a story in Ready
+  until every story it names is done and merged, and says so once on the
+  card. Other stories are picked up as before. Anyone can add or remove the
+  line by hand.
+
 - **More skills installed by default.** Four skills join Impeccable in the
   library every installation starts with, each vendored at a pinned commit
   with its licence:
@@ -78,6 +86,13 @@ All notable changes to Kemudi are documented in this file. The format follows
 
 ### Fixed
 
+- Awak no longer stops a story because a test runner or package is missing
+  in its sandbox, or over a choice it can make itself: the `BLOCKED` report
+  is for a cause outside the role's scope or a decision only a person can
+  make. It finishes the work and names what it could not run.
+- Intake sets a story's area from the code that changes, not from the repo:
+  a backend story in a repo that holds both frontend and backend is tagged
+  `area-backend` and goes to the backend role first.
 - **"Run it again" no longer forces a needless commit.** When a story sent back
   with a comment already has work on its branch and Awak judges no code change
   is needed (e.g. QA failed for an infra reason), the existing tip is checked

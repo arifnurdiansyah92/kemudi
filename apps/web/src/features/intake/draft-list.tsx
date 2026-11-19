@@ -8,7 +8,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { DraftRow } from './draft-row'
-import { SUBJECT_MIN, type DraftState } from './drafts'
+import { afterNumbers, SUBJECT_MIN, type DraftState } from './drafts'
 
 export function DraftList({
   drafts,
@@ -62,6 +62,7 @@ export function DraftList({
               key={d.key}
               n={i + 1}
               draft={d}
+              after={afterNumbers(d, drafts)}
               onChange={(next) =>
                 onChange(drafts.map((x) => (x.key === d.key ? next : x)))
               }

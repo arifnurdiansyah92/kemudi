@@ -45,6 +45,9 @@ class FakeTaiga:
     def story(self, sid):
         return dict(self.stories_by_id[sid])
 
+    def story_by_ref(self, project_id, ref):
+        return next((dict(s) for s in self.stories_by_id.values() if s["ref"] == ref), None)
+
     def comments(self, sid):
         return list(self.comments_by_id[sid])
 

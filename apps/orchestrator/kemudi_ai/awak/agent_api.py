@@ -1496,6 +1496,9 @@ class IntakeDraft(BaseModel):
         default_factory=list, max_length=10)
     area: Literal["web", "backend", "both"]
     hold: bool = False  # the PM keeps it in New even if it qualifies
+    # Positions in this list (the first is 1) of the drafts it waits for.
+    depends_on: list[Annotated[int, Field(ge=1, le=30)]] = Field(
+        default_factory=list, max_length=30)
 
 
 class IntakeCreate(BaseModel):
@@ -1520,7 +1523,7 @@ async def intake_draft(
     from ..documents import extract_text
     from ..llm import LLMError
     from . import repo_context
-    from .intake import draft_stories
+    from .intake import draft_stories, earlier
 
     body = text.strip()
     if file is not None:
@@ -1540,10 +1543,11 @@ async def intake_draft(
         raise HTTPException(502, f"the model did not return stories: {e}") from e
     areas = _enabled_areas(db, slug)
     out = []
-    for d in drafts:
+    for i, d in enumerate(drafts, 1):
         ready, reason = d.auto_ready(areas)
         out.append({"subject": d.subject, "description": d.description,
-                    "criteria": d.criteria, "area": d.area, "ready": ready, "reason": reason})
+                    "criteria": d.criteria, "area": d.area, "ready": ready, "reason": reason,
+                    "depends_on": earlier(d.depends_on, i)})
     return {"drafts": out, "context": ctx.summary()}
 
 
@@ -1554,7 +1558,7 @@ def intake_create(slug: str, body: IntakeCreate, user: TaigaUser = Depends(membe
     from .taiga import TaigaError
 
     drafts = [StoryDraft(subject=d.subject, description=d.description, criteria=d.criteria,
-                         area=d.area) for d in body.drafts]
+                         area=d.area, depends_on=d.depends_on) for d in body.drafts]
     hold = {i for i, d in enumerate(body.drafts) if d.hold}
     try:
         created = create_stories(taiga, slug, drafts, _enabled_areas(db, slug), hold)
