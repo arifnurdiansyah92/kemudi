@@ -771,6 +771,7 @@ class Worker:
         report = ""
         siblings: list[Path] | None = None
         unavailable: list[str] = []
+        conflicts: list[str] = []  # paths the merge of the default branch left open
         if resume:
             base_sha = prepared["base"]
             main_sha = prepared.get("main") or base_sha
@@ -781,9 +782,18 @@ class Worker:
             main_sha = repo.sync_default()
             base_sha = (repo.sha(job.branch) if repo.has_branch(job.branch)
                         else main_sha)
+            reworked = repo.has_branch(job.branch)
             workdir = repo.prepare(job.branch)
             siblings, unavailable = self._siblings(route, job)
             self._event(job.id, "prepared", {"base": base_sha, "main": main_sha})
+            if reworked:
+                # The branch is from before other stories landed: work on it
+                # with them, so it is checked, tested and merged as one.
+                merged = repo.merge_default(job.branch)
+                if merged is not None:
+                    conflicts = merged
+                    self._event(job.id, "main_merged", {"main": main_sha,
+                                                        "conflicts": merged[:50]})
             self._check_qa_repos(route)
             checks.run_install(self._runner, self._path(workdir),
                                checks.install_payloads(rc, route.runbook), workdir, rc.name)
@@ -793,6 +803,9 @@ class Worker:
         # (with its last report) instead of costing an attempt and a card move.
         rounds = 1 + max(0, self.s.awak_fix_rounds)
         feedback, prev_sha = job.feedback, ""
+        if conflicts:
+            feedback = (conflict_task(repo.default_branch, conflicts)
+                        + ("\n\n" + feedback if feedback else ""))
         reviewed: tuple[list[dict], str, str] | None = None  # gates passed, review blocked
         for r in range(1, rounds + 1):
             if r > 1 or not resume:
@@ -815,6 +828,16 @@ class Worker:
                         repo.collect(job.branch)
                         raise NeedsHuman(_blocked_text(route.role.name, again, wider=False))
             self._ours(story["id"], {"in-progress"}, project)
+            left = unresolved(workdir, conflicts)
+            if left:
+                repo.collect(job.branch)
+                names = ", ".join(f"`{p}`" for p in left[:10])
+                return Fail(
+                    f"Conflict markers (<<<<<<<, =======, >>>>>>>) from merging "
+                    f"`{repo.default_branch}` are still in: {', '.join(left[:10])}. Resolve "
+                    f"them: keep what `{repo.default_branch}` added and what this story "
+                    f"needs, remove every marker, then commit.",
+                    f"Konflik dengan `{repo.default_branch}` belum selesai di {names}.")
             if reviewed is not None and repo.collect(job.branch) == prev_sha:
                 # The coder changed nothing after the review (its report says
                 # why): the reviewed commit, gates passed, goes on to QA.
@@ -1748,6 +1771,36 @@ def _qa_failure_text(detail: dict) -> str:
         return ""
     spec = str(detail.get("spec") or "").strip()
     return failures + (f"\n\nThat spec:\n```ts\n{spec}\n```" if spec else "")
+
+
+_MARKER = re.compile(rb"^(<{7} |>{7} )", re.M)
+
+
+def conflict_task(default_branch: str, conflicts: list[str]) -> str:
+    """What the coder is told when the merge of the default branch into its
+    branch stopped on conflicts (the merge is open in the workspace)."""
+    files = "\n".join(f"- {p}" for p in conflicts[:50])
+    return (f"Before anything else: `{default_branch}` moved on since this branch was made, "
+            f"and Kemudi started merging it into your branch. The merge is open in the "
+            f"workspace and these files have conflict markers (<<<<<<<, =======, >>>>>>>):\n"
+            f"{files}\n"
+            f"Resolve each one: keep what `{default_branch}` added and what this story "
+            f"needs (read both sides; never drop one side to make it compile), and remove "
+            f"every marker. Then finish the merge with `git add -A && git commit --no-edit` "
+            f"and run the checks. After that, carry on with the task below, if any.")
+
+
+def unresolved(workdir: Path, conflicts: list[str]) -> list[str]:
+    """The conflicted paths that still hold a conflict marker."""
+    left = []
+    for rel in conflicts:
+        f = workdir / rel
+        try:
+            if f.is_file() and not f.is_symlink() and _MARKER.search(f.read_bytes()):
+                left.append(rel)
+        except OSError:
+            continue
+    return left
 
 
 def waiting_text(waits: list[dict]) -> str:

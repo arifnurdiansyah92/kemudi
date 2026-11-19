@@ -213,8 +213,11 @@ class Merger:
                         default_sha, branch_sha,
                         f"Merge {job.branch} (US #{job.story_ref}) via Kemudi", ref)
                 except MergeConflict as e:
-                    raise MergeFailed(f"konflik saat merge ke `{repo.default_branch}`; "
-                                      f"selesaikan manual. ({e})") from e
+                    raise MergeFailed(
+                        f"konflik saat merge ke `{repo.default_branch}`. Pindahkan kartu ke "
+                        f"In progress: Awak mengambil `{repo.default_branch}` terbaru ke "
+                        f"branch ini, menyelesaikan konfliknya, lalu memeriksa dan menguji "
+                        f"ulang. ({e})") from e
                 w._event(job.id, "merge_commit", {"sha": target, "onto": default_sha})
                 workdir = repo.prepare_at(job.branch, ref, target)
                 # The same gate selection as the story's: the branch's changed files.
