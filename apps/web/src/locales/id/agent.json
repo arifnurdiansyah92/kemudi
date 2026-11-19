@@ -730,6 +730,8 @@
       "hold": "Tahan di New",
       "remove": "Hapus story {{n}}",
       "ready": "Masuk ke Ready",
+      "after_one": "Dikerjakan setelah story {{list}} selesai.",
+      "after_other": "Dikerjakan setelah story {{list}} selesai.",
       "waits": "Menunggu di New",
       "held": "Ditahan di New",
       "rechecked": "Diperiksa ulang saat dibuat",

@@ -41,11 +41,14 @@ export function LandingPill({ draft }: { draft: DraftState }) {
 export function DraftRow({
   n,
   draft,
+  after = [],
   onChange,
   onRemove,
 }: {
   n: number
   draft: DraftState
+  /** Row numbers of the drafts this one waits for. */
+  after?: number[]
   onChange: (next: DraftState) => void
   onRemove: () => void
 }) {
@@ -74,6 +77,15 @@ export function DraftRow({
           <X />
         </Button>
       </div>
+
+      {after.length > 0 && (
+        <p className='-mt-2 text-sm text-muted-foreground'>
+          {t('intake.drafts.after', {
+            count: after.length,
+            list: after.join(', '),
+          })}
+        </p>
+      )}
 
       <div className='grid gap-1.5'>
         <Label htmlFor={`${id}-subject`}>{t('intake.drafts.subject')}</Label>

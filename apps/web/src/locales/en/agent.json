@@ -736,6 +736,8 @@
       "hold": "Hold back in New",
       "remove": "Remove story {{n}}",
       "ready": "Goes to Ready",
+      "after_one": "Starts after story {{list}} is finished.",
+      "after_other": "Starts after stories {{list}} are finished.",
       "waits": "Waits in New",
       "held": "Held in New",
       "rechecked": "Rechecked on create",

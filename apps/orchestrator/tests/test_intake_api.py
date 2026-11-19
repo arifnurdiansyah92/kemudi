@@ -63,7 +63,7 @@ def test_draft_marks_ready_by_enabled_roles(intake):
     roles(intake, web=True, backend=False)
     web, backend = draft(intake).json()["drafts"]
     assert web == {"subject": "Badge di kartu", "description": "d", "criteria": ["satu", "dua"],
-                   "area": "web", "ready": True, "reason": ""}
+                   "area": "web", "ready": True, "reason": "", "depends_on": []}
     assert backend["ready"] is False and "backend" in backend["reason"]
     assert "peran" in backend["reason"]
 

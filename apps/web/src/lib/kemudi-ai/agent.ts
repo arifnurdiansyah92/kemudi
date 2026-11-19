@@ -1290,6 +1290,9 @@ export type IntakeDraftOut = {
   area: IntakeArea
   ready: boolean
   reason: string
+  /** Positions (the first draft is 1) of the drafts this one waits for;
+   * absent from older servers. */
+  depends_on?: number[]
 }
 
 /** The repos (and files) intake read as context; absent from older servers. */
@@ -1305,6 +1308,8 @@ export type IntakeDraftIn = {
   criteria: string[]
   area: IntakeArea
   hold: boolean
+  /** Positions in the list sent (the first is 1). */
+  depends_on: number[]
 }
 
 export type IntakeStory = {

@@ -38,7 +38,8 @@ from .prompts import (RoleScope, out_of_scope, prompt_version, render, render_ro
                       scope_for)
 from .runner import Runner, RunnerError, RunnerRejected
 from .svc import Svc, SvcError, SvcRejected
-from .stories import code_task, criteria, parse_report, parse_review, qa_task, review_task
+from .stories import (code_task, criteria, depends_on, parse_report, parse_review, qa_task,
+                      review_task)
 from .taiga import Project, Taiga, TaigaError, tag_names
 from .verdict import Verdict, evaluate, safe_screenshot
 
@@ -158,6 +159,11 @@ class Worker:
         self._last_skill_sweep: float | None = None
         # Whether the last tick stepped a setup run (they take turns with stories)
         self._last_tick_setup = False
+        # Dependency lines by story (id -> (version, refs)) and the waits
+        # already said on a card (story id -> refs), so a poll costs no call
+        # for an unchanged story and a card gets one comment per wait.
+        self._deps: dict[int, tuple[int, list[int]]] = {}
+        self._wait_said: dict[int, tuple[int, ...]] = {}
         self.holder = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 
     @property
@@ -539,6 +545,10 @@ class Worker:
                 job = db.query(AwakJob).filter_by(
                     project_slug=project.slug, story_id=st["id"]).one_or_none()
                 if status == "ready":
+                    waits = self._waits_for(project, st)
+                    if waits:
+                        self._say_waiting(st, waits)
+                        continue
                     if job is None:
                         job = AwakJob(project_slug=project.slug, story_id=st["id"],
                                       story_ref=st["ref"], branch=branch_for(st["ref"]))
@@ -568,6 +578,51 @@ class Worker:
                 record_event(db, job.id, "picked", {"status": status})
                 return job.id, st
         return None
+
+    def _waits_for(self, project: Project, st: dict) -> list[dict]:
+        """The stories a Ready story says it depends on ("Depends on: #17",
+        stories.depends_on) that are not finished yet: not closed, or closed
+        but still waiting for its merge (its code is not on the main branch).
+        A ref that names no story is ignored. Awak leaves the story in Ready
+        until the list is empty."""
+        try:
+            cached = self._deps.get(st["id"])
+            if cached is None or cached[0] != st.get("version"):
+                text = st.get("description")
+                if text is None:  # Taiga's list leaves the description out
+                    text = self.taiga.story(st["id"]).get("description")
+                cached = (st.get("version"), depends_on(text or ""))
+                self._deps[st["id"]] = cached
+            waits = []
+            for ref in cached[1]:
+                if ref == st["ref"]:
+                    continue
+                dep = self.taiga.story_by_ref(project.id, ref)
+                if dep is None:
+                    continue
+                closed = dep.get("is_closed") or dep.get("status") == project.statuses.get("done")
+                if not closed or DONE_TAG in tag_names(dep):
+                    waits.append(dep)
+            return waits
+        except TaigaError as e:
+            log.warning("dependencies of story %s: %s", st["id"], e)
+            self._deps.pop(st["id"], None)
+            return [{"ref": 0}]  # unknown this round: do not start it
+
+    def _say_waiting(self, st: dict, waits: list[dict]) -> None:
+        """One comment on the card per set of stories it waits for."""
+        refs = tuple(sorted(d["ref"] for d in waits))
+        if 0 in refs or self._wait_said.get(st["id"]) == refs:
+            return
+        self._wait_said[st["id"]] = refs
+        text = waiting_text(waits)
+        try:
+            if any((c.get("comment") or "").strip() == text
+                   for c in self.taiga.comments(st["id"])[:5]):
+                return  # said before a restart
+            self.taiga.comment(st["id"], text)
+        except TaigaError as e:
+            log.warning("waiting comment on story %s: %s", st["id"], e)
 
     def _unblock_if_moved(self, project: Project, st: dict) -> bool:
         """A story Awak blocked (`needs-human`) that a human then moved to Ready
@@ -1693,6 +1748,22 @@ def _qa_failure_text(detail: dict) -> str:
         return ""
     spec = str(detail.get("spec") or "").strip()
     return failures + (f"\n\nThat spec:\n```ts\n{spec}\n```" if spec else "")
+
+
+def waiting_text(waits: list[dict]) -> str:
+    """The comment on a Ready story Awak does not start yet."""
+    parts = []
+    for d in sorted(waits, key=lambda d: d["ref"]):
+        if d.get("is_blocked"):
+            why = "terblokir, butuh orang"
+        elif DONE_TAG in tag_names(d):
+            why = "menunggu merge"
+        else:
+            why = "belum selesai"
+        parts.append(f"#{d['ref']} ({why})")
+    return ("**Awak** · Belum dimulai: story ini bergantung pada " + ", ".join(parts)
+            + ". Awak mengerjakannya begitu semuanya selesai dan sudah di-merge. Kalau "
+              "urutannya tidak perlu, hapus baris `Depends on:` dari deskripsi.")
 
 
 def _blocked_text(role: str, reason: str, wider: bool) -> str:

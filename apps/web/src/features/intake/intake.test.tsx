@@ -60,6 +60,7 @@ const drafts: IntakeDraftOut[] = [
     area: 'both',
     ready: true,
     reason: '',
+    depends_on: [1, 2],
   },
 ]
 
@@ -159,6 +160,10 @@ describe('Intake', () => {
       .getByRole('textbox', { name: 'Criterion 2' })
       .fill('Locked after 5 tries')
 
+    await expect
+      .element(screen.getByText('Starts after stories 1, 2 are finished.'))
+      .toBeVisible()
+
     // Drop story 2, hold story 3 (now story 2).
     await screen.getByRole('button', { name: 'Remove story 2' }).click()
     await screen.getByLabelText('Hold back in New').nth(1).click()
@@ -178,6 +183,7 @@ describe('Intake', () => {
         criteria: ['Wrong password shows an error', 'Locked after 5 tries'],
         area: 'web',
         hold: false,
+        depends_on: [],
       },
       {
         subject: 'Audit log',
@@ -185,6 +191,8 @@ describe('Intake', () => {
         criteria: ['Every change is logged'],
         area: 'both',
         hold: true,
+        // It waited for stories 1 and 2; story 2 was removed.
+        depends_on: [1],
       },
     ])
 

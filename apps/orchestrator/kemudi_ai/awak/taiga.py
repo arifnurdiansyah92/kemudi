@@ -124,6 +124,17 @@ class Taiga:
     def story(self, story_id: int) -> dict:
         return self._req("GET", f"/userstories/{story_id}").json()
 
+    def story_by_ref(self, project_id: int, ref: int) -> dict | None:
+        """The project's story #ref; None when there is none (deleted, or the
+        number belongs to a task or an issue)."""
+        try:
+            return self._req("GET", "/userstories/by_ref",
+                             params={"project": project_id, "ref": ref}).json()
+        except TaigaError as e:
+            if "HTTP 404" in str(e):
+                return None
+            raise
+
     def comments(self, story_id: int) -> list[dict]:
         r = self._req("GET", f"/history/userstory/{story_id}", params={"type": "comment"})
         return [h for h in r.json() if (h.get("comment") or "").strip()]
