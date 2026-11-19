@@ -196,6 +196,33 @@ class Repo:
         _chown(d, self.uid)
         return d
 
+    def merge_default(self, branch: str) -> list[str] | None:
+        """Bring the default branch into the story's workspace (after
+        `prepare`), so a branch made before other stories landed is worked on,
+        checked and tested with them. None: the branch already has it. []:
+        merged cleanly (a merge commit). Otherwise the conflicted paths: the
+        merge is left open with its conflict markers, for the coder to resolve
+        and commit."""
+        if not BRANCH_RE.match(branch):
+            raise GitError(f"refusing branch {branch!r}")
+        d = str(self.job_dir(branch))
+        _git("fetch", "--quiet", "--no-tags", self.bare, self.default_branch, cwd=d)
+        p = subprocess.run(["git", "merge-base", "--is-ancestor", "FETCH_HEAD", "HEAD"],
+                           cwd=d, env=git_env(), capture_output=True, text=True, timeout=60)
+        if p.returncode == 0:
+            return None
+        conflicts: list[str] = []
+        try:
+            _git("merge", "--no-ff", "--no-edit", "-m",
+                 f"Merge {self.default_branch} into {branch}", "FETCH_HEAD", cwd=d)
+        except GitError:
+            out = _git("diff", "--name-only", "--diff-filter=U", cwd=d)
+            conflicts = [line for line in out.splitlines() if line]
+            if not conflicts:
+                raise
+        _chown(Path(d), self.uid)
+        return conflicts
+
     def checkout_default(self, branch: str) -> Path:
         """This repo at its default branch in story `branch`'s folder: read-only
         context for a story of another repo of the project. Nothing in it is

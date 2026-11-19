@@ -86,6 +86,13 @@ All notable changes to Kemudi are documented in this file. The format follows
 
 ### Fixed
 
+- A story Awak reworks is brought up to date first: the default branch is
+  merged into its branch before the coder starts, so work made before other
+  stories landed is checked, tested and merged together with them. When that
+  merge conflicts, the coder is told which files and resolves them; an
+  attempt that leaves conflict markers behind fails. A merge that conflicts
+  no longer says "resolve manually": moving the card to In progress has Awak
+  resolve it.
 - Awak no longer stops a story because a test runner or package is missing
   in its sandbox, or over a choice it can make itself: the `BLOCKED` report
   is for a cause outside the role's scope or a decision only a person can
