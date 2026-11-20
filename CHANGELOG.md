@@ -6,6 +6,8 @@ All notable changes to Kemudi are documented in this file. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-21
+
 ### Added
 
 - **Stories that wait for each other.** Intake now puts the stories in build
@@ -249,4 +251,5 @@ a client contract. See [docs/install.md](docs/install.md) to install it and
 - Container images are built for amd64 only.
 - Bahasa Indonesia interface text is awaiting native-speaker review.
 
+[1.1.0]: https://github.com/arifnurdiansyah92/kemudi/releases/tag/v1.1.0
 [1.0.0]: https://github.com/arifnurdiansyah92/kemudi/releases/tag/v1.0.0

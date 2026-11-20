@@ -50,7 +50,7 @@ services:
     build:
       context: ./runner
       args:
-        HERMES_IMAGE: ghcr.io/arifnurdiansyah92/kemudi-hermes:${KEMUDI_VERSION:-1.0.0}
+        HERMES_IMAGE: ghcr.io/arifnurdiansyah92/kemudi-hermes:${KEMUDI_VERSION:-1.1.0}
     pull_policy: build
 
   kemudi-svc:
