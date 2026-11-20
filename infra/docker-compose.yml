@@ -102,7 +102,7 @@ services:
   # Runs migrations and loads the default templates on every start
   # (services/kemudi-back/docker/entrypoint.sh), then serves the API.
   kemudi-back:
-    image: ghcr.io/arifnurdiansyah92/kemudi-back:${KEMUDI_VERSION:-1.0.0}
+    image: ghcr.io/arifnurdiansyah92/kemudi-back:${KEMUDI_VERSION:-1.1.0}
     environment: *back-environment
     volumes: *back-volumes
     healthcheck:
@@ -120,7 +120,7 @@ services:
       kemudi-async-rabbitmq: { condition: service_healthy }
 
   kemudi-async:
-    image: ghcr.io/arifnurdiansyah92/kemudi-back:${KEMUDI_VERSION:-1.0.0}
+    image: ghcr.io/arifnurdiansyah92/kemudi-back:${KEMUDI_VERSION:-1.1.0}
     entrypoint: ["/taiga-back/docker/async_entrypoint.sh"]
     environment: *back-environment
     volumes: *back-volumes
@@ -143,7 +143,7 @@ services:
       - kemudi-async-rabbitmq-data:/var/lib/rabbitmq
 
   kemudi-events:
-    image: ghcr.io/arifnurdiansyah92/kemudi-events:${KEMUDI_VERSION:-1.0.0}
+    image: ghcr.io/arifnurdiansyah92/kemudi-events:${KEMUDI_VERSION:-1.1.0}
     environment:
       RABBITMQ_USER: "${RABBITMQ_USER:?set RABBITMQ_USER in infra/.env}"
       RABBITMQ_PASS: "${RABBITMQ_PASS:?run scripts/init-secrets.sh}"
@@ -180,7 +180,7 @@ services:
     restart: unless-stopped
 
   kemudi-web:
-    image: ghcr.io/arifnurdiansyah92/kemudi-web:${KEMUDI_VERSION:-1.0.0}
+    image: ghcr.io/arifnurdiansyah92/kemudi-web:${KEMUDI_VERSION:-1.1.0}
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
       interval: 10s
@@ -193,7 +193,7 @@ services:
   # backtests, the skill library and (with --profile awak) the Awak loop.
   # Served at /api/kemudi/ by the gateway.
   kemudi-orchestrator:
-    image: ghcr.io/arifnurdiansyah92/kemudi-orchestrator:${KEMUDI_VERSION:-1.0.0}
+    image: ghcr.io/arifnurdiansyah92/kemudi-orchestrator:${KEMUDI_VERSION:-1.1.0}
     environment:
       KEMUDI_HERMES_URL: "${KEMUDI_HERMES_URL:-http://kemudi-hermes:8642/v1}"
       KEMUDI_HERMES_API_KEY: "${KEMUDI_HERMES_API_KEY:?run scripts/init-secrets.sh}"
@@ -290,7 +290,7 @@ services:
   # off. Config: infra/hermes/config.yaml. Needed for the contract baseline,
   # CR check and backtests; not published on the host.
   kemudi-hermes:
-    image: ghcr.io/arifnurdiansyah92/kemudi-hermes:${KEMUDI_VERSION:-1.0.0}
+    image: ghcr.io/arifnurdiansyah92/kemudi-hermes:${KEMUDI_VERSION:-1.1.0}
     profiles: [ai, awak]
     labels: *experimental
     command: ["gateway", "run"]
@@ -322,7 +322,7 @@ services:
   # answer from the model's knowledge and say so. Enable with --profile riset
   # and KEMUDI_RISET_URL=http://kemudi-riset:8642/v1 (docs/install.md).
   kemudi-riset:
-    image: ghcr.io/arifnurdiansyah92/kemudi-hermes:${KEMUDI_VERSION:-1.0.0}
+    image: ghcr.io/arifnurdiansyah92/kemudi-hermes:${KEMUDI_VERSION:-1.1.0}
     profiles: [riset]
     labels: *experimental
     command: ["gateway", "run"]
@@ -363,7 +363,7 @@ services:
   # before enabling. kemudi-sandbox is internal (no internet); Awak holds no
   # provider key and reaches the model through the orchestrator's /llm/v1 proxy.
   kemudi-awak:
-    image: ghcr.io/arifnurdiansyah92/kemudi-hermes:${KEMUDI_VERSION:-1.0.0}
+    image: ghcr.io/arifnurdiansyah92/kemudi-hermes:${KEMUDI_VERSION:-1.1.0}
     profiles: [awak]
     labels: *experimental
     command: ["gateway", "run"]
@@ -402,7 +402,7 @@ services:
   # Runs branch code (pnpm install, gates, Playwright). No secrets; internet
   # for package installs only through kemudi-egress.
   kemudi-runner:
-    image: ghcr.io/arifnurdiansyah92/kemudi-runner:${KEMUDI_VERSION:-1.0.0}
+    image: ghcr.io/arifnurdiansyah92/kemudi-runner:${KEMUDI_VERSION:-1.1.0}
     profiles: [awak]
     labels: *experimental
     init: true
@@ -455,7 +455,7 @@ services:
   # The only client of kemudi-dind (infra/svc/svc.py). Reachable only from
   # the orchestrator (kemudi-svcnet), with its own key.
   kemudi-svc:
-    image: ghcr.io/arifnurdiansyah92/kemudi-svc:${KEMUDI_VERSION:-1.0.0}
+    image: ghcr.io/arifnurdiansyah92/kemudi-svc:${KEMUDI_VERSION:-1.1.0}
     profiles: [awak]
     labels: *experimental
     init: true

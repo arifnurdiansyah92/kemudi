@@ -27,7 +27,7 @@ Only the `infra/` and `scripts/` folders are needed; no source is built.
 Download the release you want (the tag is the version):
 
 ```sh
-git clone --depth 1 --branch v1.0.0 https://github.com/arifnurdiansyah92/kemudi.git
+git clone --depth 1 --branch v1.1.0 https://github.com/arifnurdiansyah92/kemudi.git
 cd kemudi
 ```
 
